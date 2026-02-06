@@ -1,16 +1,46 @@
 # AI-Platform-Square-HB
 
-## 当前状态
+企业内部 **AI 应用广场** 全栈实现（需求确认版 MVP）。
 
-- 项目处于**需求确认阶段**（暂不编码）。
-- 已确认你提供的《AI 应用广场》初步需求与页面结构方向。
+## 技术栈
 
-## 需求基线文档
+- 前端：React + TypeScript + Vite
+- 后端：Python FastAPI + SQLAlchemy
+- 数据库：MySQL（生产建议）/ SQLite（本地快速启动默认）
 
-- 页面结构与组件提示词（冻结稿）：`docs/ai-app-square-requirement-prompt.md`
-- 后续原型评审、前后端需求拆解默认以该文档为基线。
+## 目录结构
 
-## 协作方式
+- `frontend/`：页面与组件实现（三栏布局、应用卡片、榜单、详情抽屉）
+- `backend/`：REST API、数据模型、初始化种子数据
+- `docs/ai-app-square-requirement-prompt.md`：需求冻结稿
 
-- 我们将持续讨论并迭代前后端需求。
-- 待需求达成一致后，再进入编码与联调阶段。
+## 快速启动
+
+### 1) 后端
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2) 前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+访问：`http://localhost:5173`
+
+## 后端 API（核心）
+
+- `GET /api/apps`：应用列表（支持 section/status/category/q 过滤）
+- `GET /api/apps/{id}`：应用详情
+- `GET /api/rankings`：龙虎榜数据
+- `GET /api/recommendations`：本期推荐
+- `GET /api/stats`：申报统计
+- `POST /api/submissions`：应用申报
