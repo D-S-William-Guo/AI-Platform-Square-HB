@@ -48,5 +48,6 @@ npm run dev
 ## 需求对齐清单（持续更新）
 
 - v1（接口字段冻结 + 页面状态机）：`docs/alignment-v1.md`
+- v2-draft（5个待确认点建议决策）：`docs/alignment-v2-draft.md`
 - 说明：后续每轮讨论先更新该清单，双方确认后再进入对应编码。
 
