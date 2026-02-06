@@ -51,4 +51,8 @@ npm run dev
 - v2-draft（5个待确认点建议决策）：`docs/alignment-v2-draft.md`
 - v2-final（已确认版）：`docs/alignment-v2-final.md`
 - 说明：后续每轮讨论先更新该清单，双方确认后再进入对应编码。
+## 阶段性成果可视化
+
+- 预览页面：`preview/stage-demo.html`
+- 本地查看：在仓库根目录执行 `python -m http.server 8081` 后访问 `http://localhost:8081/preview/stage-demo.html`
 
