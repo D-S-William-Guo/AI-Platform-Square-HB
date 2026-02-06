@@ -1,8 +1,40 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats } from './api/client'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats } from './types'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp } from './api/client'
+import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
+const statusOptions = [
+  { value: '', label: '全部状态' },
+  { value: 'available', label: '可用' },
+  { value: 'approval', label: '需申请' },
+  { value: 'beta', label: '试运行' },
+  { value: 'offline', label: '已下线' }
+]
+const valueDimensionLabel: Record<ValueDimension, string> = {
+  cost_reduction: '降本',
+  efficiency_gain: '增效',
+  perception_uplift: '感知提升',
+  revenue_growth: '拉动收入'
+}
+
+const defaultSubmission: SubmissionPayload = {
+  app_name: '',
+  unit_name: '',
+  contact: '',
+  scenario: '',
+  embedded_system: '',
+  problem_statement: '',
+  effectiveness_type: 'efficiency_gain',
+  effectiveness_metric: '',
+  data_level: 'L2',
+  expected_benefit: ''
+}
+
+function rankingMetricText(row: RankingItem) {
+  if (row.metric_type === 'likes') return `点赞 ${row.likes ?? 0}`
+  if (row.metric_type === 'growth_rate') return `增速 +${row.score}%`
+  return `综合分 ${row.score}`
+}
 
 function App() {
   const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
@@ -16,6 +48,8 @@ function App() {
   const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
+  const [showSubmission, setShowSubmission] = useState(false)
+  const [submission, setSubmission] = useState<SubmissionPayload>(defaultSubmission)
 
   useEffect(() => {
     fetchRecommendations().then(setRecommendations)
@@ -43,13 +77,20 @@ function App() {
     return 'AI 应用龙虎榜'
   }, [activeNav])
 
+  async function onSubmit() {
+    await submitApp(submission)
+    setShowSubmission(false)
+    setSubmission(defaultSubmission)
+    alert('申报已提交，等待审核。')
+  }
+
   return (
     <div className="page">
       <header className="header">
         <div className="brand">H E B E I · AI 应用广场</div>
         <input className="search" placeholder="搜索应用 / 场景 / 关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
         <div className="header-actions">
-          <button className="primary">我要申报</button>
+          <button className="primary" onClick={() => setShowSubmission(true)}>我要申报</button>
           <div className="avatar">张</div>
         </div>
       </header>
@@ -76,9 +117,7 @@ function App() {
             {activeNav !== 'ranking' && (
               <div className="filters">
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="">全部状态</option>
-                  <option value="available">可用</option>
-                  <option value="approval">需申请</option>
+                  {statusOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
                 <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
                   {categories.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -99,7 +138,7 @@ function App() {
                 <article className="card" key={app.id} onClick={() => setSelectedApp(app)}>
                   <div className="card-top">
                     <h3>{app.name}</h3>
-                    <span className={`tag ${app.status}`}>{app.status === 'available' ? '可用' : '需申请'}</span>
+                    <span className={`tag ${app.status}`}>{statusOptions.find((x) => x.value === app.status)?.label}</span>
                   </div>
                   <p className="org">{app.org} · {app.category}</p>
                   <p>{app.description}</p>
@@ -115,9 +154,9 @@ function App() {
                 <div className="ranking-row" key={`${row.position}-${row.app.id}`} onClick={() => setSelectedApp(row.app)}>
                   <strong>#{row.position}</strong>
                   <span>{row.app.name}</span>
-                  <span>{row.app.org}</span>
+                  <span>{valueDimensionLabel[row.value_dimension]}</span>
                   <span>{row.tag}</span>
-                  <span>+{row.score}%</span>
+                  <span>{rankingMetricText(row)}</span>
                 </div>
               ))}
             </section>
@@ -140,7 +179,7 @@ function App() {
 
           <h4>快速规则</h4>
           {rules.map((rule) => (
-            <a key={rule.title} href={rule.href}>{rule.title}</a>
+            <a key={rule.title} href={rule.href} target="_blank" rel="noreferrer">{rule.title}</a>
           ))}
         </aside>
       </div>
@@ -153,9 +192,46 @@ function App() {
             <h3>{selectedApp.name}</h3>
             <p>{selectedApp.description}</p>
             <p>所属单位：{selectedApp.org}</p>
+            <p>接入系统：{selectedApp.target_system}</p>
+            <p>适用人群：{selectedApp.target_users}</p>
+            <p>解决问题：{selectedApp.problem_statement}</p>
+            <p>成效类型：{valueDimensionLabel[selectedApp.effectiveness_type]}</p>
+            <p>指标评估：{selectedApp.effectiveness_metric}</p>
             <p>接入难度：{selectedApp.difficulty}</p>
-            <p>API 开放：{selectedApp.api_open ? '是' : '否'}</p>
-            <p>联系人：{selectedApp.contact_name}</p>
+            {selectedApp.access_mode === 'direct' ? (
+              <p><a href={selectedApp.access_url} target="_blank" rel="noreferrer">直达使用入口</a></p>
+            ) : (
+              <p>该应用当前为介绍页模式，请先查看说明后申请接入。</p>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {showSubmission && (
+        <div className="drawer-mask" onClick={() => setShowSubmission(false)}>
+          <aside className="drawer form-drawer" onClick={(e) => e.stopPropagation()}>
+            <h3>应用申报</h3>
+            <input placeholder="应用名称" value={submission.app_name} onChange={(e) => setSubmission({ ...submission, app_name: e.target.value })} />
+            <input placeholder="申报单位" value={submission.unit_name} onChange={(e) => setSubmission({ ...submission, unit_name: e.target.value })} />
+            <input placeholder="联系人" value={submission.contact} onChange={(e) => setSubmission({ ...submission, contact: e.target.value })} />
+            <input placeholder="嵌入系统" value={submission.embedded_system} onChange={(e) => setSubmission({ ...submission, embedded_system: e.target.value })} />
+            <textarea placeholder="应用场景" value={submission.scenario} onChange={(e) => setSubmission({ ...submission, scenario: e.target.value })} />
+            <textarea placeholder="解决的问题" value={submission.problem_statement} onChange={(e) => setSubmission({ ...submission, problem_statement: e.target.value })} />
+            <select value={submission.effectiveness_type} onChange={(e) => setSubmission({ ...submission, effectiveness_type: e.target.value as ValueDimension })}>
+              <option value="cost_reduction">降本</option>
+              <option value="efficiency_gain">增效</option>
+              <option value="perception_uplift">感知提升</option>
+              <option value="revenue_growth">拉动收入</option>
+            </select>
+            <input placeholder="成效指标（如：工时下降30%）" value={submission.effectiveness_metric} onChange={(e) => setSubmission({ ...submission, effectiveness_metric: e.target.value })} />
+            <select value={submission.data_level} onChange={(e) => setSubmission({ ...submission, data_level: e.target.value as 'L1' | 'L2' | 'L3' | 'L4' })}>
+              <option value="L1">L1</option>
+              <option value="L2">L2</option>
+              <option value="L3">L3</option>
+              <option value="L4">L4</option>
+            </select>
+            <textarea placeholder="预期收益" value={submission.expected_benefit} onChange={(e) => setSubmission({ ...submission, expected_benefit: e.target.value })} />
+            <button className="primary" onClick={onSubmit}>提交申报</button>
           </aside>
         </div>
       )}

@@ -16,6 +16,11 @@ from .schemas import (
 )
 from .seed import seed_data
 
+APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
+METRIC_TYPES = {"composite", "growth_rate", "likes"}
+VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
+DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
+
 app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
@@ -53,6 +58,8 @@ def list_apps(
     if section:
         query = query.filter(App.section == section)
     if status:
+        if status not in APP_STATUS_VALUES:
+            raise HTTPException(status_code=422, detail="Invalid status")
         query = query.filter(App.status == status)
     if category and category != "全部":
         query = query.filter(App.category == category)
@@ -99,17 +106,33 @@ def app_stats(db: Session = Depends(get_db)):
 
 @app.get(f"{settings.api_prefix}/rules", response_model=list[RuleLink])
 def rules():
+    base = settings.oa_rule_base_url.rstrip("/")
     return [
-        RuleLink(title="如何申报应用", href="#"),
-        RuleLink(title="上榜评选标准", href="#"),
-        RuleLink(title="API接入指南", href="#"),
+        RuleLink(title="如何申报应用", href=f"{base}/ai-app-square/rules/submission"),
+        RuleLink(title="上榜评选标准", href=f"{base}/ai-app-square/rules/ranking"),
+        RuleLink(title="API接入指南", href=f"{base}/ai-app-square/rules/api-integration"),
     ]
 
 
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
+    if payload.effectiveness_type not in VALUE_DIMENSIONS:
+        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
+    if payload.data_level not in DATA_LEVEL_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid data_level")
+
     submission = Submission(**payload.model_dump())
     db.add(submission)
     db.commit()
     db.refresh(submission)
     return submission
+
+
+@app.get(f"{settings.api_prefix}/meta/enums")
+def list_enums():
+    return {
+        "app_status": sorted(APP_STATUS_VALUES),
+        "ranking_metric_type": sorted(METRIC_TYPES),
+        "value_dimension": sorted(VALUE_DIMENSIONS),
+        "data_level": sorted(DATA_LEVEL_VALUES),
+    }
