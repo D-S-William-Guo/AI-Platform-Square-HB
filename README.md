@@ -44,3 +44,9 @@ npm run dev
 - `GET /api/recommendations`：本期推荐
 - `GET /api/stats`：申报统计
 - `POST /api/submissions`：应用申报
+
+## 需求对齐清单（持续更新）
+
+- v1（接口字段冻结 + 页面状态机）：`docs/alignment-v1.md`
+- 说明：后续每轮讨论先更新该清单，双方确认后再进入对应编码。
+
