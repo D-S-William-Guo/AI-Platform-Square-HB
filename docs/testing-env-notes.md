@@ -27,3 +27,23 @@
 - Python 语法编译检查：`python -m py_compile backend/app/*.py backend/tests/test_api.py`
 - 代码结构与接口定义检查：通过文件级审阅确认
 
+
+## 如何放开访问（GitHub / PyPI / npm）
+
+以下任一方式生效即可，不需要全部同时做：
+
+1. **配置可访问的企业代理**
+   - 允许访问 `github.com`, `api.github.com`, `pypi.org`, `files.pythonhosted.org`, `registry.npmjs.org`。
+   - 在环境变量中提供：
+     - `HTTP_PROXY` / `HTTPS_PROXY`
+     - `NO_PROXY`（保留 `localhost,127.0.0.1`）
+
+2. **配置内部镜像/制品库**
+   - Python: `PIP_INDEX_URL` 指向企业 PyPI 镜像。
+   - Node: `npm config set registry <internal-npm-url>`。
+   - GitHub: 企业镜像或代理访问 `api.github.com`。
+
+3. **提供 GitHub Token（可选）**
+   - 若代理允许但需要鉴权，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
+
+如果你确认了具体策略（代理地址、镜像地址或 Token），我可以立刻按你的设置重试并安装相关 skill。
