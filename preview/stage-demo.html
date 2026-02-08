@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 应用广场 - 阶段性成果预览</title>
+  <style>
+    body{font-family:Inter,system-ui,sans-serif;margin:0;background:#f4f7fb;color:#1f2937}
+    .header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 20px;font-weight:700}
+    .wrap{display:grid;grid-template-columns:220px 1fr 260px;gap:14px;padding:14px}
+    .panel{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:14px}
+    .btn{display:block;width:100%;margin:6px 0;padding:8px;border:1px solid #d1d5db;border-radius:8px;background:#fff;text-align:left}
+    .btn.active{background:#e0ebff;border-color:#5b8def}
+    .cards{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px}
+    .card{border:1px solid #e5e7eb;border-radius:8px;padding:10px}
+    .tag{font-size:12px;border-radius:999px;padding:2px 8px}
+    .available{background:#dcfce7;color:#166534}.approval{background:#fef3c7;color:#92400e}.beta{background:#dbeafe;color:#1e40af}
+    .mini{border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px}
+    .footer{padding:10px 16px;color:#64748b;text-align:center}
+    @media (max-width:1200px){.wrap{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(180px,1fr));}}
+  </style>
+</head>
+<body>
+  <div class="header">H E B E I · AI 应用广场（阶段性成果展示）</div>
+  <div class="wrap">
+    <aside class="panel">
+      <h4>导航</h4>
+      <button class="btn active">集团应用</button>
+      <button class="btn">省内应用</button>
+      <button class="btn">应用榜单</button>
+      <h4>状态（v2）</h4>
+      <button class="btn">可用 available</button>
+      <button class="btn">需申请 approval</button>
+      <button class="btn">试运行 beta</button>
+      <button class="btn">已下线 offline</button>
+    </aside>
+
+    <main class="panel">
+      <h3>集团应用整合（已实现字段）</h3>
+      <p>支持 direct/profile 两种访问模式；支持系统、人群、问题、成效指标展示。</p>
+      <div class="cards">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between"><strong>智能客服助手</strong><span class="tag available">可用</span></div>
+          <p>接入系统：客服工单系统</p>
+          <p>成效：平均应答时长下降 42%</p>
+          <p><a href="#">直达使用入口</a></p>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between"><strong>文档智能分析</strong><span class="tag approval">需申请</span></div>
+          <p>接入系统：合同管理系统</p>
+          <p>成效：人均审核工时降低 35%</p>
+          <p>模式：介绍页 profile</p>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between"><strong>运维监控大屏</strong><span class="tag beta">试运行</span></div>
+          <p>接入系统：统一运维平台</p>
+          <p>成效：MTTR 降低 28%</p>
+          <p>模式：直达 direct</p>
+        </div>
+      </div>
+
+      <h3 style="margin-top:16px">榜单指标（已扩展）</h3>
+      <ul>
+        <li>metric_type：composite / growth_rate / likes</li>
+        <li>value_dimension：cost_reduction / efficiency_gain / perception_uplift / revenue_growth</li>
+        <li>附加指标：likes / usage_30d</li>
+      </ul>
+
+      <h3>申报字段（已扩展）</h3>
+      <p>app_name、unit_name、contact、scenario、embedded_system、problem_statement、effectiveness_type、effectiveness_metric、data_level、expected_benefit</p>
+    </main>
+
+    <aside class="panel">
+      <h4>本期推荐</h4>
+      <div class="mini"><strong>智能客服助手</strong><br/>7×24 自动应答</div>
+      <div class="mini"><strong>AI会议助手</strong><br/>自动生成会议纪要</div>
+      <h4>当前阶段</h4>
+      <div class="mini">✅ v2-final 已确认并落代码</div>
+      <div class="mini">✅ 后端模型/接口已扩展</div>
+      <div class="mini">✅ 前端页面字段已同步</div>
+    </aside>
+  </div>
+  <div class="footer">预览页仅用于阶段性成果可视化确认（不替代正式前端构建产物）</div>
+</body>
+</html>
