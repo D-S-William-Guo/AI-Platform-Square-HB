@@ -23,6 +23,7 @@ from .schemas import (
     SubmissionOut,
 )
 from .seed import seed_data
+from .venv_utils import venv_reader
 
 APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
 METRIC_TYPES = {"composite", "growth_rate", "likes"}
@@ -52,6 +53,36 @@ def on_startup():
 @app.get(f"{settings.api_prefix}/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get(f"{settings.api_prefix}/venv/info")
+def get_venv_info():
+    """
+    获取虚拟环境信息
+    """
+    return venv_reader.get_venv_info()
+
+
+@app.get(f"{settings.api_prefix}/venv/python-path")
+def get_venv_python_path():
+    """
+    获取虚拟环境中Python可执行文件的路径
+    """
+    python_path = venv_reader.get_venv_python_path()
+    if python_path:
+        return {"python_path": str(python_path)}
+    return {"error": "Virtual environment not found or invalid"}
+
+
+@app.get(f"{settings.api_prefix}/venv/site-packages")
+def get_venv_site_packages():
+    """
+    获取虚拟环境中site-packages目录的路径
+    """
+    site_packages = venv_reader.get_venv_site_packages()
+    if site_packages:
+        return {"site_packages_path": str(site_packages)}
+    return {"error": "Virtual environment not found or invalid"}
 
 
 @app.get(f"{settings.api_prefix}/apps", response_model=list[AppDetail])
