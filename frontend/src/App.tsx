@@ -125,6 +125,15 @@ function App() {
     const rule = validationRules[name as keyof typeof validationRules]
     if (!rule) return ''
 
+    // 检查是否是 pattern 类型的规则
+    if ('pattern' in rule) {
+      if (value && !rule.pattern.test(value)) {
+        return rule.message
+      }
+      return ''
+    }
+
+    // 检查 required
     if (rule.required && !value.trim()) {
       return '此字段为必填项'
     }
@@ -135,9 +144,6 @@ function App() {
       }
       if (rule.maxLength && value.length > rule.maxLength) {
         return `最多允许 ${rule.maxLength} 个字符`
-      }
-      if (rule.pattern && !rule.pattern.test(value)) {
-        return rule.message
       }
     }
 
