@@ -2,13 +2,23 @@ version: '3.9'
 services:
   mysql:
     image: mysql:8.0
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: ai_app_square
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_app_square}
+      MYSQL_USER: ${MYSQL_USER:-ai_app_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ai_app_password}
     ports:
       - '3306:3306'
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mysql_data:

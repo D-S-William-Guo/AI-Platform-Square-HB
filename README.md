@@ -16,6 +16,15 @@
 
 ## 快速启动
 
+### 0) 准备本地环境变量
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+```
+
+> `.env` 提供 docker-compose MySQL 默认账号，`backend/.env` 控制后端数据库连接。
+
 ### 1) 后端
 
 ```bash
@@ -24,6 +33,12 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
+```
+
+### 1.5) 使用 Docker Compose 启动 MySQL
+
+```bash
+docker compose up -d mysql
 ```
 
 ### 2) 前端
@@ -75,6 +90,10 @@ npm run dev
 | `rankings` | 应用榜单条目 | ranking_type/position/tag/score/likes/usage_30d/declared_at | 关联 `apps` |
 | `submissions` | 申报记录 | app_name/unit_name/contact/contact_phone/contact_email/category/scenario/cover_image_id/status/created_at | 与 `apps` 暂未强关联（申报通过后可转化为 `apps`） |
 | `submission_images` | 申报图片 | submission_id/image_url/thumbnail_url/original_name/file_size/is_cover | 关联 `submissions` |
+
+### migrations（SQL 快照）
+
+本仓库提供 `backend/migrations/001_init.sql`，用于初始化 MySQL 表结构（SQL 形式快照）。在本地快速验证可继续使用 SQLite + `Base.metadata.create_all` 的方式自动建表。若需使用 MySQL，可先执行该 SQL 文件再启动后端服务。
 
 ### 图片存储结构
 
