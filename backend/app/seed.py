@@ -2,11 +2,13 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from .models import App, Ranking, RankingDimension
+from .models import App, RankingDimension, Submission
+from .schemas import SubmissionCreate
+from .services.ranking_service import sync_rankings
+from .services.submission_service import create_submission, approve_submission_and_create_app
 
 
-APPS = [
-    # 集团应用 (至少5个)
+GROUP_APPS = [
     dict(
         name="智能客服助手",
         org="河北移动",
@@ -133,308 +135,242 @@ APPS = [
         effectiveness_type="efficiency_gain",
         effectiveness_metric="招聘周期缩短 35%",
     ),
-    
-    # 省内应用 (至少8个)
+]
+
+PROVINCE_SUBMISSIONS = [
     dict(
-        name="AI会议助手",
-        org="石家庄移动",
-        section="province",
+        app_name="AI会议助手",
+        unit_name="石家庄移动",
+        contact="孙薇",
+        contact_phone="13800000001",
+        contact_email="sunwei@example.com",
         category="办公类",
-        description="自动生成会议纪要、待办事项与行动计划",
-        status="available",
-        monthly_calls=12.3,
-        release_date=date(2024, 4, 1),
-        api_open=True,
-        difficulty="Low",
-        contact_name="孙薇",
-        highlight="纪要自动化",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/meeting-assistant",
-        target_system="OA 会议管理",
-        target_users="项目经理、秘书",
+        scenario="自动生成会议纪要、待办事项与行动计划，提升会议效率并减少人工记录负担。",
+        embedded_system="OA 会议管理",
         problem_statement="会后纪要整理耗时且遗漏风险高",
         effectiveness_type="perception_uplift",
         effectiveness_metric="会议满意度提升 18%",
+        data_level="L2",
+        expected_benefit="缩短会议整理时间并提高执行效率",
+        ranking_tags="新星",
+        ranking_dimensions="1,2",
     ),
     dict(
-        name="智能数据分析",
-        org="唐山电信",
-        section="province",
+        app_name="智能数据分析",
+        unit_name="唐山电信",
+        contact="周凡",
+        contact_phone="13800000002",
+        contact_email="zhoufan@example.com",
         category="企业管理",
-        description="一键生成分析报告，支持多维可视化",
-        status="approval",
-        monthly_calls=6.6,
-        release_date=date(2024, 6, 1),
-        api_open=True,
-        difficulty="High",
-        contact_name="周凡",
-        highlight="经营洞察实时化",
-        access_mode="profile",
-        access_url="",
-        target_system="经营分析平台",
-        target_users="经营分析师、部门负责人",
+        scenario="一键生成分析报告，支持多维可视化，帮助管理层快速决策。",
+        embedded_system="经营分析平台",
         problem_statement="跨系统取数慢，报表产出周期长",
         effectiveness_type="revenue_growth",
         effectiveness_metric="营销转化率提升 6.5%",
+        data_level="L3",
+        expected_benefit="缩短报表出具时间并提升决策效率",
+        ranking_tags="推荐",
+        ranking_dimensions="2,4",
     ),
     dict(
-        name="流程自动化引擎",
-        org="邯郸联通",
-        section="province",
+        app_name="流程自动化引擎",
+        unit_name="邯郸联通",
+        contact="陈涛",
+        contact_phone="13800000003",
+        contact_email="chentao@example.com",
         category="企业管理",
-        description="低代码流程编排，快速实现业务自动化",
-        status="offline",
-        monthly_calls=9.9,
-        release_date=date(2024, 2, 1),
-        api_open=True,
-        difficulty="Medium",
-        contact_name="陈涛",
-        highlight="流程上线周期缩短",
-        access_mode="profile",
-        access_url="",
-        target_system="BPM 流程引擎",
-        target_users="流程管理员、业务运营",
+        scenario="低代码流程编排，快速实现跨部门业务自动化与审批流转。",
+        embedded_system="BPM 流程引擎",
         problem_statement="跨部门流程编排复杂，改动上线慢",
         effectiveness_type="cost_reduction",
         effectiveness_metric="流程搭建成本降低 30%",
+        data_level="L2",
+        expected_benefit="缩短流程上线周期并降低改造成本",
+        ranking_tags="推荐",
+        ranking_dimensions="3,4",
     ),
     dict(
-        name="智慧校园助手",
-        org="保定移动",
-        section="province",
+        app_name="智慧校园助手",
+        unit_name="保定移动",
+        contact="王丽",
+        contact_phone="13800000004",
+        contact_email="wangli@example.com",
         category="业务前台",
-        description="面向高校的智能校园服务系统",
-        status="available",
-        monthly_calls=15.8,
-        release_date=date(2024, 3, 15),
-        api_open=True,
-        difficulty="Medium",
-        contact_name="王丽",
-        highlight="校园服务一站式",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/campus-assistant",
-        target_system="校园管理系统",
-        target_users="学生、教职工",
+        scenario="面向高校的智能校园服务系统，提供一站式服务与智能问答。",
+        embedded_system="校园管理系统",
         problem_statement="校园服务分散，用户体验差",
         effectiveness_type="perception_uplift",
         effectiveness_metric="校园服务满意度提升 40%",
+        data_level="L1",
+        expected_benefit="提升校园服务体验与学生满意度",
+        ranking_tags="新星",
+        ranking_dimensions="1,5",
     ),
     dict(
-        name="工业互联网平台",
-        org="沧州电信",
-        section="province",
+        app_name="工业互联网平台",
+        unit_name="沧州电信",
+        contact="李强",
+        contact_phone="13800000005",
+        contact_email="liqiang@example.com",
         category="业务前台",
-        description="面向制造业的智能生产管理平台",
-        status="beta",
-        monthly_calls=8.3,
-        release_date=date(2024, 5, 20),
-        api_open=True,
-        difficulty="High",
-        contact_name="李强",
-        highlight="生产效率提升",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/industry-platform",
-        target_system="工业控制系统",
-        target_users="工厂管理员、生产主管",
+        scenario="面向制造业的智能生产管理平台，辅助生产排程与质量监控。",
+        embedded_system="工业控制系统",
         problem_statement="生产管理信息化水平低，效率不高",
         effectiveness_type="efficiency_gain",
         effectiveness_metric="生产效率提升 30%",
+        data_level="L3",
+        expected_benefit="提升生产效率并减少工序损耗",
+        ranking_tags="推荐",
+        ranking_dimensions="2,4",
     ),
     dict(
-        name="乡村振兴服务平台",
-        org="邢台移动",
-        section="province",
+        app_name="乡村振兴服务平台",
+        unit_name="邢台移动",
+        contact="赵芳",
+        contact_phone="13800000006",
+        contact_email="zhaofang@example.com",
         category="业务前台",
-        description="面向农村的信息化服务平台",
-        status="available",
-        monthly_calls=7.2,
-        release_date=date(2024, 6, 5),
-        api_open=True,
-        difficulty="Low",
-        contact_name="赵芳",
-        highlight="乡村服务数字化",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/rural-service",
-        target_system="农业农村信息系统",
-        target_users="农民、乡镇干部",
+        scenario="面向农村的信息化服务平台，提供政策、培训和服务指引。",
+        embedded_system="农业农村信息系统",
         problem_statement="农村信息化水平低，服务获取困难",
         effectiveness_type="perception_uplift",
         effectiveness_metric="农村服务满意度提升 25%",
+        data_level="L1",
+        expected_benefit="提升农村信息服务覆盖率",
+        ranking_tags="新星",
+        ranking_dimensions="1,5",
     ),
     dict(
-        name="金融科技助手",
-        org="衡水联通",
-        section="province",
+        app_name="金融科技助手",
+        unit_name="衡水联通",
+        contact="吴强",
+        contact_phone="13800000007",
+        contact_email="wuqiang@example.com",
         category="企业管理",
-        description="面向金融机构的智能风控和营销系统",
-        status="approval",
-        monthly_calls=10.5,
-        release_date=date(2024, 4, 25),
-        api_open=True,
-        difficulty="High",
-        contact_name="吴强",
-        highlight="金融服务智能化",
-        access_mode="profile",
-        access_url="",
-        target_system="金融核心系统",
-        target_users="银行员工、金融分析师",
+        scenario="面向金融机构的智能风控和营销系统，提升审批效率与风控能力。",
+        embedded_system="金融核心系统",
         problem_statement="金融风控依赖人工，效率和准确率低",
         effectiveness_type="revenue_growth",
         effectiveness_metric="风控准确率提升 35%",
+        data_level="L4",
+        expected_benefit="提高风控准确率并降低风险成本",
+        ranking_tags="推荐",
+        ranking_dimensions="2,3",
     ),
     dict(
-        name="文旅智能导览",
-        org="承德电信",
-        section="province",
+        app_name="文旅智能导览",
+        unit_name="承德电信",
+        contact="郑华",
+        contact_phone="13800000008",
+        contact_email="zhenghua@example.com",
         category="业务前台",
-        description="面向旅游景区的智能导览和推荐系统",
-        status="available",
-        monthly_calls=14.2,
-        release_date=date(2024, 3, 30),
-        api_open=True,
-        difficulty="Medium",
-        contact_name="郑华",
-        highlight="个性化旅游体验",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/tourism-guide",
-        target_system="旅游管理系统",
-        target_users="游客、景区管理员",
+        scenario="面向旅游景区的智能导览和推荐系统，支持多语言与个性化推荐。",
+        embedded_system="旅游管理系统",
         problem_statement="旅游导览同质化，游客体验单一",
         effectiveness_type="perception_uplift",
         effectiveness_metric="游客满意度提升 30%",
+        data_level="L2",
+        expected_benefit="提升游客体验并带动二次消费",
+        ranking_tags="推荐",
+        ranking_dimensions="1,2",
     ),
     dict(
-        name="医疗健康助手",
-        org="秦皇岛移动",
-        section="province",
+        app_name="医疗健康助手",
+        unit_name="秦皇岛移动",
+        contact="孙医生",
+        contact_phone="13800000009",
+        contact_email="sunyi@example.com",
         category="业务前台",
-        description="智能问诊、健康管理和医疗资源调度系统",
-        status="beta",
-        monthly_calls=9.8,
-        release_date=date(2024, 5, 15),
-        api_open=True,
-        difficulty="Medium",
-        contact_name="孙医生",
-        highlight="医疗服务智能化",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/health-assistant",
-        target_system="医院信息系统",
-        target_users="患者、医护人员",
+        scenario="智能问诊、健康管理和医疗资源调度系统，缓解就医高峰。",
+        embedded_system="医院信息系统",
         problem_statement="医疗资源分配不均，患者就医体验差",
         effectiveness_type="efficiency_gain",
         effectiveness_metric="患者等待时间减少 45%",
+        data_level="L3",
+        expected_benefit="提高医疗资源利用率并缩短等待时间",
+        ranking_tags="新星",
+        ranking_dimensions="4,5",
     ),
 ]
 
 
-RANKINGS = [
-    # 优秀应用榜
-    dict(ranking_type="excellent", position=1, app_name="智能客服助手", tag="历史优秀", score=96, likes=328, metric_type="composite", value_dimension="efficiency_gain", usage_30d=15400, declared_at=date(2024, 12, 1)),
-    dict(ranking_type="excellent", position=2, app_name="运维监控大屏", tag="推荐", score=91, likes=255, metric_type="composite", value_dimension="cost_reduction", usage_30d=23100, declared_at=date(2024, 11, 20)),
-    dict(ranking_type="excellent", position=3, app_name="智能营销助手", tag="推荐", score=89, likes=302, metric_type="composite", value_dimension="revenue_growth", usage_30d=18700, declared_at=date(2024, 11, 25)),
-    dict(ranking_type="excellent", position=4, app_name="AI会议助手", tag="新星", score=88, likes=287, metric_type="composite", value_dimension="perception_uplift", usage_30d=12300, declared_at=date(2024, 11, 3)),
-    dict(ranking_type="excellent", position=5, app_name="智慧校园助手", tag="新星", score=87, likes=265, metric_type="composite", value_dimension="perception_uplift", usage_30d=15800, declared_at=date(2024, 11, 15)),
-    dict(ranking_type="excellent", position=6, app_name="文旅智能导览", tag="推荐", score=85, likes=248, metric_type="composite", value_dimension="perception_uplift", usage_30d=14200, declared_at=date(2024, 11, 10)),
-    dict(ranking_type="excellent", position=7, app_name="人力资源智能助手", tag="推荐", score=83, likes=215, metric_type="composite", value_dimension="efficiency_gain", usage_30d=9200, declared_at=date(2024, 11, 5)),
-    dict(ranking_type="excellent", position=8, app_name="网络优化专家", tag="新星", score=82, likes=198, metric_type="composite", value_dimension="cost_reduction", usage_30d=12500, declared_at=date(2024, 11, 28)),
-    
-    # 趋势榜
-    dict(ranking_type="trend", position=1, app_name="智能数据分析", tag="新星", score=76, likes=198, metric_type="growth_rate", value_dimension="revenue_growth", usage_30d=6600, declared_at=date(2024, 12, 9)),
-    dict(ranking_type="trend", position=2, app_name="文档智能分析", tag="推荐", score=65, likes=176, metric_type="likes", value_dimension="efficiency_gain", usage_30d=8800, declared_at=date(2024, 12, 10)),
-    dict(ranking_type="trend", position=3, app_name="乡村振兴服务平台", tag="新星", score=72, likes=185, metric_type="growth_rate", value_dimension="perception_uplift", usage_30d=7200, declared_at=date(2024, 12, 8)),
-    dict(ranking_type="trend", position=4, app_name="医疗健康助手", tag="新星", score=68, likes=165, metric_type="growth_rate", value_dimension="efficiency_gain", usage_30d=9800, declared_at=date(2024, 12, 7)),
-    dict(ranking_type="trend", position=5, app_name="工业互联网平台", tag="推荐", score=63, likes=152, metric_type="growth_rate", value_dimension="efficiency_gain", usage_30d=8300, declared_at=date(2024, 12, 6)),
+DEFAULT_DIMENSIONS = [
+    {
+        "name": "用户满意度",
+        "description": "基于用户反馈和使用数据评估应用的满意度",
+        "calculation_method": "基于应用的月调用量和用户评分计算",
+        "weight": 3.0,
+        "is_active": True,
+    },
+    {
+        "name": "业务价值",
+        "description": "评估应用对业务的提升作用",
+        "calculation_method": "基于应用的成效类型和指标计算",
+        "weight": 2.5,
+        "is_active": True,
+    },
+    {
+        "name": "技术创新性",
+        "description": "评估应用的技术方案和创新点",
+        "calculation_method": "基于应用的难度等级计算",
+        "weight": 2.0,
+        "is_active": True,
+    },
+    {
+        "name": "使用活跃度",
+        "description": "评估应用的使用频率和用户活跃度",
+        "calculation_method": "基于应用的月调用量计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+    {
+        "name": "稳定性和安全性",
+        "description": "评估应用的可靠性和安全性",
+        "calculation_method": "基于应用的状态和错误率计算",
+        "weight": 1.0,
+        "is_active": True,
+    },
 ]
 
 
 def seed_data(db: Session):
     try:
-        if db.query(App).count() > 0:
+        if db.query(App).count() > 0 or db.query(Submission).count() > 0:
             return
-    except Exception as e:
-        # 表结构可能不存在或不完整，直接返回
-        print(f"Database error during seed: {e}")
+    except Exception as exc:
+        print(f"Database error during seed: {exc}")
         return
 
     try:
-        for app in APPS:
-            # 添加排行榜相关字段
-            app.setdefault('ranking_enabled', True)
-            app.setdefault('ranking_weight', 1.0)
-            app.setdefault('ranking_tags', '')
-            app.setdefault('last_ranking_update', None)
-            db.add(App(**app))
-        db.commit()
-    except Exception as e:
-        print(f"Error seeding apps: {e}")
+        if db.query(RankingDimension).count() == 0:
+            for dimension in DEFAULT_DIMENSIONS:
+                db.add(RankingDimension(**dimension))
+            db.commit()
+    except Exception as exc:
+        print(f"Error seeding ranking dimensions: {exc}")
         db.rollback()
 
     try:
-        app_map = {a.name: a.id for a in db.query(App).all()}
-        for item in RANKINGS:
-            db.add(
-                Ranking(
-                    ranking_type=item["ranking_type"],
-                    position=item["position"],
-                    app_id=app_map[item["app_name"]],
-                    tag=item["tag"],
-                    score=item["score"],
-                    likes=item["likes"],
-                    metric_type=item["metric_type"],
-                    value_dimension=item["value_dimension"],
-                    usage_30d=item["usage_30d"],
-                    declared_at=item["declared_at"],
-                )
-            )
+        for app in GROUP_APPS:
+            app.setdefault("ranking_enabled", True)
+            app.setdefault("ranking_weight", 1.0)
+            app.setdefault("ranking_tags", "")
+            app.setdefault("last_ranking_update", None)
+            db.add(App(**app))
         db.commit()
-    except Exception as e:
-        print(f"Error seeding rankings: {e}")
+    except Exception as exc:
+        print(f"Error seeding group apps: {exc}")
         db.rollback()
-    
+
     try:
-        # 添加默认排行维度
-        default_dimensions = [
-            {
-                "name": "用户满意度",
-                "description": "基于用户反馈和使用数据评估应用的满意度",
-                "calculation_method": "基于应用的月调用量和用户评分计算",
-                "weight": 3.0,
-                "is_active": True
-            },
-            {
-                "name": "业务价值",
-                "description": "评估应用对业务的提升作用",
-                "calculation_method": "基于应用的成效类型和指标计算",
-                "weight": 2.5,
-                "is_active": True
-            },
-            {
-                "name": "技术创新性",
-                "description": "评估应用的技术方案和创新点",
-                "calculation_method": "基于应用的难度等级计算",
-                "weight": 2.0,
-                "is_active": True
-            },
-            {
-                "name": "使用活跃度",
-                "description": "评估应用的使用频率和用户活跃度",
-                "calculation_method": "基于应用的月调用量计算",
-                "weight": 1.5,
-                "is_active": True
-            },
-            {
-                "name": "稳定性和安全性",
-                "description": "评估应用的可靠性和安全性",
-                "calculation_method": "基于应用的状态和错误率计算",
-                "weight": 1.0,
-                "is_active": True
-            }
-        ]
-        
-        if db.query(RankingDimension).count() == 0:
-            for dimension in default_dimensions:
-                db.add(RankingDimension(**dimension))
-            db.commit()
-    except Exception as e:
-        print(f"Error seeding ranking dimensions: {e}")
+        approved_ids = []
+        for index, payload in enumerate(PROVINCE_SUBMISSIONS):
+            submission = create_submission(db, SubmissionCreate(**payload))
+            if index < 7:
+                approved = approve_submission_and_create_app(db, submission)
+                approved_ids.append(approved.id)
+        if approved_ids:
+            sync_rankings(db)
+    except Exception as exc:
+        print(f"Error seeding province submissions: {exc}")
         db.rollback()

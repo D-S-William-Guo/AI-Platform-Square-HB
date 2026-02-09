@@ -76,6 +76,7 @@ class Submission(Base):
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     cover_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cover_image_url: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # 排行榜相关字段
     ranking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

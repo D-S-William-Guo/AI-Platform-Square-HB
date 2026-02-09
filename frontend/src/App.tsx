@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage } from './api/client'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors } from './types'
+import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
 const statusOptions = [
@@ -102,6 +102,7 @@ function HomePage() {
   const [rankings, setRankings] = useState<RankingItem[]>([])
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
+  const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
@@ -118,6 +119,9 @@ function HomePage() {
   useEffect(() => {
     fetchRecommendations().then(setRecommendations)
     fetchRules().then(setRules)
+    fetchRankingDimensions()
+      .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
+      .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
     
     // 获取统计数据，添加加载状态和错误处理
     const loadStats = async () => {
@@ -460,11 +464,11 @@ function HomePage() {
                     onChange={(e) => setRankingDimension(e.target.value)}
                   >
                     <option value="overall">综合排名</option>
-                    <option value="impact">项目影响力</option>
-                    <option value="satisfaction">用户满意度</option>
-                    <option value="innovation">技术创新性</option>
-                    <option value="growth">增长速度</option>
-                    <option value="pass-rate">审核通过率</option>
+                    {rankingDimensions.map((dimension) => (
+                      <option key={dimension.id} value={`dimension-${dimension.id}`}>
+                        {dimension.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

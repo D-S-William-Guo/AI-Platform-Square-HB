@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   expected_benefit VARCHAR(300) NOT NULL,
   status VARCHAR(20) DEFAULT 'pending',
   cover_image_id INT DEFAULT NULL,
+  cover_image_url VARCHAR(500) DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   ranking_enabled TINYINT(1) DEFAULT 1,
   ranking_weight FLOAT DEFAULT 1.0,

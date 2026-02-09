@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import type { RankingDimension } from '../types'
 import { fetchRankingDimensions, createRankingDimension, updateRankingDimension, deleteRankingDimension, fetchRankingLogs, syncRankings, batchUpdateRankingParams } from '../api/client'
 
@@ -168,8 +169,13 @@ const RankingManagementPage = () => {
   return (
     <div className="ranking-management-page">
       <header className="page-header">
-        <h1>排行榜管理</h1>
-        <p>配置排行维度、计算方法和规则，管理排行榜参数</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+          <div>
+            <h1>排行榜管理</h1>
+            <p>配置排行维度、计算方法和规则，管理排行榜参数</p>
+          </div>
+          <Link to="/" className="secondary-button">返回首页</Link>
+        </div>
       </header>
 
       <div className="page-content">

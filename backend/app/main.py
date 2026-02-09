@@ -12,6 +12,12 @@ from sqlalchemy.orm import Session, joinedload
 from .config import settings
 from .database import Base, engine, get_db
 from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog
+from .domain import APP_STATUS_VALUES, METRIC_TYPES, VALUE_DIMENSIONS, DATA_LEVEL_VALUES
+from .services.ranking_service import sync_rankings as sync_rankings_service
+from .services.submission_service import (
+    create_submission as create_submission_service,
+    approve_submission_and_create_app as approve_submission_service,
+)
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -28,11 +34,6 @@ from .schemas import (
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
-
-APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
-METRIC_TYPES = {"composite", "growth_rate", "likes"}
-VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
-DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
 
 app = FastAPI(title=settings.app_name)
 
@@ -230,6 +231,7 @@ def list_rankings(ranking_type: str = "excellent", db: Session = Depends(get_db)
             db.query(Ranking)
             .options(joinedload(Ranking.app))
             .filter(Ranking.ranking_type == ranking_type)
+            .filter(Ranking.app.has(App.section == "province"))
             .order_by(Ranking.position)
             .all()
         )
@@ -274,24 +276,10 @@ def rules():
 
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
-    if payload.effectiveness_type not in VALUE_DIMENSIONS:
-        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
-    if payload.data_level not in DATA_LEVEL_VALUES:
-        raise HTTPException(status_code=422, detail="Invalid data_level")
-    
-    # 验证排行榜相关字段
-    if payload.ranking_weight < 0.1 or payload.ranking_weight > 10.0:
-        raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
-    if len(payload.ranking_tags) > 255:
-        raise HTTPException(status_code=422, detail="ranking_tags must not exceed 255 characters")
-    if len(payload.ranking_dimensions) > 500:
-        raise HTTPException(status_code=422, detail="ranking_dimensions must not exceed 500 characters")
-
-    submission = Submission(**payload.model_dump())
-    db.add(submission)
-    db.commit()
-    db.refresh(submission)
-    return submission
+    try:
+        return create_submission_service(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get(f"{settings.api_prefix}/meta/enums")
@@ -471,324 +459,11 @@ def sync_rankings(db: Session = Depends(get_db)):
     同步排行榜数据，确保集团应用和省内应用信息保持一致
     """
     try:
-        import sqlalchemy
-        
-        # 检查并创建必要的数据库表
-        try:
-            # 检查rankings表是否存在
-            db.execute(sqlalchemy.text("SELECT 1 FROM rankings LIMIT 1"))
-        except:
-            # 创建rankings表
-            db.execute(sqlalchemy.text("""
-                CREATE TABLE IF NOT EXISTS rankings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ranking_type VARCHAR(50) NOT NULL,
-                    position INTEGER NOT NULL,
-                    app_id INTEGER NOT NULL,
-                    tag VARCHAR(50) NOT NULL,
-                    score INTEGER NOT NULL,
-                    likes INTEGER DEFAULT 0,
-                    metric_type VARCHAR(50) DEFAULT 'composite',
-                    value_dimension VARCHAR(50) DEFAULT 'efficiency_gain',
-                    usage_30d INTEGER DEFAULT 0,
-                    declared_at DATE NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (app_id) REFERENCES apps (id)
-                )
-            """))
-            db.commit()
-        
-        try:
-            # 检查ranking_dimensions表是否存在
-            db.execute(sqlalchemy.text("SELECT 1 FROM ranking_dimensions LIMIT 1"))
-        except:
-            # 创建ranking_dimensions表
-            db.execute(sqlalchemy.text("""
-                CREATE TABLE IF NOT EXISTS ranking_dimensions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name VARCHAR(100) NOT NULL,
-                    description TEXT,
-                    calculation_method TEXT,
-                    weight FLOAT DEFAULT 1.0,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """))
-            db.commit()
-            
-            # 插入默认排行维度
-            default_dimensions = [
-                {"name": "用户满意度", "description": "基于用户反馈和使用数据评估应用的满意度", "calculation_method": "基于应用的月调用量和用户评分计算", "weight": 3.0, "is_active": True},
-                {"name": "业务价值", "description": "评估应用对业务的提升作用", "calculation_method": "基于应用的成效类型和指标计算", "weight": 2.5, "is_active": True},
-                {"name": "技术创新性", "description": "评估应用的技术方案和创新点", "calculation_method": "基于应用的难度等级计算", "weight": 2.0, "is_active": True},
-                {"name": "使用活跃度", "description": "评估应用的使用频率和用户活跃度", "calculation_method": "基于应用的月调用量计算", "weight": 1.5, "is_active": True},
-                {"name": "稳定性和安全性", "description": "评估应用的可靠性和安全性", "calculation_method": "基于应用的状态和错误率计算", "weight": 1.0, "is_active": True}
-            ]
-            
-            for dim in default_dimensions:
-                db.execute(sqlalchemy.text("""
-                    INSERT INTO ranking_dimensions (name, description, calculation_method, weight, is_active)
-                    VALUES (:name, :description, :calculation_method, :weight, :is_active)
-                """), dim)
-            db.commit()
-        
-        # 直接执行SQL查询获取应用数据，避免使用ORM导致的字段问题
-        result = db.execute(sqlalchemy.text("""
-            SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
-                   api_open, difficulty, contact_name, highlight, access_mode, access_url,
-                   target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
-                   cover_image_url
-            FROM apps
-        """))
-        
-        # 构造应用对象列表
-        apps = []
-        for row in result:
-            app_dict = {
-                "id": row.id,
-                "name": row.name,
-                "org": row.org,
-                "section": row.section,
-                "category": row.category,
-                "description": row.description,
-                "status": row.status,
-                "monthly_calls": row.monthly_calls,
-                "release_date": row.release_date,
-                "api_open": row.api_open,
-                "difficulty": row.difficulty,
-                "contact_name": row.contact_name,
-                "highlight": row.highlight,
-                "access_mode": row.access_mode,
-                "access_url": row.access_url,
-                "target_system": row.target_system,
-                "target_users": row.target_users,
-                "problem_statement": row.problem_statement,
-                "effectiveness_type": row.effectiveness_type,
-                "effectiveness_metric": row.effectiveness_metric,
-                "cover_image_url": row.cover_image_url,
-                "ranking_enabled": True,
-                "ranking_weight": 1.0,
-                "ranking_tags": "",
-                "last_ranking_update": None
-            }
-            apps.append(app_dict)
-        
-        updated_count = 0
-        
-        # 获取所有活跃的排行维度
-        dimensions = []
-        try:
-            dim_result = db.execute(sqlalchemy.text("""
-                SELECT id, name, description, calculation_method, weight, is_active
-                FROM ranking_dimensions
-                WHERE is_active = 1
-            """))
-            for row in dim_result:
-                dimensions.append({
-                    "id": row.id,
-                    "name": row.name,
-                    "description": row.description,
-                    "calculation_method": row.calculation_method,
-                    "weight": row.weight,
-                    "is_active": row.is_active
-                })
-        except:
-            # 如果维度表不存在，使用默认维度
-            dimensions = []
-        
-        # 为每个应用创建或更新排行榜记录
-        for app in apps:
-            # 计算得分
-            try:
-                # 基于多个维度计算得分
-                base_score = 0
-                
-                # 基于月调用量计算基础得分
-                base_score += min(int(app['monthly_calls'] * 10), 100) * 0.3
-                
-                # 基于状态计算得分
-                if app['status'] == 'available':
-                    base_score += 100 * 0.2
-                elif app['status'] == 'beta':
-                    base_score += 80 * 0.2
-                else:
-                    base_score += 60 * 0.2
-                
-                # 基于难度计算得分
-                if app['difficulty'] == 'High':
-                    base_score += 100 * 0.2
-                elif app['difficulty'] == 'Medium':
-                    base_score += 70 * 0.2
-                else:
-                    base_score += 40 * 0.2
-                
-                # 基于成效类型计算得分
-                if app['effectiveness_type'] == 'revenue_growth':
-                    base_score += 100 * 0.1
-                elif app['effectiveness_type'] == 'efficiency_gain':
-                    base_score += 80 * 0.1
-                elif app['effectiveness_type'] == 'cost_reduction':
-                    base_score += 70 * 0.1
-                else:
-                    base_score += 60 * 0.1
-                
-                score = int(base_score)
-            except Exception as e:
-                print(f"Error calculating score for app {app['id']}: {e}")
-                # 如果计算失败，使用默认得分
-                score = 50
-            
-            # 检查是否已存在排行榜记录
-            try:
-                existing = db.execute(sqlalchemy.text("""
-                    SELECT id FROM rankings WHERE app_id = :app_id AND ranking_type = 'excellent'
-                """), {"app_id": app['id']})
-                existing_id = existing.scalar()
-                
-                if existing_id:
-                    # 更新现有记录
-                    db.execute(sqlalchemy.text("""
-                        UPDATE rankings SET score = :score, updated_at = :updated_at
-                        WHERE id = :id
-                    """), {
-                        "score": score,
-                        "updated_at": datetime.utcnow(),
-                        "id": existing_id
-                    })
-                else:
-                    # 获取下一个位置
-                    try:
-                        max_pos = db.execute(sqlalchemy.text("""
-                            SELECT COUNT(*) FROM rankings WHERE ranking_type = 'excellent'
-                        """)).scalar()
-                        position = max_pos + 1
-                    except Exception as e:
-                        print(f"Error getting max position: {e}")
-                        position = 1
-                    
-                    # 创建新记录
-                    try:
-                        db.execute(sqlalchemy.text("""
-                            INSERT INTO rankings (ranking_type, position, app_id, tag, score, metric_type, value_dimension, usage_30d, declared_at, updated_at)
-                            VALUES (:ranking_type, :position, :app_id, :tag, :score, :metric_type, :value_dimension, :usage_30d, :declared_at, :updated_at)
-                        """), {
-                            "ranking_type": "excellent",
-                            "position": position,
-                            "app_id": app['id'],
-                            "tag": "推荐",
-                            "score": score,
-                            "metric_type": "composite",
-                            "value_dimension": app['effectiveness_type'],
-                            "usage_30d": 0,
-                            "declared_at": datetime.now().date(),
-                            "updated_at": datetime.utcnow()
-                        })
-                    except Exception as e:
-                        print(f"Error inserting ranking for app {app['id']}: {e}")
-                        continue
-                updated_count += 1
-            except Exception as e:
-                print(f"Error processing app {app['id']}: {e}")
-                continue
-        
-        # 重新排序排行榜
-        try:
-            # 获取所有排行记录并按得分排序
-            rank_result = db.execute(sqlalchemy.text("""
-                SELECT id, score FROM rankings WHERE ranking_type = 'excellent' ORDER BY score DESC
-            """))
-            
-            # 更新位置
-            for i, row in enumerate(rank_result, 1):
-                db.execute(sqlalchemy.text("""
-                    UPDATE rankings SET position = :position WHERE id = :id
-                """), {
-                    "position": i,
-                    "id": row.id
-                })
-        except Exception as e:
-            print(f"Error reordering rankings: {e}")
-        
-        db.commit()
-        
+        updated_count = sync_rankings_service(db)
         return {"message": "排行榜数据同步成功", "updated_count": updated_count}
-    except Exception as e:
+    except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
-
-
-def calculate_app_score(app: App, db: Session) -> int:
-    """
-    计算应用的排行榜得分
-    """
-    # 获取所有活跃的排行维度
-    active_dimensions = db.query(RankingDimension).filter(RankingDimension.is_active == True).all()
-    
-    # 基础得分
-    base_score = 0
-    
-    # 根据维度计算得分
-    for dimension in active_dimensions:
-        # 这里可以根据实际情况实现具体的维度得分计算逻辑
-        # 例如：基于应用的使用数据、用户反馈等计算得分
-        dimension_score = 0
-        
-        # 根据维度类型计算得分
-        if dimension.name == "用户满意度":
-            # 假设用户满意度得分基于应用的使用数据
-            dimension_score = min(int(app.monthly_calls * 10), 100)
-        elif dimension.name == "业务价值":
-            # 假设业务价值得分基于应用的成效类型
-            if app.effectiveness_type == "revenue_growth":
-                dimension_score = 100
-            elif app.effectiveness_type == "efficiency_gain":
-                dimension_score = 80
-            elif app.effectiveness_type == "cost_reduction":
-                dimension_score = 70
-            else:
-                dimension_score = 60
-        elif dimension.name == "技术创新性":
-            # 假设技术创新性得分基于应用的难度
-            if app.difficulty == "High":
-                dimension_score = 100
-            elif app.difficulty == "Medium":
-                dimension_score = 70
-            else:
-                dimension_score = 40
-        elif dimension.name == "使用活跃度":
-            # 假设使用活跃度得分基于应用的月调用量
-            dimension_score = min(int(app.monthly_calls * 5), 100)
-        elif dimension.name == "稳定性和安全性":
-            # 假设稳定性和安全性得分基于应用的状态
-            if app.status == "available":
-                dimension_score = 100
-            elif app.status == "beta":
-                dimension_score = 80
-            else:
-                dimension_score = 60
-        else:
-            # 默认得分
-            dimension_score = 50
-        
-        # 加权计算
-        base_score += dimension_score * dimension.weight
-    
-    # 应用自身权重调整
-    final_score = int(base_score * app.ranking_weight)
-    
-    # 确保得分在合理范围内
-    return max(0, min(final_score, 1000))
-
-
-def get_next_position(db: Session) -> int:
-    """
-    获取下一个排名位置
-    """
-    # 获取当前最大位置
-    max_position = db.query(Ranking).filter(Ranking.ranking_type == "excellent").count()
-    return max_position + 1
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(exc)}") from exc
 
 
 @app.post(f"{settings.api_prefix}/apps/batch-update-ranking-params")
@@ -840,44 +515,11 @@ def approve_submission_and_create_app(
     审批申报并创建应用,同时传递排行榜参数
     """
     try:
-        # 获取申报信息
         submission = db.query(Submission).filter(Submission.id == submission_id).first()
         if not submission:
             raise HTTPException(status_code=404, detail="申报不存在")
         
-        if submission.status != "pending":
-            raise HTTPException(status_code=400, detail="申报状态不是待审批")
-        
-        # 验证排行榜参数
-        if submission.ranking_weight < 0.1 or submission.ranking_weight > 10.0:
-            raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
-        if len(submission.ranking_tags) > 255:
-            raise HTTPException(status_code=422, detail="ranking_tags must not exceed 255 characters")
-        if len(submission.ranking_dimensions) > 500:
-            raise HTTPException(status_code=422, detail="ranking_dimensions must not exceed 500 characters")
-        
-        # 创建应用
-        app = App(
-            name=submission.app_name,
-            org=submission.unit_name,
-            section="province",  # 省内应用
-            category=submission.category,
-            description=submission.scenario,
-            status="available",
-            monthly_calls=0.0,
-            release_date=datetime.now().date(),
-            effectiveness_type=submission.effectiveness_type,
-            effectiveness_metric=submission.effectiveness_metric,
-            # 传递排行榜参数
-            ranking_enabled=submission.ranking_enabled,
-            ranking_weight=submission.ranking_weight,
-            ranking_tags=submission.ranking_tags
-        )
-        
-        db.add(app)
-        submission.status = "approved"
-        db.commit()
-        
+        app = approve_submission_service(db, submission)
         return {"message": "审批成功并创建应用", "app_id": app.id}
     except HTTPException:
         raise

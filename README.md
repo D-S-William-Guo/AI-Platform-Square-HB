@@ -51,6 +51,10 @@ npm run dev
 
 访问：`http://localhost:5173`
 
+## 开发与提交流程
+
+请先阅读并遵循项目内的工作流程说明：`docs/dev-workflow.md`，包含分支命名、PR 流程及数据库切换方式。
+
 ## 后端 API（核心）
 
 ### 应用管理
