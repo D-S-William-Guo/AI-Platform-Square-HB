@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS apps (
   problem_statement VARCHAR(255) DEFAULT '',
   effectiveness_type VARCHAR(40) DEFAULT 'cost_reduction',
   effectiveness_metric VARCHAR(120) DEFAULT '',
-  cover_image_url VARCHAR(500) DEFAULT ''
+  cover_image_url VARCHAR(500) DEFAULT '',
+  ranking_enabled TINYINT(1) DEFAULT 1,
+  ranking_weight FLOAT DEFAULT 1.0,
+  ranking_tags VARCHAR(255) DEFAULT '',
+  last_ranking_update DATETIME DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS rankings (
@@ -36,6 +40,7 @@ CREATE TABLE IF NOT EXISTS rankings (
   value_dimension VARCHAR(40) DEFAULT 'cost_reduction',
   usage_30d INT DEFAULT 0,
   declared_at DATE NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id)
 );
 
@@ -55,7 +60,11 @@ CREATE TABLE IF NOT EXISTS submissions (
   expected_benefit VARCHAR(300) NOT NULL,
   status VARCHAR(20) DEFAULT 'pending',
   cover_image_id INT DEFAULT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ranking_enabled TINYINT(1) DEFAULT 1,
+  ranking_weight FLOAT DEFAULT 1.0,
+  ranking_tags VARCHAR(255) DEFAULT '',
+  ranking_dimensions VARCHAR(500) DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS submission_images (
@@ -69,4 +78,26 @@ CREATE TABLE IF NOT EXISTS submission_images (
   is_cover TINYINT(1) DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_submission_images_submission FOREIGN KEY (submission_id) REFERENCES submissions(id)
+);
+
+CREATE TABLE IF NOT EXISTS ranking_dimensions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT NOT NULL,
+  calculation_method TEXT NOT NULL,
+  weight FLOAT NOT NULL DEFAULT 1.0,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ranking_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  action VARCHAR(20) NOT NULL,
+  dimension_id INT DEFAULT NULL,
+  dimension_name VARCHAR(100) DEFAULT '',
+  changes TEXT NOT NULL,
+  operator VARCHAR(50) DEFAULT 'system',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ranking_logs_dimension FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
 );

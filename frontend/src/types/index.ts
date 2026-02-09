@@ -24,6 +24,11 @@ export type AppItem = {
   effectiveness_type: ValueDimension
   effectiveness_metric: string
   cover_image_url: string
+  // 排行榜相关字段
+  ranking_enabled: boolean
+  ranking_weight: number
+  ranking_tags: string
+  last_ranking_update: string | null
 }
 
 export type RankingItem = {
@@ -69,6 +74,11 @@ export type SubmissionPayload = {
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
   cover_image_url: string
+  // 排行榜相关字段
+  ranking_enabled: boolean
+  ranking_weight: number
+  ranking_tags: string
+  ranking_dimensions: string
 }
 
 export type ImageUploadResponse = {
@@ -89,3 +99,15 @@ export type ValidationRule =
   | { required?: boolean; minLength: number; maxLength?: number; message: string }
   | { required?: boolean; minLength?: number; maxLength: number; message: string }
   | { pattern: RegExp; message: string }
+
+
+export type RankingDimension = {
+  id: number
+  name: string
+  description: string
+  calculation_method: string
+  weight: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
