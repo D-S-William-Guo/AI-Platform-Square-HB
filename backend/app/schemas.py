@@ -27,6 +27,7 @@ class AppDetail(AppBase):
     problem_statement: str
     effectiveness_type: str
     effectiveness_metric: str
+    cover_image_url: str
 
     class Config:
         from_attributes = True
@@ -64,6 +65,9 @@ class SubmissionCreate(BaseModel):
     app_name: str = Field(min_length=2, max_length=120)
     unit_name: str = Field(min_length=2, max_length=120)
     contact: str = Field(min_length=2, max_length=80)
+    contact_phone: str = Field(default="", max_length=20)
+    contact_email: str = Field(default="", max_length=120)
+    category: str = Field(min_length=2, max_length=30)
     scenario: str = Field(min_length=20, max_length=500)
     embedded_system: str = Field(min_length=2, max_length=120)
     problem_statement: str = Field(min_length=10, max_length=255)
@@ -71,6 +75,7 @@ class SubmissionCreate(BaseModel):
     effectiveness_metric: str = Field(min_length=2, max_length=120)
     data_level: str
     expected_benefit: str = Field(min_length=10, max_length=300)
+    cover_image_url: str = Field(default="", max_length=500)
 
 
 class SubmissionOut(BaseModel):
@@ -78,6 +83,9 @@ class SubmissionOut(BaseModel):
     app_name: str
     unit_name: str
     contact: str
+    contact_phone: str
+    contact_email: str
+    category: str
     scenario: str
     embedded_system: str
     problem_statement: str
@@ -86,7 +94,17 @@ class SubmissionOut(BaseModel):
     data_level: str
     expected_benefit: str
     status: str
+    cover_image_url: str
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class ImageUploadResponse(BaseModel):
+    success: bool
+    image_url: str
+    thumbnail_url: str
+    original_name: str
+    file_size: int
+    message: str

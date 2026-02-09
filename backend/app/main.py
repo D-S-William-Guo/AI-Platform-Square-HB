@@ -1,12 +1,20 @@
-from fastapi import Depends, FastAPI, HTTPException, Query
+import os
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission
+from .models import App, Ranking, Submission, SubmissionImage
 from .schemas import (
     AppDetail,
+    ImageUploadResponse,
     RankingItem,
     Recommendation,
     RuleLink,
@@ -136,3 +144,192 @@ def list_enums():
         "value_dimension": sorted(VALUE_DIMENSIONS),
         "data_level": sorted(DATA_LEVEL_VALUES),
     }
+
+
+# Image upload configuration
+UPLOAD_DIR = Path("static/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def validate_image(file: UploadFile) -> tuple[bool, str]:
+    """Validate uploaded image file"""
+    # Check file extension
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return False, f"仅支持 {', '.join(ALLOWED_EXTENSIONS)} 格式的图片"
+    
+    # Check content type
+    if not file.content_type.startswith("image/"):
+        return False, "上传的文件不是有效的图片"
+    
+    return True, ""
+
+
+def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
+    """Save image and create thumbnail"""
+    # Generate unique filename
+    ext = Path(file.filename).suffix.lower()
+    unique_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{unique_id}{ext}"
+    
+    # Create directory structure
+    if submission_id:
+        save_dir = UPLOAD_DIR / "submissions" / str(submission_id)
+    else:
+        save_dir = UPLOAD_DIR / "temp"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save original image
+    file_path = save_dir / filename
+    with open(file_path, "wb") as f:
+        content = file.file.read()
+        # Check file size
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="图片大小不能超过 5MB")
+        f.write(content)
+    
+    # Create thumbnail
+    thumb_filename = f"thumb_{filename}"
+    thumb_path = save_dir / thumb_filename
+    
+    with Image.open(file_path) as img:
+        # Convert to RGB if necessary
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Create thumbnail (300x200)
+        img.thumbnail((300, 200), Image.Resampling.LANCZOS)
+        img.save(thumb_path, "JPEG", quality=85)
+        
+        # Get image dimensions
+        width, height = img.size
+    
+    # Generate URLs
+    base_url = "/static/uploads"
+    if submission_id:
+        image_url = f"{base_url}/submissions/{submission_id}/{filename}"
+        thumbnail_url = f"{base_url}/submissions/{submission_id}/{thumb_filename}"
+    else:
+        image_url = f"{base_url}/temp/{filename}"
+        thumbnail_url = f"{base_url}/temp/{thumb_filename}"
+    
+    return {
+        "image_url": image_url,
+        "thumbnail_url": thumbnail_url,
+        "original_name": file.filename,
+        "file_size": len(content),
+        "width": width,
+        "height": height,
+    }
+
+
+@app.post(f"{settings.api_prefix}/upload/image", response_model=ImageUploadResponse)
+async def upload_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload image file"""
+    # Validate file
+    is_valid, error_msg = validate_image(file)
+    if not is_valid:
+        return ImageUploadResponse(
+            success=False,
+            image_url="",
+            thumbnail_url="",
+            original_name=file.filename,
+            file_size=0,
+            message=error_msg,
+        )
+    
+    try:
+        # Save image
+        result = save_image(file)
+        
+        return ImageUploadResponse(
+            success=True,
+            image_url=result["image_url"],
+            thumbnail_url=result["thumbnail_url"],
+            original_name=result["original_name"],
+            file_size=result["file_size"],
+            message="图片上传成功",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        return ImageUploadResponse(
+            success=False,
+            image_url="",
+            thumbnail_url="",
+            original_name=file.filename,
+            file_size=0,
+            message=f"上传失败: {str(e)}",
+        )
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/images")
+def associate_image(
+    submission_id: int,
+    image_url: str,
+    thumbnail_url: str,
+    original_name: str,
+    file_size: int,
+    is_cover: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Associate uploaded image with submission"""
+    # Check if submission exists
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报记录不存在")
+    
+    # Create image record
+    image = SubmissionImage(
+        submission_id=submission_id,
+        image_url=image_url,
+        thumbnail_url=thumbnail_url,
+        original_name=original_name,
+        file_size=file_size,
+        is_cover=is_cover,
+    )
+    db.add(image)
+    
+    # Update cover image if this is the cover
+    if is_cover:
+        submission.cover_image_id = image.id
+    
+    db.commit()
+    db.refresh(image)
+    
+    return {
+        "success": True,
+        "image_id": image.id,
+        "message": "图片关联成功",
+    }
+
+
+@app.get(f"{settings.api_prefix}/submissions/{{submission_id}}/images")
+def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
+    """Get all images for a submission"""
+    images = db.query(SubmissionImage).filter(
+        SubmissionImage.submission_id == submission_id
+    ).all()
+    
+    return [
+        {
+            "id": img.id,
+            "image_url": img.image_url,
+            "thumbnail_url": img.thumbnail_url,
+            "original_name": img.original_name,
+            "file_size": img.file_size,
+            "is_cover": img.is_cover,
+            "created_at": img.created_at,
+        }
+        for img in images
+    ]
+
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")

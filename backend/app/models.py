@@ -29,6 +29,7 @@ class App(Base):
     problem_statement: Mapped[str] = mapped_column(String(255), default="")
     effectiveness_type: Mapped[str] = mapped_column(String(40), default="cost_reduction")
     effectiveness_metric: Mapped[str] = mapped_column(String(120), default="")
+    cover_image_url: Mapped[str] = mapped_column(String(500), default="")
 
 
 class Ranking(Base):
@@ -56,6 +57,8 @@ class Submission(Base):
     app_name: Mapped[str] = mapped_column(String(120), nullable=False)
     unit_name: Mapped[str] = mapped_column(String(120), nullable=False)
     contact: Mapped[str] = mapped_column(String(80), nullable=False)
+    contact_phone: Mapped[str] = mapped_column(String(20), default="")
+    contact_email: Mapped[str] = mapped_column(String(120), default="")
     scenario: Mapped[str] = mapped_column(String(500), nullable=False)
     embedded_system: Mapped[str] = mapped_column(String(120), nullable=False)
     problem_statement: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -64,4 +67,21 @@ class Submission(Base):
     data_level: Mapped[str] = mapped_column(String(10), nullable=False)
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    cover_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SubmissionImage(Base):
+    __tablename__ = "submission_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submission_id: Mapped[int] = mapped_column(ForeignKey("submissions.id"), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_url: Mapped[str] = mapped_column(String(500), default="")
+    original_name: Mapped[str] = mapped_column(String(255), default="")
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    mime_type: Mapped[str] = mapped_column(String(50), default="")
+    is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    submission = relationship("Submission")
