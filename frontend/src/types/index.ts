@@ -23,6 +23,7 @@ export type AppItem = {
   problem_statement: string
   effectiveness_type: ValueDimension
   effectiveness_metric: string
+  cover_image_url: string
 }
 
 export type RankingItem = {
@@ -57,6 +58,9 @@ export type SubmissionPayload = {
   app_name: string
   unit_name: string
   contact: string
+  contact_phone: string
+  contact_email: string
+  category: string
   scenario: string
   embedded_system: string
   problem_statement: string
@@ -64,4 +68,26 @@ export type SubmissionPayload = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
+  cover_image_url: string
+}
+
+export type ImageUploadResponse = {
+  success: boolean
+  image_url: string
+  thumbnail_url: string
+  original_name: string
+  file_size: number
+  message: string
+}
+
+export type FormErrors = {
+  [key: string]: string
+}
+
+export type ValidationRule = {
+  required?: boolean
+  minLength?: number
+  maxLength?: number
+  pattern?: RegExp
+  message: string
 }

@@ -21,7 +21,7 @@
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
@@ -38,37 +38,86 @@ npm run dev
 
 ## 后端 API（核心）
 
+### 应用管理
 - `GET /api/apps`：应用列表（支持 section/status/category/q 过滤）
 - `GET /api/apps/{id}`：应用详情
 - `GET /api/rankings`：龙虎榜数据
 - `GET /api/recommendations`：本期推荐
 - `GET /api/stats`：申报统计
-- `POST /api/submissions`：应用申报
 
-## 数据结构（当前实现 + 建议扩展）
+### 应用申报
+- `POST /api/submissions`：提交应用申报
+  - 请求体包含完整应用信息、联系人、成效评估等
+  - 支持图片关联（通过 cover_image_url 字段）
 
-### 已实现（后端数据库核心表）
+### 图片上传
+- `POST /api/upload/image`：上传图片文件
+  - 支持格式：JPG、JPEG、PNG
+  - 最大文件大小：5MB
+  - 自动生成缩略图（300x200）
+  - 返回：图片URL、缩略图URL、文件信息
+  
+- `POST /api/submissions/{submission_id}/images`：关联图片到申报
+  - 参数：image_url, thumbnail_url, original_name, file_size, is_cover
+  
+- `GET /api/submissions/{submission_id}/images`：获取申报关联的图片列表
+
+### 元数据
+- `GET /api/meta/enums`：获取枚举值列表（应用状态、成效类型、数据级别等）
+
+## 数据结构
+
+### 核心表
 
 | 表 | 说明 | 主要字段 | 关系 |
 | --- | --- | --- | --- |
-| `apps` | 应用基础信息 | name/org/section/category/status/monthly_calls/release_date 等 | `rankings.app_id -> apps.id` |
+| `apps` | 应用基础信息 | name/org/section/category/status/monthly_calls/release_date/cover_image_url 等 | `rankings.app_id -> apps.id` |
 | `rankings` | 应用榜单条目 | ranking_type/position/tag/score/likes/usage_30d/declared_at | 关联 `apps` |
-| `submissions` | 申报记录 | app_name/unit_name/contact/scenario/status/created_at | 与 `apps` 暂未强关联（申报通过后可转化为 `apps`） |
+| `submissions` | 申报记录 | app_name/unit_name/contact/contact_phone/contact_email/category/scenario/cover_image_id/status/created_at | 与 `apps` 暂未强关联（申报通过后可转化为 `apps`） |
+| `submission_images` | 申报图片 | submission_id/image_url/thumbnail_url/original_name/file_size/is_cover | 关联 `submissions` |
 
-> 当前数据结构以“展示 + 榜单 + 申报”为主，适合 MVP 运行与页面对齐。建议保持 `apps` 为主实体、`rankings` 为榜单派生、`submissions` 为待审核输入三段式链路。
+### 图片存储结构
 
-### 建议补充（数据源采购/外部数据治理）
+```
+backend/
+  static/
+    uploads/
+      submissions/    # 申报图片
+        {submission_id}/
+          original/   # 原图
+          thumbnail/  # 缩略图
+      apps/           # 应用封面图
+        {app_id}/
+```
 
-如果需要引入外部/采购数据源，建议新增一组独立表来管理“来源、采购、处理、落库”全流程，可先在 README 明确模型，再按需落到后端代码：
+## 前端功能特性
 
-| 表 | 说明 | 关键字段 | 关联建议 |
-| --- | --- | --- | --- |
-| `data_sources` | 数据源登记（内部/外部） | name/type/provider/owner/contact/status | 作为其它数据表的来源引用 |
-| `data_source_purchases` | 采购信息 | source_id/contract_no/cost/period/license_scope | `source_id -> data_sources.id` |
-| `data_source_processing` | 数据处理链路 | source_id/pipeline/etl_owner/update_cycle/quality_score | `source_id -> data_sources.id` |
-| `data_source_usage` | 使用记录与落库 | source_id/system/use_case/last_sync/retention_policy | `source_id -> data_sources.id` |
+### 应用展示
+- 三栏布局：左侧导航、中央内容、右侧信息栏
+- 应用卡片：封面图/渐变色背景、状态标签、分类、调用量
+- 应用详情弹窗：居中模态框，展示完整应用信息
 
-> 如果短期不落地到数据库，也可以先放在 `docs/` 内作为数据治理设计文档，待研发排期时再迁移到后端模型中。
+### 应用申报
+- 居中模态弹窗表单
+- 表单分组：基础信息、应用信息、成效评估
+- 字段验证：
+  - 必填项检查
+  - 长度限制（实时字符计数）
+  - 手机号格式验证
+  - 邮箱格式验证
+  - 实时错误提示
+- 图片上传：
+  - 点击或拖拽上传
+  - 格式验证（JPG/PNG）
+  - 大小限制（5MB）
+  - 实时预览
+  - 上传进度显示
+
+### 交互体验
+- 流畅的弹窗动画（淡入 + 上滑 + 缩放）
+- 悬停效果（卡片上浮、按钮变色）
+- 点击外部关闭弹窗
+- 响应式布局适配
 
 ## 需求对齐清单（持续更新）
 
@@ -91,9 +140,18 @@ npm run dev
 
 - 建议以 **主干（main/master）** 为稳定基线，当前工作分支用于验证需求与迭代。
 - 当 README/数据结构更新完成后，合并回主干即可保证团队本地 IDE 拉取后可直接调试。
-- 如果需要在本地执行“前后端联调”，可先按“快速启动”步骤分别拉起后端与前端。
+- 如果需要在本地执行"前后端联调"，可先按"快速启动"步骤分别拉起后端与前端。
 
 ## 阶段性成果可视化
 
 - 预览页面：`preview/stage-demo.html`
 - 本地查看：在仓库根目录执行 `python -m http.server 8081` 后访问 `http://localhost:8081/preview/stage-demo.html`
+
+## 更新日志
+
+### 2024-12-11
+- 新增图片上传功能（前后端完整实现）
+- 重构申报表单为居中模态弹窗
+- 新增表单验证功能（必填项、格式、长度）
+- 新增数据库表 `submission_images`
+- 更新 `apps` 和 `submissions` 表，添加图片相关字段

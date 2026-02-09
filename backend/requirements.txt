@@ -7,3 +7,5 @@ pymysql==1.1.1
 python-multipart==0.0.9
 pytest==8.3.3
 httpx==0.27.2
+python-dotenv
+Pillow
