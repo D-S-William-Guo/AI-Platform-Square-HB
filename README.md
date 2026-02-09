@@ -55,6 +55,9 @@ npm run dev
 
 请先阅读并遵循项目内的工作流程说明：`docs/dev-workflow.md`，包含分支命名、PR 流程及数据库切换方式。
 
+- 一个分支对应一个 PR，后续修改持续 push 到该分支，再由 PR 页面合并。
+- 分支命名：`snapshot/*`、`fix/*`、`feat/*`、`port/*`。
+
 ## 后端 API（核心）
 
 ### 应用管理

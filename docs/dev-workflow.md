@@ -9,6 +9,7 @@
 | snapshot | `snapshot/feature-optimization-001` | 问题现场快照 | 仅存档，不合并 |
 | fix | `fix/ranking-rules` | 修复问题 | 允许进入 PR |
 | feat | `feat/new-module` | 新功能 | 允许进入 PR |
+| port | `port/ranking-rule-cleanup` | 迁移/拆分变更 | 用于从旧分支拆分有用改动 |
 
 > **禁止** 直接在 `main` 上开发或提交。
 
@@ -47,6 +48,7 @@ git push origin fix/<topic>
 ### 2.4 合并与清理
 
 在 GitHub PR 页面进行合并（推荐 **Merge**）。
+> 一个分支只对应一个 PR，后续补充改动持续 push 到同一分支，避免开多个 PR。
 
 ```bash
 # 合并后清理本地
@@ -58,7 +60,7 @@ git push origin fix/<topic>
  git push origin --delete fix/<topic>
 ```
 
-> 快照分支 `snapshot/*` 仅用于存档，不进入 PR。
+> 快照分支 `snapshot/*` 仅用于存档，不进入 PR；例如 `snapshot/feature-optimization-001` 属历史问题分支，禁止作为合并目标。
 
 ## 3. 数据库切换方式（SQLite / MySQL）
 
@@ -96,4 +98,3 @@ mysql -u ai_app_user -p ai_app_square < backend/migrations/001_init.sql
 - 省内应用必须通过 **申报 → 审批** 产生数据；
 - 应用榜单只展示省内应用；
 - 排行规则以“排行榜管理”配置为准，榜单页不硬编码规则。
-

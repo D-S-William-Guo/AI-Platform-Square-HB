@@ -12,12 +12,6 @@ from sqlalchemy.orm import Session, joinedload
 from .config import settings
 from .database import Base, engine, get_db
 from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog
-from .domain import APP_STATUS_VALUES, METRIC_TYPES, VALUE_DIMENSIONS, DATA_LEVEL_VALUES
-from .services.ranking_service import sync_rankings as sync_rankings_service
-from .services.submission_service import (
-    create_submission as create_submission_service,
-    approve_submission_and_create_app as approve_submission_service,
-)
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -35,6 +29,12 @@ from .schemas import (
 from .seed import seed_data
 from .venv_utils import venv_reader
 
+APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
+METRIC_TYPES = {"composite", "growth_rate", "likes"}
+VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
+DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
+DEFAULT_RANKING_TAG = "推荐"
+
 app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
@@ -43,6 +43,144 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def validate_submission_payload(payload: SubmissionCreate) -> None:
+    if payload.effectiveness_type not in VALUE_DIMENSIONS:
+        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
+    if payload.data_level not in DATA_LEVEL_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid data_level")
+    validate_submission_ranking_fields(
+        payload.ranking_weight, payload.ranking_tags, payload.ranking_dimensions
+    )
+
+
+def validate_submission_ranking_fields(
+    ranking_weight: float,
+    ranking_tags: str,
+    ranking_dimensions: str,
+) -> None:
+    if ranking_weight < 0.1 or ranking_weight > 10.0:
+        raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
+    if len(ranking_tags) > 255:
+        raise HTTPException(status_code=422, detail="ranking_tags must not exceed 255 characters")
+    if len(ranking_dimensions) > 500:
+        raise HTTPException(status_code=422, detail="ranking_dimensions must not exceed 500 characters")
+
+
+def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
+    if not dimensions:
+        return max(0, min(int(app.monthly_calls * 10), 1000))
+
+    base_score = 0.0
+    for dimension in dimensions:
+        dimension_score = 0
+        if dimension.name == "用户满意度":
+            dimension_score = min(int(app.monthly_calls * 10), 100)
+        elif dimension.name == "业务价值":
+            if app.effectiveness_type == "revenue_growth":
+                dimension_score = 100
+            elif app.effectiveness_type == "efficiency_gain":
+                dimension_score = 80
+            elif app.effectiveness_type == "cost_reduction":
+                dimension_score = 70
+            else:
+                dimension_score = 60
+        elif dimension.name == "技术创新性":
+            if app.difficulty == "High":
+                dimension_score = 100
+            elif app.difficulty == "Medium":
+                dimension_score = 70
+            else:
+                dimension_score = 40
+        elif dimension.name == "使用活跃度":
+            dimension_score = min(int(app.monthly_calls * 5), 100)
+        elif dimension.name == "稳定性和安全性":
+            if app.status == "available":
+                dimension_score = 100
+            elif app.status == "beta":
+                dimension_score = 80
+            else:
+                dimension_score = 60
+        else:
+            dimension_score = 50
+
+        base_score += dimension_score * dimension.weight
+
+    final_score = int(base_score * app.ranking_weight)
+    return max(0, min(final_score, 1000))
+
+
+def sync_rankings_service(db: Session) -> int:
+    dimensions = (
+        db.query(RankingDimension)
+        .filter(RankingDimension.is_active.is_(True))
+        .order_by(RankingDimension.id)
+        .all()
+    )
+
+    apps = (
+        db.query(App)
+        .filter(App.section == "province", App.ranking_enabled.is_(True))
+        .order_by(App.id)
+        .all()
+    )
+
+    updated_count = 0
+
+    for ranking_type in ["excellent", "trend"]:
+        for app in apps:
+            score = calculate_app_score(app, dimensions)
+            metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
+            usage_30d = int(app.monthly_calls * 1000)
+            tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
+
+            existing = (
+                db.query(Ranking)
+                .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
+                .first()
+            )
+
+            if existing:
+                existing.score = score
+                existing.metric_type = metric_type
+                existing.value_dimension = app.effectiveness_type
+                existing.usage_30d = usage_30d
+                existing.tag = tag
+                existing.updated_at = datetime.utcnow()
+            else:
+                position = (
+                    db.query(Ranking)
+                    .filter(Ranking.ranking_type == ranking_type)
+                    .count()
+                    + 1
+                )
+                db.add(
+                    Ranking(
+                        ranking_type=ranking_type,
+                        position=position,
+                        app_id=app.id,
+                        tag=tag,
+                        score=score,
+                        metric_type=metric_type,
+                        value_dimension=app.effectiveness_type,
+                        usage_30d=usage_30d,
+                        declared_at=datetime.now().date(),
+                    )
+                )
+            updated_count += 1
+
+        rankings = (
+            db.query(Ranking)
+            .filter(Ranking.ranking_type == ranking_type)
+            .order_by(Ranking.score.desc())
+            .all()
+        )
+        for index, ranking in enumerate(rankings, start=1):
+            ranking.position = index
+
+    db.commit()
+    return updated_count
 
 
 @app.on_event("startup")
@@ -276,10 +414,12 @@ def rules():
 
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
-    try:
-        return create_submission_service(db, payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    validate_submission_payload(payload)
+    submission = Submission(**payload.model_dump())
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    return submission
 
 
 @app.get(f"{settings.api_prefix}/meta/enums")
@@ -519,7 +659,31 @@ def approve_submission_and_create_app(
         if not submission:
             raise HTTPException(status_code=404, detail="申报不存在")
         
-        app = approve_submission_service(db, submission)
+        if submission.status != "pending":
+            raise HTTPException(status_code=400, detail="申报状态不是待审批")
+
+        validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
+
+        app = App(
+            name=submission.app_name,
+            org=submission.unit_name,
+            section="province",
+            category=submission.category,
+            description=submission.scenario,
+            status="available",
+            monthly_calls=0.0,
+            release_date=datetime.now().date(),
+            effectiveness_type=submission.effectiveness_type,
+            effectiveness_metric=submission.effectiveness_metric,
+            ranking_enabled=submission.ranking_enabled,
+            ranking_weight=submission.ranking_weight,
+            ranking_tags=submission.ranking_tags,
+        )
+
+        db.add(app)
+        submission.status = "approved"
+        db.commit()
+        db.refresh(app)
         return {"message": "审批成功并创建应用", "app_id": app.id}
     except HTTPException:
         raise
