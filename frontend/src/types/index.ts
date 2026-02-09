@@ -84,10 +84,8 @@ export type FormErrors = {
   [key: string]: string
 }
 
-export type ValidationRule = {
-  required?: boolean
-  minLength?: number
-  maxLength?: number
-  pattern?: RegExp
-  message: string
-}
+export type ValidationRule =
+  | { required: true; minLength?: number; maxLength?: number; message: string }
+  | { required?: boolean; minLength: number; maxLength?: number; message: string }
+  | { required?: boolean; minLength?: number; maxLength: number; message: string }
+  | { pattern: RegExp; message: string }
