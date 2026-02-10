@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog
+from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -25,6 +25,9 @@ from .schemas import (
     RankingDimensionUpdate,
     RankingDimensionOut,
     RankingLogOut,
+    AppDimensionScoreOut,
+    HistoricalRankingOut,
+    GroupAppCreate,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
@@ -111,7 +114,67 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
     return max(0, min(final_score, 1000))
 
 
+def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[int, str]:
+    """
+    计算应用在某个维度的得分和计算详情
+    返回：(得分, 计算详情说明)
+    """
+    dimension_score = 0
+    calculation_detail = ""
+    
+    if dimension.name == "用户满意度":
+        dimension_score = min(int(app.monthly_calls * 10), 100)
+        calculation_detail = f"基于月调用量计算：{app.monthly_calls} * 10 = {dimension_score}分"
+    elif dimension.name == "业务价值":
+        if app.effectiveness_type == "revenue_growth":
+            dimension_score = 100
+            calculation_detail = "成效类型为拉动收入，获得满分100分"
+        elif app.effectiveness_type == "efficiency_gain":
+            dimension_score = 80
+            calculation_detail = "成效类型为增效，获得80分"
+        elif app.effectiveness_type == "cost_reduction":
+            dimension_score = 70
+            calculation_detail = "成效类型为降本，获得70分"
+        else:
+            dimension_score = 60
+            calculation_detail = "成效类型为感知提升，获得60分"
+    elif dimension.name == "技术创新性":
+        if app.difficulty == "High":
+            dimension_score = 100
+            calculation_detail = "难度等级为高，获得满分100分"
+        elif app.difficulty == "Medium":
+            dimension_score = 70
+            calculation_detail = "难度等级为中，获得70分"
+        else:
+            dimension_score = 40
+            calculation_detail = "难度等级为低，获得40分"
+    elif dimension.name == "使用活跃度":
+        dimension_score = min(int(app.monthly_calls * 5), 100)
+        calculation_detail = f"基于月调用量计算：{app.monthly_calls} * 5 = {dimension_score}分"
+    elif dimension.name == "稳定性和安全性":
+        if app.status == "available":
+            dimension_score = 100
+            calculation_detail = "应用状态为可用，获得满分100分"
+        elif app.status == "beta":
+            dimension_score = 80
+            calculation_detail = "应用状态为试运行，获得80分"
+        else:
+            dimension_score = 60
+            calculation_detail = f"应用状态为{app.status}，获得60分"
+    else:
+        dimension_score = 50
+        calculation_detail = "默认评分50分"
+    
+    return dimension_score, calculation_detail
+
+
 def sync_rankings_service(db: Session) -> int:
+    """
+    同步排行榜数据
+    - 计算所有省内应用的维度评分
+    - 生成综合评分和排名
+    - 保存历史榜单数据
+    """
     dimensions = (
         db.query(RankingDimension)
         .filter(RankingDimension.is_active.is_(True))
@@ -127,10 +190,50 @@ def sync_rankings_service(db: Session) -> int:
     )
 
     updated_count = 0
+    today = datetime.now().date()
 
     for ranking_type in ["excellent", "trend"]:
         for app in apps:
-            score = calculate_app_score(app, dimensions)
+            # 计算各维度得分并保存
+            base_score = 0.0
+            for dimension in dimensions:
+                dim_score, calc_detail = calculate_dimension_score(app, dimension)
+                weighted_score = dim_score * dimension.weight
+                base_score += weighted_score
+                
+                # 保存或更新维度评分
+                existing_score = (
+                    db.query(AppDimensionScore)
+                    .filter(
+                        AppDimensionScore.app_id == app.id,
+                        AppDimensionScore.dimension_id == dimension.id,
+                        AppDimensionScore.period_date == today
+                    )
+                    .first()
+                )
+                
+                if existing_score:
+                    existing_score.score = dim_score
+                    existing_score.weight = dimension.weight
+                    existing_score.calculation_detail = calc_detail
+                    existing_score.updated_at = datetime.utcnow()
+                else:
+                    db.add(
+                        AppDimensionScore(
+                            app_id=app.id,
+                            dimension_id=dimension.id,
+                            dimension_name=dimension.name,
+                            score=dim_score,
+                            weight=dimension.weight,
+                            calculation_detail=calc_detail,
+                            period_date=today
+                        )
+                    )
+            
+            # 计算最终综合得分
+            final_score = int(base_score * app.ranking_weight)
+            final_score = max(0, min(final_score, 1000))
+            
             metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
             usage_30d = int(app.monthly_calls * 1000)
             tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
@@ -142,7 +245,7 @@ def sync_rankings_service(db: Session) -> int:
             )
 
             if existing:
-                existing.score = score
+                existing.score = final_score
                 existing.metric_type = metric_type
                 existing.value_dimension = app.effectiveness_type
                 existing.usage_30d = usage_30d
@@ -161,15 +264,16 @@ def sync_rankings_service(db: Session) -> int:
                         position=position,
                         app_id=app.id,
                         tag=tag,
-                        score=score,
+                        score=final_score,
                         metric_type=metric_type,
                         value_dimension=app.effectiveness_type,
                         usage_30d=usage_30d,
-                        declared_at=datetime.now().date(),
+                        declared_at=today,
                     )
                 )
             updated_count += 1
 
+        # 重新排序并更新排名位置
         rankings = (
             db.query(Ranking)
             .filter(Ranking.ranking_type == ranking_type)
@@ -178,6 +282,38 @@ def sync_rankings_service(db: Session) -> int:
         )
         for index, ranking in enumerate(rankings, start=1):
             ranking.position = index
+            
+            # 保存历史榜单数据
+            historical = (
+                db.query(HistoricalRanking)
+                .filter(
+                    HistoricalRanking.ranking_type == ranking_type,
+                    HistoricalRanking.app_id == ranking.app_id,
+                    HistoricalRanking.period_date == today
+                )
+                .first()
+            )
+            
+            if historical:
+                historical.position = index
+                historical.score = ranking.score
+                historical.tag = ranking.tag
+            else:
+                db.add(
+                    HistoricalRanking(
+                        ranking_type=ranking_type,
+                        period_date=today,
+                        position=index,
+                        app_id=ranking.app_id,
+                        app_name=ranking.app.name,
+                        app_org=ranking.app.org,
+                        tag=ranking.tag,
+                        score=ranking.score,
+                        metric_type=ranking.metric_type,
+                        value_dimension=ranking.value_dimension,
+                        usage_30d=ranking.usage_30d
+                    )
+                )
 
     db.commit()
     return updated_count
@@ -363,18 +499,87 @@ def get_app_detail(app_id: int, db: Session = Depends(get_db)):
 
 
 @app.get(f"{settings.api_prefix}/rankings", response_model=list[RankingItem])
-def list_rankings(ranking_type: str = "excellent", db: Session = Depends(get_db)):
+def list_rankings(
+    ranking_type: str = "excellent",
+    period_date: date | None = Query(default=None, description="查询历史榜单日期，格式：YYYY-MM-DD。不传则返回最新一期历史榜单"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取应用榜单
+    - 榜单仅展示省内应用
+    - 支持按日期查询历史榜单
+    - 不传日期则返回最新一期的历史榜单数据
+    """
     try:
-        return (
-            db.query(Ranking)
-            .options(joinedload(Ranking.app))
-            .filter(Ranking.ranking_type == ranking_type)
-            .filter(Ranking.app.has(App.section == "province"))
-            .order_by(Ranking.position)
-            .all()
-        )
+        if period_date:
+            # 查询指定日期的历史榜单
+            historical_rankings = (
+                db.query(HistoricalRanking)
+                .filter(HistoricalRanking.ranking_type == ranking_type)
+                .filter(HistoricalRanking.period_date == period_date)
+                .order_by(HistoricalRanking.position)
+                .all()
+            )
+            
+            # 转换为 RankingItem 格式
+            result = []
+            for hr in historical_rankings:
+                app = db.query(App).filter(App.id == hr.app_id).first()
+                if app and app.section == "province":
+                    result.append({
+                        "position": hr.position,
+                        "tag": hr.tag,
+                        "score": hr.score,
+                        "likes": None,
+                        "metric_type": hr.metric_type,
+                        "value_dimension": hr.value_dimension,
+                        "usage_30d": hr.usage_30d,
+                        "declared_at": hr.period_date,
+                        "app": app
+                    })
+            return result
+        else:
+            # 查询最新一期的历史榜单
+            latest_date = (
+                db.query(HistoricalRanking.period_date)
+                .filter(HistoricalRanking.ranking_type == ranking_type)
+                .order_by(HistoricalRanking.period_date.desc())
+                .first()
+            )
+            
+            if latest_date:
+                # 使用最新日期查询
+                historical_rankings = (
+                    db.query(HistoricalRanking)
+                    .filter(HistoricalRanking.ranking_type == ranking_type)
+                    .filter(HistoricalRanking.period_date == latest_date[0])
+                    .order_by(HistoricalRanking.position)
+                    .all()
+                )
+                
+                # 转换为 RankingItem 格式
+                result = []
+                for hr in historical_rankings:
+                    app = db.query(App).filter(App.id == hr.app_id).first()
+                    if app and app.section == "province":
+                        result.append({
+                            "position": hr.position,
+                            "tag": hr.tag,
+                            "score": hr.score,
+                            "likes": None,
+                            "metric_type": hr.metric_type,
+                            "value_dimension": hr.value_dimension,
+                            "usage_30d": hr.usage_30d,
+                            "declared_at": hr.period_date,
+                            "app": app
+                        })
+                return result
+            else:
+                # 没有历史数据，返回空列表
+                return []
     except Exception as e:
         # 数据库表结构可能不完整，返回空列表
+        print(f"Error in list_rankings: {e}")
         return []
 
 
@@ -412,6 +617,20 @@ def rules():
     ]
 
 
+@app.get(f"{settings.api_prefix}/submissions", response_model=list[SubmissionOut])
+def list_submissions(
+    status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取申报列表
+    """
+    query = db.query(Submission)
+    if status:
+        query = query.filter(Submission.status == status)
+    return query.order_by(Submission.created_at.desc()).all()
+
+
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
     validate_submission_payload(payload)
@@ -446,6 +665,159 @@ def get_ranking_dimensions(
     if is_active is not None:
         query = query.filter(RankingDimension.is_active == is_active)
     return query.order_by(RankingDimension.id).all()
+
+
+@app.get(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}/scores", response_model=list[AppDimensionScoreOut])
+def list_dimension_scores(
+    dimension_id: int,
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定维度的应用评分列表
+    """
+    try:
+        query = db.query(AppDimensionScore).filter(AppDimensionScore.dimension_id == dimension_id)
+        if period_date:
+            query = query.filter(AppDimensionScore.period_date == period_date)
+        else:
+            today = datetime.now().date()
+            query = query.filter(AppDimensionScore.period_date == today)
+        return query.order_by(AppDimensionScore.score.desc()).all()
+    except Exception as e:
+        return []
+
+
+@app.get(f"{settings.api_prefix}/apps/{{app_id}}/dimension-scores", response_model=list[AppDimensionScoreOut])
+def list_app_dimension_scores(
+    app_id: int,
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定应用在各维度的评分详情
+    """
+    try:
+        query = db.query(AppDimensionScore).filter(AppDimensionScore.app_id == app_id)
+        if period_date:
+            query = query.filter(AppDimensionScore.period_date == period_date)
+        else:
+            today = datetime.now().date()
+            query = query.filter(AppDimensionScore.period_date == today)
+        return query.order_by(AppDimensionScore.dimension_id).all()
+    except Exception as e:
+        return []
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/ranking-params")
+def update_app_ranking_params(
+    app_id: int,
+    ranking_enabled: bool | None = None,
+    ranking_weight: float | None = None,
+    ranking_tags: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用排行参数
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    if ranking_enabled is not None:
+        app.ranking_enabled = ranking_enabled
+    if ranking_weight is not None:
+        app.ranking_weight = ranking_weight
+    if ranking_tags is not None:
+        app.ranking_tags = ranking_tags
+    
+    db.commit()
+    db.refresh(app)
+    return {"message": "排行参数更新成功", "app_id": app_id}
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/dimension-scores/{{dimension_id}}")
+def update_app_dimension_score_api(
+    app_id: int,
+    dimension_id: int,
+    score: int,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用在某个维度的评分（手动调整）
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
+    if not dimension:
+        raise HTTPException(status_code=404, detail="维度不存在")
+    
+    today = datetime.now().date()
+    
+    # 查找或创建评分记录
+    score_record = db.query(AppDimensionScore).filter(
+        AppDimensionScore.app_id == app_id,
+        AppDimensionScore.dimension_id == dimension_id,
+        AppDimensionScore.period_date == today
+    ).first()
+    
+    if score_record:
+        score_record.score = score
+        score_record.calculation_detail = f"手动调整评分: {score}分"
+    else:
+        score_record = AppDimensionScore(
+            app_id=app_id,
+            dimension_id=dimension_id,
+            period_date=today,
+            score=score,
+            calculation_detail=f"手动调整评分: {score}分"
+        )
+        db.add(score_record)
+    
+    db.commit()
+    db.refresh(score_record)
+    return {"message": "维度评分更新成功", "app_id": app_id, "dimension_id": dimension_id, "score": score}
+
+
+@app.get(f"{settings.api_prefix}/rankings/historical", response_model=list[HistoricalRankingOut])
+def list_historical_rankings(
+    ranking_type: str = "excellent",
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取历史榜单数据
+    """
+    try:
+        query = db.query(HistoricalRanking).filter(HistoricalRanking.ranking_type == ranking_type)
+        if period_date:
+            query = query.filter(HistoricalRanking.period_date == period_date)
+        return query.order_by(HistoricalRanking.position).all()
+    except Exception as e:
+        return []
+
+
+@app.get(f"{settings.api_prefix}/rankings/available-dates")
+def list_available_ranking_dates(
+    ranking_type: str = "excellent",
+    db: Session = Depends(get_db)
+):
+    """
+    获取可用的榜单日期列表
+    """
+    try:
+        dates = (
+            db.query(HistoricalRanking.period_date)
+            .filter(HistoricalRanking.ranking_type == ranking_type)
+            .distinct()
+            .order_by(HistoricalRanking.period_date.desc())
+            .all()
+        )
+        return {"dates": [d[0].isoformat() for d in dates]}
+    except Exception as e:
+        return {"dates": []}
 
 
 @app.get(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}", response_model=RankingDimensionOut)
@@ -653,6 +1025,7 @@ def approve_submission_and_create_app(
 ):
     """
     审批申报并创建应用,同时传递排行榜参数
+    只有通过审核的省内应用才能进入排行榜评估体系
     """
     try:
         submission = db.query(Submission).filter(Submission.id == submission_id).first()
@@ -673,8 +1046,18 @@ def approve_submission_and_create_app(
             status="available",
             monthly_calls=0.0,
             release_date=datetime.now().date(),
+            api_open=True,
+            difficulty="Medium",
+            contact_name=submission.contact,
+            highlight="",
+            access_mode="direct",
+            access_url="",
+            target_system=submission.embedded_system,
+            target_users="",
+            problem_statement=submission.problem_statement,
             effectiveness_type=submission.effectiveness_type,
             effectiveness_metric=submission.effectiveness_metric,
+            cover_image_url=submission.cover_image_url,
             ranking_enabled=submission.ranking_enabled,
             ranking_weight=submission.ranking_weight,
             ranking_tags=submission.ranking_tags,
@@ -684,12 +1067,66 @@ def approve_submission_and_create_app(
         submission.status = "approved"
         db.commit()
         db.refresh(app)
+        
+        # 自动同步排行榜数据
+        sync_rankings_service(db)
+        
         return {"message": "审批成功并创建应用", "app_id": app.id}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
+
+
+# 集团应用专用录入接口（仅管理员使用）
+@app.post(f"{settings.api_prefix}/admin/group-apps", response_model=AppDetail)
+def create_group_app(
+    payload: GroupAppCreate,
+    admin_token: str = Query(..., description="管理员令牌"),
+    db: Session = Depends(get_db)
+):
+    """
+    集团应用专用录入接口
+    集团应用为系统内置，通过此接口直接录入，不走申报流程
+    """
+    # 简单的管理员令牌验证（生产环境应使用更安全的认证方式）
+    if admin_token != "admin-secret-token":
+        raise HTTPException(status_code=403, detail="无权限访问")
+    
+    try:
+        app = App(
+            name=payload.name,
+            org=payload.org,
+            section="group",  # 集团应用
+            category=payload.category,
+            description=payload.description,
+            status=payload.status,
+            monthly_calls=payload.monthly_calls,
+            release_date=datetime.now().date(),
+            api_open=payload.api_open,
+            difficulty=payload.difficulty,
+            contact_name=payload.contact_name,
+            highlight=payload.highlight,
+            access_mode=payload.access_mode,
+            access_url=payload.access_url,
+            target_system=payload.target_system,
+            target_users=payload.target_users,
+            problem_statement=payload.problem_statement,
+            effectiveness_type=payload.effectiveness_type,
+            effectiveness_metric=payload.effectiveness_metric,
+            cover_image_url=payload.cover_image_url,
+            ranking_enabled=payload.ranking_enabled,
+            ranking_weight=payload.ranking_weight,
+            ranking_tags=payload.ranking_tags,
+        )
+        db.add(app)
+        db.commit()
+        db.refresh(app)
+        return app
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"创建集团应用失败: {str(e)}")
 
 
 # Image upload configuration

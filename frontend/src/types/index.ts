@@ -59,6 +59,33 @@ export type RuleLink = {
   href: string
 }
 
+// 申报数据
+export type Submission = {
+  id: number
+  app_name: string
+  unit_name: string
+  contact: string
+  contact_phone: string
+  contact_email: string
+  category: string
+  scenario: string
+  embedded_system: string
+  problem_statement: string
+  effectiveness_type: ValueDimension
+  effectiveness_metric: string
+  data_level: 'L1' | 'L2' | 'L3' | 'L4'
+  expected_benefit: string
+  status: 'pending' | 'approved' | 'rejected'
+  cover_image_id: number | null
+  cover_image_url: string
+  created_at: string
+  // 排行榜相关字段
+  ranking_enabled: boolean
+  ranking_weight: number
+  ranking_tags: string
+  ranking_dimensions: string
+}
+
 export type SubmissionPayload = {
   app_name: string
   unit_name: string
@@ -110,4 +137,35 @@ export type RankingDimension = {
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+// 应用维度评分
+export type AppDimensionScore = {
+  id: number
+  app_id: number
+  dimension_id: number
+  dimension_name: string
+  score: number
+  weight: number
+  calculation_detail: string
+  period_date: string
+  created_at: string
+  updated_at: string
+}
+
+// 历史榜单
+export type HistoricalRanking = {
+  id: number
+  ranking_type: 'excellent' | 'trend'
+  period_date: string
+  position: number
+  app_id: number
+  app_name: string
+  app_org: string
+  tag: string
+  score: number
+  metric_type: MetricType
+  value_dimension: ValueDimension
+  usage_30d: number
+  created_at: string
 }

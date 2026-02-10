@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions } from './api/client'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
+import SubmissionReviewPage from './pages/SubmissionReviewPage'
+import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -143,7 +145,49 @@ function HomePage() {
 
   useEffect(() => {
     if (activeNav === 'ranking') {
-      fetchRankings(rankingType).then(setRankings)
+      // 获取榜单数据
+      fetchRankings(rankingType).then(async (data) => {
+        let processedRankings = [...data]
+        
+        // 如果选择了特定维度，获取该维度的评分并重新排序
+        if (rankingDimension !== 'overall') {
+          const dimensionId = parseInt(rankingDimension.replace('dimension-', ''))
+          if (!isNaN(dimensionId)) {
+            try {
+              // 获取该维度的所有应用评分
+              const dimensionScores = await fetchDimensionScores(dimensionId)
+              // 创建应用ID到维度评分的映射
+              const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
+              
+              // 为每个榜单项添加维度评分
+              processedRankings = processedRankings.map(row => ({
+                ...row,
+                dimensionScore: scoreMap.get(row.app.id) || 0
+              }))
+              
+              // 按维度评分重新排序
+              processedRankings.sort((a, b) => (b.dimensionScore || 0) - (a.dimensionScore || 0))
+              
+              // 重新分配排名位置
+              processedRankings = processedRankings.map((row, index) => ({
+                ...row,
+                position: index + 1
+              }))
+            } catch (error) {
+              console.error('Failed to fetch dimension scores:', error)
+            }
+          }
+        }
+        
+        // 根据搜索关键字过滤榜单中的应用名称
+        if (keyword.trim()) {
+          processedRankings = processedRankings.filter((row) =>
+            row.app.name.toLowerCase().includes(keyword.toLowerCase())
+          )
+        }
+        
+        setRankings(processedRankings)
+      })
       return
     }
 
@@ -152,8 +196,18 @@ function HomePage() {
     if (categoryFilter && categoryFilter !== '全部') params.category = categoryFilter
     if (keyword) params.q = keyword
 
-    fetchApps(params).then(setApps)
-  }, [activeNav, statusFilter, categoryFilter, keyword, rankingType])
+    fetchApps(params).then((data) => {
+      // 客户端按应用名称关键字过滤
+      if (keyword.trim()) {
+        const filtered = data.filter((app) =>
+          app.name.toLowerCase().includes(keyword.toLowerCase())
+        )
+        setApps(filtered)
+      } else {
+        setApps(data)
+      }
+    })
+  }, [activeNav, statusFilter, categoryFilter, keyword, rankingType, rankingDimension])
 
   const blockTitle = useMemo(() => {
     if (activeNav === 'group') return '集团应用整合'
@@ -344,7 +398,7 @@ function HomePage() {
           <span className="search-icon">🔍</span>
           <input 
             className="search" 
-            placeholder="搜索应用名称、分类或关键词..." 
+            placeholder="搜索应用名称..." 
             value={keyword} 
             onChange={(e) => setKeyword(e.target.value)} 
           />
@@ -410,8 +464,16 @@ function HomePage() {
               <span>榜单规则</span>
             </Link>
             <Link to="/ranking-management" className="quick-link">
-              <span>🏆</span>
+              <span>⚙️</span>
               <span>排行榜管理</span>
+            </Link>
+            <Link to="/submission-review" className="quick-link">
+              <span>✅</span>
+              <span>申报审核</span>
+            </Link>
+            <Link to="/historical-ranking" className="quick-link">
+              <span>📊</span>
+              <span>历史榜单</span>
             </Link>
           </div>
         </aside>
@@ -510,7 +572,12 @@ function HomePage() {
                 <div className="ranking-row" key={`${row.position}-${row.app.id}`} onClick={() => setSelectedApp(row.app)}>
                   <span className={`rank-number ${index < 3 ? 'top3' : ''}`}>#{row.position}</span>
                   <span className="rank-app-name">{row.app.name}</span>
-                  <span className="rank-dimension">{valueDimensionLabel[row.value_dimension]}</span>
+                  <span className="rank-dimension">
+                    {rankingDimension === 'overall' 
+                      ? valueDimensionLabel[row.value_dimension] 
+                      : `维度评分: ${(row as any).dimensionScore || 0}分`
+                    }
+                  </span>
                   <span className={`rank-tag ${row.tag === '推荐' ? 'recommended' : row.tag === '历史优秀' ? 'excellent' : 'new'}`}>
                     {row.tag}
                   </span>
@@ -608,8 +675,16 @@ function HomePage() {
                 <span>榜单规则</span>
               </Link>
               <Link to="/ranking-management" className="rule-item">
-                <span className="rule-icon">🏆</span>
+                <span className="rule-icon">⚙️</span>
                 <span>排行榜管理</span>
+              </Link>
+              <Link to="/submission-review" className="rule-item">
+                <span className="rule-icon">✅</span>
+                <span>申报审核</span>
+              </Link>
+              <Link to="/historical-ranking" className="rule-item">
+                <span className="rule-icon">📊</span>
+                <span>历史榜单</span>
               </Link>
             </div>
           </div>
@@ -1039,6 +1114,8 @@ function App() {
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
       <Route path="/ranking-management" element={<RankingManagementPage />} />
+      <Route path="/submission-review" element={<SubmissionReviewPage />} />
+      <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
     </Routes>
   )
 }

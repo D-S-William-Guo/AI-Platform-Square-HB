@@ -165,3 +165,65 @@ class RankingLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AppDimensionScoreOut(BaseModel):
+    """应用维度评分输出"""
+    id: int
+    app_id: int
+    dimension_id: int
+    dimension_name: str
+    score: int
+    weight: float
+    calculation_detail: str
+    period_date: date
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HistoricalRankingOut(BaseModel):
+    """历史榜单输出"""
+    id: int
+    ranking_type: str
+    period_date: date
+    position: int
+    app_id: int
+    app_name: str
+    app_org: str
+    tag: str
+    score: int
+    metric_type: str
+    value_dimension: str
+    usage_30d: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GroupAppCreate(BaseModel):
+    """集团应用创建（专用录入）"""
+    name: str = Field(..., min_length=2, max_length=120)
+    org: str = Field(..., min_length=2, max_length=60)
+    category: str = Field(..., min_length=2, max_length=30)
+    description: str = Field(..., min_length=10)
+    status: str = Field(default="available")
+    monthly_calls: float = Field(default=0.0)
+    api_open: bool = Field(default=False)
+    difficulty: str = Field(default="Medium")
+    contact_name: str = Field(default="", max_length=50)
+    highlight: str = Field(default="", max_length=200)
+    access_mode: str = Field(default="direct")
+    access_url: str = Field(default="", max_length=255)
+    target_system: str = Field(default="", max_length=120)
+    target_users: str = Field(default="", max_length=120)
+    problem_statement: str = Field(default="", max_length=255)
+    effectiveness_type: str = Field(default="efficiency_gain")
+    effectiveness_metric: str = Field(default="", max_length=120)
+    cover_image_url: str = Field(default="", max_length=500)
+    ranking_enabled: bool = Field(default=True)
+    ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
+    ranking_tags: str = Field(default="", max_length=255)

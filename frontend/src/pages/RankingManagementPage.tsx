@@ -1,11 +1,45 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import type { RankingDimension } from '../types'
-import { fetchRankingDimensions, createRankingDimension, updateRankingDimension, deleteRankingDimension, fetchRankingLogs, syncRankings, batchUpdateRankingParams } from '../api/client'
+import type { RankingDimension, AppItem } from '../types'
+import { 
+  fetchRankingDimensions, 
+  createRankingDimension, 
+  updateRankingDimension, 
+  deleteRankingDimension, 
+  fetchRankingLogs, 
+  syncRankings, 
+  updateAppRankingParams,
+  fetchApps,
+  updateAppDimensionScore
+} from '../api/client'
+
+// 应用排行榜配置类型
+interface AppRankingConfig {
+  app_id: number
+  app_name: string
+  app_org: string
+  section: 'group' | 'province'
+  
+  // 优秀应用榜配置
+  excellent_enabled: boolean
+  excellent_weight: number
+  excellent_tags: string
+  excellent_dimensions: number[]  // 参与评分的维度ID列表
+  
+  // 趋势榜配置
+  trend_enabled: boolean
+  trend_weight: number
+  trend_tags: string
+  trend_dimensions: number[]
+  
+  // 维度评分（可手动调整）
+  dimension_scores: Record<number, number>  // dimension_id -> score
+}
 
 const RankingManagementPage = () => {
   const [dimensions, setDimensions] = useState<RankingDimension[]>([])
   const [logs, setLogs] = useState<any[]>([])
+  const [apps, setApps] = useState<AppItem[]>([])
+  const [appConfigs, setAppConfigs] = useState<AppRankingConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -21,13 +55,11 @@ const RankingManagementPage = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'dimensions' | 'settings' | 'logs'>('dimensions')
-  const [batchUpdateData, setBatchUpdateData] = useState({
-    apps: [] as number[],
-    ranking_weight: 1.0,
-    ranking_enabled: true,
-    ranking_tags: ''
-  })
+  const [activeTab, setActiveTab] = useState<'dimensions' | 'app-config' | 'excellent' | 'trend' | 'logs'>('dimensions')
+  const [selectedApp, setSelectedApp] = useState<AppRankingConfig | null>(null)
+  const [showAppConfigModal, setShowAppConfigModal] = useState(false)
+  const [configFilter, setConfigFilter] = useState<'all' | 'group' | 'province'>('all')
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   useEffect(() => {
     loadData()
@@ -37,12 +69,34 @@ const RankingManagementPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const [dimensionsData, logsData] = await Promise.all([
+      const [dimensionsData, logsData, appsData] = await Promise.all([
         fetchRankingDimensions(),
-        fetchRankingLogs()
+        fetchRankingLogs(),
+        fetchApps()
       ])
       setDimensions(dimensionsData)
       setLogs(logsData)
+      setApps(appsData)
+      
+      // 转换应用数据为配置格式（只包含省内应用）
+      const configs: AppRankingConfig[] = appsData
+        .filter(app => app.section === 'province')
+        .map(app => ({
+          app_id: app.id,
+          app_name: app.name,
+          app_org: app.org,
+          section: app.section as 'group' | 'province',
+          excellent_enabled: app.ranking_enabled ?? true,
+          excellent_weight: app.ranking_weight ?? 1.0,
+          excellent_tags: app.ranking_tags ?? '',
+          excellent_dimensions: dimensionsData.filter(d => d.is_active).map(d => d.id),
+          trend_enabled: app.ranking_enabled ?? true,
+          trend_weight: app.ranking_weight ?? 1.0,
+          trend_tags: app.ranking_tags ?? '',
+          trend_dimensions: dimensionsData.filter(d => d.is_active).map(d => d.id),
+          dimension_scores: {}
+        }))
+      setAppConfigs(configs)
     } catch (err) {
       setError('加载数据失败')
       console.error('Failed to load data:', err)
@@ -139,13 +193,35 @@ const RankingManagementPage = () => {
     try {
       const result = await syncRankings()
       setSyncMessage(`同步成功！更新了 ${result.updated_count} 个应用的排行榜数据`)
-      // 重新加载数据
       loadData()
     } catch (err) {
       console.error('同步失败:', err)
       setSyncMessage('同步失败，请重试')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleSaveAppConfig = async (config: AppRankingConfig) => {
+    try {
+      // 保存优秀应用榜配置
+      await updateAppRankingParams(config.app_id, {
+        ranking_enabled: config.excellent_enabled,
+        ranking_weight: config.excellent_weight,
+        ranking_tags: config.excellent_tags
+      })
+      
+      // 保存维度评分
+      for (const [dimensionId, score] of Object.entries(config.dimension_scores)) {
+        await updateAppDimensionScore(config.app_id, parseInt(dimensionId), score)
+      }
+      
+      alert('配置保存成功！')
+      setShowAppConfigModal(false)
+      loadData()
+    } catch (err) {
+      alert('保存失败，请重试')
+      console.error('Failed to save config:', err)
     }
   }
 
@@ -157,303 +233,322 @@ const RankingManagementPage = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : type === 'number' ? parseFloat(value) : value
     }))
-    // Clear error when user starts typing
     if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }))
+      setFormErrors(prev => ({ ...prev, [name]: '' }))
     }
   }
 
-  return (
-    <div className="ranking-management-page">
-      <header className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-          <div>
-            <h1>排行榜管理</h1>
-            <p>配置排行维度、计算方法和规则，管理排行榜参数</p>
+  // 过滤应用配置
+  const filteredConfigs = appConfigs.filter(config => {
+    if (configFilter !== 'all' && config.section !== configFilter) return false
+    if (searchKeyword && !config.app_name.toLowerCase().includes(searchKeyword.toLowerCase())) return false
+    return true
+  })
+
+  // 渲染应用配置列表
+  const renderAppConfigList = (rankingType: 'excellent' | 'trend') => {
+    const isExcellent = rankingType === 'excellent'
+    
+    return (
+      <section className="app-config-section">
+        <div className="section-header">
+          <h2>{isExcellent ? '优秀应用榜' : '趋势榜'} - 应用配置</h2>
+          <div className="header-actions">
+            <button 
+              className="primary-button" 
+              onClick={handleSyncRankings}
+              disabled={syncing}
+            >
+              {syncing ? '🔄 同步中...' : '🔄 同步排行榜数据'}
+            </button>
           </div>
-          <Link to="/" className="secondary-button">返回首页</Link>
+        </div>
+        
+        {syncMessage && (
+          <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
+            {syncMessage}
+          </div>
+        )}
+
+        {/* 筛选栏 */}
+        <div className="filter-bar">
+          <div className="filter-group">
+            <span className="filter-label">应用类型：</span>
+            <select 
+              className="filter-select"
+              value={configFilter}
+              onChange={(e) => setConfigFilter(e.target.value as 'all' | 'group' | 'province')}
+            >
+              <option value="all">全部应用</option>
+              <option value="group">集团应用</option>
+              <option value="province">省内应用</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <span className="filter-label">搜索：</span>
+            <input
+              type="text"
+              className="filter-input"
+              placeholder="搜索应用名称..."
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* 应用列表 */}
+        <div className="app-config-list">
+          {filteredConfigs.length === 0 ? (
+            <div className="empty-state">
+              <span>📱</span>
+              <p>暂无应用数据</p>
+            </div>
+          ) : (
+            <table className="app-config-table">
+              <thead>
+                <tr>
+                  <th>应用名称</th>
+                  <th>所属单位</th>
+                  <th>类型</th>
+                  <th>参与排行</th>
+                  <th>排行权重</th>
+                  <th>标签</th>
+                  <th>参与维度</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredConfigs.map(config => (
+                  <tr key={config.app_id}>
+                    <td className="app-name">{config.app_name}</td>
+                    <td className="app-org">{config.app_org}</td>
+                    <td className="app-section">
+                      <span className={`section-badge ${config.section}`}>
+                        {config.section === 'group' ? '集团' : '省内'}
+                      </span>
+                    </td>
+                    <td className="app-enabled">
+                      <span className={`status-badge ${isExcellent ? config.excellent_enabled : config.trend_enabled ? 'active' : 'inactive'}`}>
+                        {isExcellent ? (config.excellent_enabled ? '是' : '否') : (config.trend_enabled ? '是' : '否')}
+                      </span>
+                    </td>
+                    <td className="app-weight">
+                      {isExcellent ? config.excellent_weight : config.trend_weight}
+                    </td>
+                    <td className="app-tags">
+                      <div className="tags-preview">
+                        {(isExcellent ? config.excellent_tags : config.trend_tags)?.split(',').filter(Boolean).map((tag, idx) => (
+                          <span key={idx} className="tag-badge">{tag.trim()}</span>
+                        )) || '-'}
+                      </div>
+                    </td>
+                    <td className="app-dimensions">
+                      {(isExcellent ? config.excellent_dimensions : config.trend_dimensions)?.length || 0} 个维度
+                    </td>
+                    <td className="app-actions">
+                      <button 
+                        className="edit-button"
+                        onClick={() => {
+                          setSelectedApp(config)
+                          setShowAppConfigModal(true)
+                        }}
+                      >
+                        配置
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <div className="page">
+      <header className="header">
+        <div className="brand">
+          <div className="brand-icon">河</div>
+          <span>HEBEI · AI 应用广场</span>
+        </div>
+        <div className="header-actions">
+          <button className="primary" onClick={() => window.location.href = '/'}>
+            <span>←</span>
+            <span>返回首页</span>
+          </button>
         </div>
       </header>
 
-      <div className="page-content">
-        {/* 标签页导航 */}
-        <div className="tab-navigation">
-          <button 
-            className={`tab-button ${activeTab === 'dimensions' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dimensions')}
-          >
-            <span>📊</span>
-            <span>排行维度管理</span>
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <span>⚙️</span>
-            <span>参数配置</span>
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('logs')}
-          >
-            <span>📋</span>
-            <span>变更日志</span>
-          </button>
+      <div className="page-container">
+        <div className="page-header">
+          <h1 className="page-title">排行榜管理</h1>
+          <p className="page-subtitle">配置排行维度、管理应用榜单参数、调整维度评分</p>
         </div>
 
-        {/* 排行维度管理标签页 */}
-        {activeTab === 'dimensions' && (
-          <section className="dimension-section">
-            <div className="section-header">
-              <h2>排行维度管理</h2>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button 
-                  className="primary-button" 
-                  onClick={handleSyncRankings}
-                  disabled={syncing}
-                >
-                  {syncing ? (
-                    <>
-                      <span>🔄</span>
-                      <span>同步中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>🔄</span>
-                      <span>同步排行榜数据</span>
-                    </>
-                  )}
-                </button>
+        <div className="page-content">
+          {/* 标签页导航 */}
+          <div className="tab-navigation">
+            <button 
+              className={`tab-button ${activeTab === 'dimensions' ? 'active' : ''}`}
+              onClick={() => setActiveTab('dimensions')}
+            >
+              <span>📊</span>
+              <span>排行维度</span>
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'excellent' ? 'active' : ''}`}
+              onClick={() => setActiveTab('excellent')}
+            >
+              <span>🏆</span>
+              <span>优秀应用榜</span>
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'trend' ? 'active' : ''}`}
+              onClick={() => setActiveTab('trend')}
+            >
+              <span>📈</span>
+              <span>趋势榜</span>
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`}
+              onClick={() => setActiveTab('logs')}
+            >
+              <span>📋</span>
+              <span>变更日志</span>
+            </button>
+          </div>
+
+          {/* 排行维度管理标签页 */}
+          {activeTab === 'dimensions' && (
+            <section className="dimension-section">
+              <div className="section-header">
+                <h2>排行维度管理</h2>
                 <button className="primary-button" onClick={() => setShowCreateModal(true)}>
                   <span>+</span>
-                  <span>新增排行维度</span>
+                  <span>新增维度</span>
                 </button>
               </div>
-            </div>
-            {syncMessage && (
-              <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
-                {syncMessage}
-              </div>
-            )}
 
-            {loading ? (
-              <div className="loading">加载中...</div>
-            ) : error ? (
-              <div className="error-message">{error}</div>
-            ) : (
-              <div className="dimension-list">
-                {dimensions.length === 0 ? (
+              {loading ? (
+                <div className="loading">加载中...</div>
+              ) : error ? (
+                <div className="error-message">{error}</div>
+              ) : (
+                <div className="dimension-list">
+                  {dimensions.length === 0 ? (
+                    <div className="empty-state">
+                      <span>📊</span>
+                      <p>暂无排行维度</p>
+                    </div>
+                  ) : (
+                    <table className="dimension-table">
+                      <thead>
+                        <tr>
+                          <th>名称</th>
+                          <th>描述</th>
+                          <th>计算方法</th>
+                          <th>权重</th>
+                          <th>状态</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dimensions.map(dimension => (
+                          <tr key={dimension.id}>
+                            <td className="dimension-name">{dimension.name}</td>
+                            <td className="dimension-description">{dimension.description}</td>
+                            <td className="dimension-calculation">
+                              <div className="calculation-preview">
+                                {dimension.calculation_method.length > 50
+                                  ? `${dimension.calculation_method.substring(0, 50)}...`
+                                  : dimension.calculation_method}
+                              </div>
+                            </td>
+                            <td className="dimension-weight">{dimension.weight}</td>
+                            <td className="dimension-status">
+                              <span className={`status-badge ${dimension.is_active ? 'active' : 'inactive'}`}>
+                                {dimension.is_active ? '启用' : '禁用'}
+                              </span>
+                            </td>
+                            <td className="dimension-actions">
+                              <button 
+                                className="edit-button" 
+                                onClick={() => handleEdit(dimension)}
+                              >
+                                编辑
+                              </button>
+                              <button 
+                                className="delete-button" 
+                                onClick={() => handleDelete(dimension.id, dimension.name)}
+                              >
+                                删除
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 优秀应用榜配置 */}
+          {activeTab === 'excellent' && renderAppConfigList('excellent')}
+
+          {/* 趋势榜配置 */}
+          {activeTab === 'trend' && renderAppConfigList('trend')}
+
+          {/* 变更日志标签页 */}
+          {activeTab === 'logs' && (
+            <section className="logs-section">
+              <h2>变更日志</h2>
+              <div className="logs-list">
+                {logs.length === 0 ? (
                   <div className="empty-state">
-                    <span>📊</span>
-                    <p>暂无排行维度</p>
-                    <p>点击上方按钮添加第一个排行维度</p>
+                    <span>📋</span>
+                    <p>暂无变更日志</p>
                   </div>
                 ) : (
-                  <table className="dimension-table">
+                  <table className="logs-table">
                     <thead>
                       <tr>
-                        <th>名称</th>
-                        <th>描述</th>
-                        <th>计算方法</th>
-                        <th>权重</th>
-                        <th>状态</th>
+                        <th>时间</th>
                         <th>操作</th>
+                        <th>维度名称</th>
+                        <th>变更内容</th>
+                        <th>操作人</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dimensions.map(dimension => (
-                        <tr key={dimension.id}>
-                          <td className="dimension-name">{dimension.name}</td>
-                          <td className="dimension-description">{dimension.description}</td>
-                          <td className="dimension-calculation">
-                            <div className="calculation-preview">
-                              {dimension.calculation_method.length > 50
-                                ? `${dimension.calculation_method.substring(0, 50)}...`
-                                : dimension.calculation_method}
-                            </div>
+                      {logs.map(log => (
+                        <tr key={log.id}>
+                          <td className="log-time">
+                            {new Date(log.created_at).toLocaleString()}
                           </td>
-                          <td className="dimension-weight">{dimension.weight}</td>
-                          <td className="dimension-status">
-                            <span className={`status-badge ${dimension.is_active ? 'active' : 'inactive'}`}>
-                              {dimension.is_active ? '启用' : '禁用'}
+                          <td className="log-action">
+                            <span className={`action-badge ${log.action}`}>
+                              {log.action === 'create' ? '创建' : log.action === 'update' ? '更新' : '删除'}
                             </span>
                           </td>
-                          <td className="dimension-actions">
-                            <button 
-                              className="edit-button" 
-                              onClick={() => handleEdit(dimension)}
-                            >
-                              编辑
-                            </button>
-                            <button 
-                              className="delete-button" 
-                              onClick={() => handleDelete(dimension.id, dimension.name)}
-                            >
-                              删除
-                            </button>
-                          </td>
+                          <td className="log-dimension">{log.dimension_name}</td>
+                          <td className="log-changes">{log.changes}</td>
+                          <td className="log-operator">{log.operator}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 )}
               </div>
-            )}
-          </section>
-        )}
-
-        {/* 参数配置标签页 */}
-        {activeTab === 'settings' && (
-          <section className="settings-section">
-            <div className="section-header">
-              <h2>参数配置</h2>
-              <p>配置排行榜相关参数和规则</p>
-            </div>
-
-            <div className="settings-grid">
-              <div className="settings-card">
-                <h3>批量更新排行榜参数</h3>
-                <form className="batch-update-form">
-                  <div className="form-group">
-                    <label htmlFor="app-ids">应用ID列表（逗号分隔）</label>
-                    <input
-                      type="text"
-                      id="app-ids"
-                      placeholder="请输入应用ID，多个ID用逗号分隔"
-                      onChange={(e) => {
-                        const ids = e.target.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
-                        setBatchUpdateData(prev => ({ ...prev, apps: ids }))
-                      }}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="ranking-weight">排行权重</label>
-                    <input
-                      type="number"
-                      id="ranking-weight"
-                      min="0.1"
-                      max="10.0"
-                      step="0.1"
-                      value={batchUpdateData.ranking_weight}
-                      onChange={(e) => setBatchUpdateData(prev => ({ ...prev, ranking_weight: parseFloat(e.target.value) || 1.0 }))}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="ranking-enabled">参与排行</label>
-                    <input
-                      type="checkbox"
-                      id="ranking-enabled"
-                      checked={batchUpdateData.ranking_enabled}
-                      onChange={(e) => setBatchUpdateData(prev => ({ ...prev, ranking_enabled: e.target.checked }))}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="ranking-tags">排行标签</label>
-                    <input
-                      type="text"
-                      id="ranking-tags"
-                      placeholder="请输入标签，多个标签用逗号分隔"
-                      value={batchUpdateData.ranking_tags}
-                      onChange={(e) => setBatchUpdateData(prev => ({ ...prev, ranking_tags: e.target.value }))}
-                    />
-                  </div>
-                  <button 
-                    type="button"
-                    className="primary-button"
-                    onClick={async () => {
-                      if (batchUpdateData.apps.length === 0) {
-                        alert('请输入至少一个应用ID');
-                        return;
-                      }
-                      try {
-                        await batchUpdateRankingParams(batchUpdateData.apps, {
-                          ranking_weight: batchUpdateData.ranking_weight,
-                          ranking_enabled: batchUpdateData.ranking_enabled,
-                          ranking_tags: batchUpdateData.ranking_tags
-                        });
-                        alert('批量更新成功');
-                      } catch (error) {
-                        alert('批量更新失败，请重试');
-                        console.error('Batch update failed:', error);
-                      }
-                    }}
-                  >
-                    批量更新
-                  </button>
-                </form>
-              </div>
-
-              <div className="settings-card">
-                <h3>排行榜规则设置</h3>
-                <div className="rule-settings">
-                  <div className="rule-item">
-                    <h4>排名计算方式</h4>
-                    <p>基于加权评分体系，综合考虑多个维度的得分</p>
-                    <p><strong>综合得分 = Σ(各维度得分 × 权重)</strong></p>
-                  </div>
-                  <div className="rule-item">
-                    <h4>数据同步频率</h4>
-                    <p>建议每天同步一次排行榜数据，确保数据的及时性和准确性</p>
-                  </div>
-                  <div className="rule-item">
-                    <h4>异常值处理</h4>
-                    <p>对异常数据采用移动平均法进行平滑处理，确保排名的稳定性</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* 变更日志标签页 */}
-        {activeTab === 'logs' && (
-          <section className="logs-section">
-            <h2>变更日志</h2>
-            <div className="logs-list">
-              {logs.length === 0 ? (
-                <div className="empty-state">
-                  <span>📋</span>
-                  <p>暂无变更日志</p>
-                </div>
-              ) : (
-                <table className="logs-table">
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>操作</th>
-                      <th>维度名称</th>
-                      <th>变更内容</th>
-                      <th>操作人</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {logs.map(log => (
-                      <tr key={log.id}>
-                        <td className="log-time">
-                          {new Date(log.created_at).toLocaleString()}
-                        </td>
-                        <td className="log-action">
-                          <span className={`action-badge ${log.action}`}>
-                            {log.action === 'create' ? '创建' : log.action === 'update' ? '更新' : '删除'}
-                          </span>
-                        </td>
-                        <td className="log-dimension">{log.dimension_name}</td>
-                        <td className="log-changes">{log.changes}</td>
-                        <td className="log-operator">{log.operator}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
-        )}
+            </section>
+          )}
+        </div>
       </div>
 
-      {/* 创建模态框 */}
+      {/* 创建维度模态框 */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-container" onClick={e => e.stopPropagation()}>
@@ -546,7 +641,7 @@ const RankingManagementPage = () => {
         </div>
       )}
 
-      {/* 编辑模态框 */}
+      {/* 编辑维度模态框 */}
       {showEditModal && editingDimension && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-container" onClick={e => e.stopPropagation()}>
@@ -633,6 +728,126 @@ const RankingManagementPage = () => {
               </button>
               <button className="primary-button" onClick={handleUpdate}>
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 应用配置模态框 */}
+      {showAppConfigModal && selectedApp && (
+        <div className="modal-overlay" onClick={() => setShowAppConfigModal(false)}>
+          <div className="modal-container large" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>配置应用排行参数 - {selectedApp.app_name}</h3>
+              <button className="modal-close" onClick={() => setShowAppConfigModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="app-config-form">
+                {/* 优秀应用榜配置 */}
+                <div className="config-section">
+                  <h4>🏆 优秀应用榜配置</h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>参与排行</label>
+                      <input
+                        type="checkbox"
+                        checked={selectedApp.excellent_enabled}
+                        onChange={(e) => setSelectedApp({...selectedApp, excellent_enabled: e.target.checked})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>排行权重</label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="10.0"
+                        step="0.1"
+                        value={selectedApp.excellent_weight}
+                        onChange={(e) => setSelectedApp({...selectedApp, excellent_weight: parseFloat(e.target.value)})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>标签</label>
+                      <input
+                        type="text"
+                        value={selectedApp.excellent_tags}
+                        onChange={(e) => setSelectedApp({...selectedApp, excellent_tags: e.target.value})}
+                        placeholder="多个标签用逗号分隔"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 趋势榜配置 */}
+                <div className="config-section">
+                  <h4>📈 趋势榜配置</h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>参与排行</label>
+                      <input
+                        type="checkbox"
+                        checked={selectedApp.trend_enabled}
+                        onChange={(e) => setSelectedApp({...selectedApp, trend_enabled: e.target.checked})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>排行权重</label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="10.0"
+                        step="0.1"
+                        value={selectedApp.trend_weight}
+                        onChange={(e) => setSelectedApp({...selectedApp, trend_weight: parseFloat(e.target.value)})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>标签</label>
+                      <input
+                        type="text"
+                        value={selectedApp.trend_tags}
+                        onChange={(e) => setSelectedApp({...selectedApp, trend_tags: e.target.value})}
+                        placeholder="多个标签用逗号分隔"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 维度评分配置 */}
+                <div className="config-section">
+                  <h4>📊 维度评分调整（可选）</h4>
+                  <p className="section-tip">不填写则使用系统自动计算的评分</p>
+                  <div className="dimension-scores">
+                    {dimensions.filter(d => d.is_active).map(dimension => (
+                      <div key={dimension.id} className="dimension-score-item">
+                        <label>{dimension.name}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={selectedApp.dimension_scores[dimension.id] || ''}
+                          onChange={(e) => setSelectedApp({
+                            ...selectedApp,
+                            dimension_scores: {
+                              ...selectedApp.dimension_scores,
+                              [dimension.id]: parseInt(e.target.value) || 0
+                            }
+                          })}
+                          placeholder="自动计算"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="secondary-button" onClick={() => setShowAppConfigModal(false)}>
+                取消
+              </button>
+              <button className="primary-button" onClick={() => handleSaveAppConfig(selectedApp)}>
+                保存配置
               </button>
             </div>
           </div>

@@ -104,6 +104,34 @@ def migrate_submission_images():
     insert_to_mysql("submission_images", data)
 
 
+def migrate_ranking_dimensions():
+    """迁移 ranking_dimensions 表"""
+    print("\n迁移 ranking_dimensions 表...")
+    data = get_sqlite_data("ranking_dimensions")
+    insert_to_mysql("ranking_dimensions", data)
+
+
+def migrate_ranking_logs():
+    """迁移 ranking_logs 表"""
+    print("\n迁移 ranking_logs 表...")
+    data = get_sqlite_data("ranking_logs")
+    insert_to_mysql("ranking_logs", data)
+
+
+def migrate_app_dimension_scores():
+    """迁移 app_dimension_scores 表"""
+    print("\n迁移 app_dimension_scores 表...")
+    data = get_sqlite_data("app_dimension_scores")
+    insert_to_mysql("app_dimension_scores", data)
+
+
+def migrate_historical_rankings():
+    """迁移 historical_rankings 表"""
+    print("\n迁移 historical_rankings 表...")
+    data = get_sqlite_data("historical_rankings")
+    insert_to_mysql("historical_rankings", data)
+
+
 def verify_migration():
     """验证迁移结果"""
     print("\n验证迁移结果...")
@@ -111,11 +139,15 @@ def verify_migration():
     conn = pymysql.connect(**MYSQL_CONFIG)
     cursor = conn.cursor()
 
-    tables = ["apps", "rankings", "submissions", "submission_images"]
+    tables = ["apps", "rankings", "submissions", "submission_images", 
+              "ranking_dimensions", "ranking_logs", "app_dimension_scores", "historical_rankings"]
     for table in tables:
-        cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        count = cursor.fetchone()[0]
-        print(f"  {table}: {count} 条记录")
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            print(f"  {table}: {count} 条记录")
+        except Exception as e:
+            print(f"  {table}: 查询失败 - {e}")
 
     cursor.close()
     conn.close()
@@ -134,6 +166,10 @@ def main():
         migrate_rankings()
         migrate_submissions()
         migrate_submission_images()
+        migrate_ranking_dimensions()
+        migrate_ranking_logs()
+        migrate_app_dimension_scores()
+        migrate_historical_rankings()
 
         print("\n" + "=" * 60)
         verify_migration()

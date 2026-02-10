@@ -2400,3 +2400,890 @@ body {
   background-color: var(--primary-hover);
   color: white;
 }
+
+/* ==================== 新页面样式 ==================== */
+
+/* 页面容器样式 */
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.page-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* 统计卡片 */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin: 32px 0;
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid var(--primary-color);
+}
+
+.stat-card.pending {
+  border-left-color: #f59e0b;
+}
+
+.stat-card.approved {
+  border-left-color: #10b981;
+}
+
+.stat-card.rejected {
+  border-left-color: #ef4444;
+}
+
+.stat-card-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.stat-card-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* 筛选栏 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.filter-btn.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.refresh-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* 申报卡片 */
+.submission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.submission-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 4px solid var(--border-color);
+}
+
+.submission-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.submission-card.pending {
+  border-left-color: #f59e0b;
+}
+
+.submission-card.approved {
+  border-left-color: #10b981;
+}
+
+.submission-card.rejected {
+  border-left-color: #ef4444;
+}
+
+.submission-header {
+  margin-bottom: 16px;
+}
+
+.submission-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.submission-title h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.submission-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.submission-content {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.info-row {
+  display: flex;
+  gap: 8px;
+}
+
+.info-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.info-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.submission-preview {
+  background: var(--bg-color);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.submission-preview p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.submission-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.approved-text {
+  color: #10b981;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 详情弹窗 */
+.detail-modal {
+  max-width: 800px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.detail-section {
+  margin-bottom: 24px;
+}
+
+.detail-section h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.cover-image {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+/* 历史榜单 */
+.ranking-info {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ranking-info h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.date-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 20px;
+  font-size: 14px;
+  margin-left: 12px;
+}
+
+.ranking-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.historical-ranking-list {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.historical-ranking-list .ranking-header {
+  display: grid;
+  grid-template-columns: 80px 2fr 1.5fr 100px 100px 100px 100px;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--bg-color);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.historical-ranking-list .ranking-row {
+  display: grid;
+  grid-template-columns: 80px 2fr 1.5fr 100px 100px 100px 100px;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.historical-ranking-list .ranking-row:hover {
+  background: var(--bg-color);
+}
+
+.historical-ranking-list .ranking-row.top3 {
+  background: linear-gradient(90deg, rgba(79, 124, 255, 0.05) 0%, transparent 100%);
+}
+
+.rank-number {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.rank-number.top {
+  color: var(--primary-color);
+}
+
+.app-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tag-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-badge.recommended {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.tag-badge.excellent {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tag-badge.new {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.score-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.ranking-note {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-top: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ranking-note h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.ranking-note ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.ranking-note li {
+  margin-bottom: 8px;
+}
+
+/* 加载和空状态 */
+.loading-container,
+.error-container,
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-icon,
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.retry-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+/* 新页面响应式 */
+@media (max-width: 1024px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .historical-ranking-list .ranking-header,
+  .historical-ranking-list .ranking-row {
+    grid-template-columns: 60px 1.5fr 1fr 80px 80px 80px 80px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    padding: 20px 16px;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    flex-wrap: wrap;
+  }
+
+  .submission-content {
+    grid-template-columns: 1fr;
+  }
+
+  .historical-ranking-list .ranking-header,
+  .historical-ranking-list .ranking-row {
+    grid-template-columns: 50px 1fr 80px 80px;
+  }
+
+  .historical-ranking-list .org-col,
+  .historical-ranking-list .tag-col {
+    display: none;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==================== 排行榜管理页面样式 ==================== */
+
+/* 应用配置区域 */
+.app-config-section {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.app-config-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-config-section .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* 筛选栏样式 */
+.app-config-section .filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--bg-color);
+  border-radius: var(--radius-md);
+}
+
+.app-config-section .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-config-section .filter-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.app-config-section .filter-select,
+.app-config-section .filter-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  font-size: 14px;
+  color: var(--text-primary);
+  min-width: 150px;
+}
+
+.app-config-section .filter-select:focus,
+.app-config-section .filter-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+}
+
+/* 应用配置表格 */
+.app-config-list {
+  overflow-x: auto;
+}
+
+.app-config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.app-config-table th {
+  background: var(--bg-color);
+  text-align: left;
+  padding: 14px 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.app-config-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.app-config-table tr:hover {
+  background: var(--bg-color);
+}
+
+.app-config-table .app-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-config-table .app-org {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 类型标签 */
+.section-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.section-badge.group {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.section-badge.province {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* 状态标签 */
+.app-config-table .status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.app-config-table .status-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.app-config-table .status-badge.inactive {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* 标签预览 */
+.tags-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tags-preview .tag-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(79, 124, 255, 0.1);
+  color: var(--primary-color);
+}
+
+/* 操作按钮 */
+.app-config-table .app-actions {
+  white-space: nowrap;
+}
+
+.app-config-table .edit-button {
+  padding: 6px 14px;
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.app-config-table .edit-button:hover {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* 大模态框 */
+.modal-container.large {
+  max-width: 700px;
+  width: 90%;
+}
+
+/* 应用配置表单 */
+.app-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-config-form .config-section {
+  background: var(--bg-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.app-config-form .config-section h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-config-form .form-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.app-config-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.app-config-form .form-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.app-config-form .form-group input[type="number"],
+.app-config-form .form-group input[type="text"] {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--card-bg);
+}
+
+.app-config-form .form-group input[type="number"]:focus,
+.app-config-form .form-group input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+}
+
+.app-config-form .form-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* 提示文字 */
+.section-tip {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: -8px 0 16px 0;
+}
+
+/* 维度评分区域 */
+.dimension-scores {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.dimension-score-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.dimension-score-item label {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.dimension-score-item input {
+  width: 80px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  text-align: center;
+}
+
+.dimension-score-item input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.dimension-score-item input::placeholder {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* 响应式调整 */
+@media (max-width: 1024px) {
+  .app-config-form .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .dimension-scores {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-config-section .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .app-config-section .filter-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .app-config-table {
+    font-size: 13px;
+  }
+  
+  .app-config-table th,
+  .app-config-table td {
+    padding: 10px 12px;
+  }
+  
+  .modal-container.large {
+    width: 95%;
+    margin: 20px;
+  }
+}

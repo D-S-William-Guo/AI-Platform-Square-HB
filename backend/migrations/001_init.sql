@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   contact VARCHAR(80) NOT NULL,
   contact_phone VARCHAR(20) DEFAULT '',
   contact_email VARCHAR(120) DEFAULT '',
+  category VARCHAR(30) NOT NULL,
   scenario VARCHAR(500) NOT NULL,
   embedded_system VARCHAR(120) NOT NULL,
   problem_statement VARCHAR(255) NOT NULL,
@@ -94,11 +95,58 @@ CREATE TABLE IF NOT EXISTS ranking_dimensions (
 
 CREATE TABLE IF NOT EXISTS ranking_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  action VARCHAR(20) NOT NULL,
+  action VARCHAR(50) NOT NULL,
   dimension_id INT DEFAULT NULL,
-  dimension_name VARCHAR(100) DEFAULT '',
+  dimension_name VARCHAR(100) NOT NULL,
   changes TEXT NOT NULL,
-  operator VARCHAR(50) DEFAULT 'system',
+  operator VARCHAR(100) DEFAULT 'system',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_ranking_logs_dimension FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
 );
+
+-- 应用维度评分表
+CREATE TABLE IF NOT EXISTS app_dimension_scores (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  app_id INT NOT NULL,
+  dimension_id INT NOT NULL,
+  dimension_name VARCHAR(100) NOT NULL,
+  score INT DEFAULT 0,
+  weight FLOAT DEFAULT 1.0,
+  calculation_detail TEXT DEFAULT '',
+  period_date DATE NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_dim_scores_app FOREIGN KEY (app_id) REFERENCES apps(id),
+  CONSTRAINT fk_app_dim_scores_dim FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
+);
+
+-- 历史榜单表
+CREATE TABLE IF NOT EXISTS historical_rankings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  ranking_type VARCHAR(20) NOT NULL,
+  period_date DATE NOT NULL,
+  position INT NOT NULL,
+  app_id INT NOT NULL,
+  app_name VARCHAR(120) NOT NULL,
+  app_org VARCHAR(60) NOT NULL,
+  tag VARCHAR(20) DEFAULT '推荐',
+  score INT DEFAULT 0,
+  metric_type VARCHAR(20) DEFAULT 'composite',
+  value_dimension VARCHAR(40) DEFAULT 'cost_reduction',
+  usage_30d INT DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_historical_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id)
+);
+
+-- 添加索引优化查询性能
+CREATE INDEX idx_apps_section ON apps(section);
+CREATE INDEX idx_apps_status ON apps(status);
+CREATE INDEX idx_apps_category ON apps(category);
+CREATE INDEX idx_rankings_type ON rankings(ranking_type);
+CREATE INDEX idx_rankings_app_id ON rankings(app_id);
+CREATE INDEX idx_submissions_status ON submissions(status);
+CREATE INDEX idx_historical_rankings_date ON historical_rankings(period_date);
+CREATE INDEX idx_historical_rankings_type ON historical_rankings(ranking_type);
+CREATE INDEX idx_app_dim_scores_app ON app_dimension_scores(app_id);
+CREATE INDEX idx_app_dim_scores_date ON app_dimension_scores(period_date);
+CREATE UNIQUE INDEX idx_ranking_dimensions_name ON ranking_dimensions(name);

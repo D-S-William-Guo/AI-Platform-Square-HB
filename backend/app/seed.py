@@ -1,9 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
 from .models import App, Ranking, RankingDimension, Submission
-from .schemas import SubmissionCreate
 
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
@@ -335,22 +334,28 @@ DEFAULT_DIMENSIONS = [
 ]
 
 
-def validate_submission_payload(payload: SubmissionCreate) -> None:
-    if payload.effectiveness_type not in VALUE_DIMENSIONS:
-        raise ValueError("Invalid effectiveness_type")
-    if payload.data_level not in DATA_LEVEL_VALUES:
-        raise ValueError("Invalid data_level")
-    if payload.ranking_weight < 0.1 or payload.ranking_weight > 10.0:
-        raise ValueError("ranking_weight must be between 0.1 and 10.0")
-    if len(payload.ranking_tags) > 255:
-        raise ValueError("ranking_tags must not exceed 255 characters")
-    if len(payload.ranking_dimensions) > 500:
-        raise ValueError("ranking_dimensions must not exceed 500 characters")
-
-
-def create_submission(db: Session, payload: SubmissionCreate) -> Submission:
-    validate_submission_payload(payload)
-    submission = Submission(**payload.model_dump())
+def create_submission_direct(db: Session, payload: dict) -> Submission:
+    """直接创建申报记录，不经过Pydantic验证"""
+    submission = Submission(
+        app_name=payload["app_name"],
+        unit_name=payload["unit_name"],
+        contact=payload["contact"],
+        contact_phone=payload.get("contact_phone", ""),
+        contact_email=payload.get("contact_email", ""),
+        category=payload["category"],
+        scenario=payload["scenario"],
+        embedded_system=payload["embedded_system"],
+        problem_statement=payload["problem_statement"],
+        effectiveness_type=payload["effectiveness_type"],
+        effectiveness_metric=payload["effectiveness_metric"],
+        data_level=payload["data_level"],
+        expected_benefit=payload["expected_benefit"],
+        status="pending",
+        ranking_enabled=payload.get("ranking_enabled", True),
+        ranking_weight=payload.get("ranking_weight", 1.0),
+        ranking_tags=payload.get("ranking_tags", ""),
+        ranking_dimensions=payload.get("ranking_dimensions", ""),
+    )
     db.add(submission)
     db.commit()
     db.refresh(submission)
@@ -370,8 +375,18 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
         status="available",
         monthly_calls=0.0,
         release_date=date.today(),
+        api_open=True,
+        difficulty="Medium",
+        contact_name=submission.contact,
+        highlight="",
+        access_mode="direct",
+        access_url="",
+        target_system=submission.embedded_system,
+        target_users="",
+        problem_statement=submission.problem_statement,
         effectiveness_type=submission.effectiveness_type,
         effectiveness_metric=submission.effectiveness_metric,
+        cover_image_url="",
         ranking_enabled=submission.ranking_enabled,
         ranking_weight=submission.ranking_weight,
         ranking_tags=submission.ranking_tags,
@@ -491,7 +506,11 @@ def sync_rankings(db: Session) -> int:
     return updated_count
 
 
-def seed_data(db: Session):
+def seed_data(db: Session) -> None:
+    """初始化数据库数据
+    - 集团应用直接录入（系统内置）
+    - 省内应用通过申报流程录入
+    """
     try:
         if db.query(App).count() > 0 or db.query(Submission).count() > 0:
             return
@@ -508,27 +527,36 @@ def seed_data(db: Session):
         print(f"Error seeding ranking dimensions: {exc}")
         db.rollback()
 
+    # 1. 录入集团应用（直接录入，不走申报流程）
     try:
         for app in GROUP_APPS:
-            app.setdefault("ranking_enabled", True)
+            app.setdefault("ranking_enabled", False)  # 集团应用不参与排行榜
             app.setdefault("ranking_weight", 1.0)
             app.setdefault("ranking_tags", "")
             app.setdefault("last_ranking_update", None)
             db.add(App(**app))
         db.commit()
+        print(f"Seeded {len(GROUP_APPS)} group apps")
     except Exception as exc:
         print(f"Error seeding group apps: {exc}")
         db.rollback()
 
+    # 2. 省内应用通过申报流程录入
     try:
         approved_ids = []
         for index, payload in enumerate(PROVINCE_SUBMISSIONS):
-            submission = create_submission(db, SubmissionCreate(**payload))
+            # 创建申报
+            submission = create_submission_direct(db, payload)
+            # 前7个申报自动审批通过（模拟审核流程）
             if index < 7:
                 approved = approve_submission_and_create_app(db, submission)
                 approved_ids.append(approved.id)
+                print(f"Approved submission {submission.id} -> app {approved.id}")
+        
         if approved_ids:
+            # 同步排行榜数据
             sync_rankings(db)
+            print(f"Synced rankings for {len(approved_ids)} apps")
     except Exception as exc:
         print(f"Error seeding province submissions: {exc}")
         db.rollback()
