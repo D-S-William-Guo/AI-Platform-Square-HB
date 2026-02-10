@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage } from './api/client'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors } from './types'
+import { Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores } from './api/client'
+import GuidePage from './pages/GuidePage'
+import RulePage from './pages/RulePage'
+import RankingManagementPage from './pages/RankingManagementPage'
+import SubmissionReviewPage from './pages/SubmissionReviewPage'
+import HistoricalRankingPage from './pages/HistoricalRankingPage'
+import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
 const statusOptions = [
@@ -31,7 +37,12 @@ const defaultSubmission: SubmissionPayload = {
   effectiveness_metric: '',
   data_level: 'L2',
   expected_benefit: '',
-  cover_image_url: ''
+  cover_image_url: '',
+  // 排行榜相关字段
+  ranking_enabled: true,
+  ranking_weight: 1.0,
+  ranking_tags: '',
+  ranking_dimensions: ''
 }
 
 // 生成渐变色
@@ -55,8 +66,19 @@ function rankingMetricText(row: RankingItem) {
   return `综合分 ${row.score}`
 }
 
+// 表单验证规则类型定义
+type ValidationRule = {
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  pattern?: RegExp;
+  message: string;
+};
+
 // 表单验证规则
-const validationRules = {
+const validationRules: Record<string, ValidationRule> = {
   app_name: { required: true, minLength: 2, maxLength: 120, message: '应用名称需在2-120个字符之间' },
   unit_name: { required: true, minLength: 2, maxLength: 120, message: '申报单位需在2-120个字符之间' },
   contact: { required: true, minLength: 2, maxLength: 80, message: '联系人需在2-80个字符之间' },
@@ -67,9 +89,13 @@ const validationRules = {
   problem_statement: { required: true, minLength: 10, maxLength: 255, message: '问题描述需在10-255个字符之间' },
   effectiveness_metric: { required: true, minLength: 2, maxLength: 120, message: '成效指标需在2-120个字符之间' },
   expected_benefit: { required: true, minLength: 10, maxLength: 300, message: '预期收益需在10-300个字符之间' },
+  ranking_weight: { required: false, min: 0.1, max: 10.0, message: '排行权重需在0.1-10.0之间' },
+  ranking_tags: { required: false, maxLength: 255, message: '排行标签不能超过255个字符' },
+  ranking_dimensions: { required: false, maxLength: 500, message: '适用维度不能超过500个字符' },
 }
 
-function App() {
+// 主页面组件
+function HomePage() {
   const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('全部')
@@ -77,9 +103,13 @@ function App() {
   const [apps, setApps] = useState<AppItem[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
+  const [rankingDimension, setRankingDimension] = useState<string>('overall')
+  const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
   const [showSubmission, setShowSubmission] = useState(false)
   const [submission, setSubmission] = useState<SubmissionPayload>(defaultSubmission)
@@ -91,12 +121,73 @@ function App() {
   useEffect(() => {
     fetchRecommendations().then(setRecommendations)
     fetchRules().then(setRules)
-    fetchStats().then(setStats)
+    fetchRankingDimensions()
+      .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
+      .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
+    
+    // 获取统计数据，添加加载状态和错误处理
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true)
+        setStatsError(null)
+        const data = await fetchStats()
+        setStats(data)
+      } catch (error) {
+        console.error('Failed to fetch stats:', error)
+        setStatsError('获取统计数据失败')
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+    
+    loadStats()
   }, [])
 
   useEffect(() => {
     if (activeNav === 'ranking') {
-      fetchRankings(rankingType).then(setRankings)
+      // 获取榜单数据
+      fetchRankings(rankingType).then(async (data) => {
+        let processedRankings = [...data]
+        
+        // 如果选择了特定维度，获取该维度的评分并重新排序
+        if (rankingDimension !== 'overall') {
+          const dimensionId = parseInt(rankingDimension.replace('dimension-', ''))
+          if (!isNaN(dimensionId)) {
+            try {
+              // 获取该维度的所有应用评分
+              const dimensionScores = await fetchDimensionScores(dimensionId)
+              // 创建应用ID到维度评分的映射
+              const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
+              
+              // 为每个榜单项添加维度评分
+              processedRankings = processedRankings.map(row => ({
+                ...row,
+                dimensionScore: scoreMap.get(row.app.id) || 0
+              }))
+              
+              // 按维度评分重新排序
+              processedRankings.sort((a, b) => (b.dimensionScore || 0) - (a.dimensionScore || 0))
+              
+              // 重新分配排名位置
+              processedRankings = processedRankings.map((row, index) => ({
+                ...row,
+                position: index + 1
+              }))
+            } catch (error) {
+              console.error('Failed to fetch dimension scores:', error)
+            }
+          }
+        }
+        
+        // 根据搜索关键字过滤榜单中的应用名称
+        if (keyword.trim()) {
+          processedRankings = processedRankings.filter((row) =>
+            row.app.name.toLowerCase().includes(keyword.toLowerCase())
+          )
+        }
+        
+        setRankings(processedRankings)
+      })
       return
     }
 
@@ -105,8 +196,18 @@ function App() {
     if (categoryFilter && categoryFilter !== '全部') params.category = categoryFilter
     if (keyword) params.q = keyword
 
-    fetchApps(params).then(setApps)
-  }, [activeNav, statusFilter, categoryFilter, keyword, rankingType])
+    fetchApps(params).then((data) => {
+      // 客户端按应用名称关键字过滤
+      if (keyword.trim()) {
+        const filtered = data.filter((app) =>
+          app.name.toLowerCase().includes(keyword.toLowerCase())
+        )
+        setApps(filtered)
+      } else {
+        setApps(data)
+      }
+    })
+  }, [activeNav, statusFilter, categoryFilter, keyword, rankingType, rankingDimension])
 
   const blockTitle = useMemo(() => {
     if (activeNav === 'group') return '集团应用整合'
@@ -121,28 +222,46 @@ function App() {
   }, [activeNav])
 
   // 表单验证
-  const validateField = useCallback((name: keyof SubmissionPayload, value: string): string => {
+  const validateField = useCallback((name: keyof SubmissionPayload, value: string | number | boolean): string => {
     const rule = validationRules[name as keyof typeof validationRules]
     if (!rule) return ''
 
     // 检查是否是 pattern 类型的规则
-    if ('pattern' in rule) {
-      if (value && !rule.pattern.test(value)) {
+    if ('pattern' in rule && rule.pattern) {
+      const stringValue = String(value)
+      if (stringValue && !rule.pattern.test(stringValue)) {
         return rule.message
       }
       return ''
     }
 
     // 检查 required
-    if (rule.required && !value.trim()) {
-      return '此字段为必填项'
+    if (rule.required) {
+      if (typeof value === 'string' && !value.trim()) {
+        return '此字段为必填项'
+      }
+      if (value === null || value === undefined) {
+        return '此字段为必填项'
+      }
     }
 
-    if (value) {
-      if (rule.minLength && value.length < rule.minLength) {
+    // 检查数字类型的字段
+    if (typeof value === 'number') {
+      if (rule.min !== undefined && value < rule.min) {
+        return rule.message
+      }
+      if (rule.max !== undefined && value > rule.max) {
+        return rule.message
+      }
+      return ''
+    }
+
+    // 检查字符串类型的字段
+    if (typeof value === 'string' && value) {
+      if (rule.minLength !== undefined && value.length < rule.minLength) {
         return `最少需要 ${rule.minLength} 个字符`
       }
-      if (rule.maxLength && value.length > rule.maxLength) {
+      if (rule.maxLength !== undefined && value.length > rule.maxLength) {
         return `最多允许 ${rule.maxLength} 个字符`
       }
     }
@@ -156,7 +275,8 @@ function App() {
 
     Object.keys(validationRules).forEach((key) => {
       const fieldName = key as keyof SubmissionPayload
-      const error = validateField(fieldName, submission[fieldName] as string)
+      const value = submission[fieldName]
+      const error = validateField(fieldName, value)
       if (error) {
         newErrors[key] = error
         isValid = false
@@ -167,7 +287,7 @@ function App() {
     return isValid
   }, [submission, validateField])
 
-  const handleFieldChange = useCallback((field: keyof SubmissionPayload, value: string) => {
+  const handleFieldChange = useCallback((field: keyof SubmissionPayload, value: string | number) => {
     setSubmission(prev => ({ ...prev, [field]: value }))
     // 实时验证
     const error = validateField(field, value)
@@ -278,7 +398,7 @@ function App() {
           <span className="search-icon">🔍</span>
           <input 
             className="search" 
-            placeholder="搜索应用名称、分类或关键词..." 
+            placeholder="搜索应用名称..." 
             value={keyword} 
             onChange={(e) => setKeyword(e.target.value)} 
           />
@@ -335,14 +455,26 @@ function App() {
 
           <div className="quick-links">
             <div className="nav-section-title">快速入口</div>
-            <a href="#" className="quick-link">
+            <Link to="/guide" className="quick-link">
               <span>📋</span>
               <span>申报指南</span>
-            </a>
-            <a href="#" className="quick-link">
+            </Link>
+            <Link to="/rule" className="quick-link">
               <span>📜</span>
               <span>榜单规则</span>
-            </a>
+            </Link>
+            <Link to="/ranking-management" className="quick-link">
+              <span>⚙️</span>
+              <span>排行榜管理</span>
+            </Link>
+            <Link to="/submission-review" className="quick-link">
+              <span>✅</span>
+              <span>申报审核</span>
+            </Link>
+            <Link to="/historical-ranking" className="quick-link">
+              <span>📊</span>
+              <span>历史榜单</span>
+            </Link>
           </div>
         </aside>
 
@@ -372,18 +504,35 @@ function App() {
             )}
             {activeNav === 'ranking' && (
               <div className="filters">
-                <button 
-                  className={`filter-btn ${rankingType === 'excellent' ? 'active' : ''}`} 
-                  onClick={() => setRankingType('excellent')}
-                >
-                  优秀应用榜
-                </button>
-                <button 
-                  className={`filter-btn ${rankingType === 'trend' ? 'active' : ''}`} 
-                  onClick={() => setRankingType('trend')}
-                >
-                  趋势榜
-                </button>
+                <div className="filter-group">
+                  <button 
+                    className={`filter-btn ${rankingType === 'excellent' ? 'active' : ''}`} 
+                    onClick={() => setRankingType('excellent')}
+                  >
+                    优秀应用榜
+                  </button>
+                  <button 
+                    className={`filter-btn ${rankingType === 'trend' ? 'active' : ''}`} 
+                    onClick={() => setRankingType('trend')}
+                  >
+                    趋势榜
+                  </button>
+                </div>
+                <div className="filter-group">
+                  <span className="filter-label">排行维度：</span>
+                  <select 
+                    className="filter-select"
+                    value={rankingDimension}
+                    onChange={(e) => setRankingDimension(e.target.value)}
+                  >
+                    <option value="overall">综合排名</option>
+                    {rankingDimensions.map((dimension) => (
+                      <option key={dimension.id} value={`dimension-${dimension.id}`}>
+                        {dimension.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
           </section>
@@ -423,7 +572,12 @@ function App() {
                 <div className="ranking-row" key={`${row.position}-${row.app.id}`} onClick={() => setSelectedApp(row.app)}>
                   <span className={`rank-number ${index < 3 ? 'top3' : ''}`}>#{row.position}</span>
                   <span className="rank-app-name">{row.app.name}</span>
-                  <span className="rank-dimension">{valueDimensionLabel[row.value_dimension]}</span>
+                  <span className="rank-dimension">
+                    {rankingDimension === 'overall' 
+                      ? valueDimensionLabel[row.value_dimension] 
+                      : `维度评分: ${(row as any).dimensionScore || 0}分`
+                    }
+                  </span>
                   <span className={`rank-tag ${row.tag === '推荐' ? 'recommended' : row.tag === '历史优秀' ? 'excellent' : 'new'}`}>
                     {row.tag}
                   </span>
@@ -459,33 +613,79 @@ function App() {
               <span>申报统计</span>
             </h4>
             <div className="stats-grid">
-              <div className="stat-item">
-                <span className="stat-label">待审核</span>
-                <span className="stat-value pending">{stats.pending}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">本期已通过</span>
-                <span className="stat-value approved">{stats.approved_period}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">累计应用</span>
-                <span className="stat-value total">{stats.total_apps}</span>
-              </div>
+              {statsLoading ? (
+                <div className="stats-loading">
+                  <div className="loading-spinner"></div>
+                  <span>加载中...</span>
+                </div>
+              ) : statsError ? (
+                <div className="stats-error">
+                  <span className="error-icon">❌</span>
+                  <span>{statsError}</span>
+                  <button 
+                    className="retry-button" 
+                    onClick={async () => {
+                      try {
+                        setStatsLoading(true)
+                        setStatsError(null)
+                        const data = await fetchStats()
+                        setStats(data)
+                      } catch (error) {
+                        console.error('Failed to fetch stats:', error)
+                        setStatsError('获取统计数据失败')
+                      } finally {
+                        setStatsLoading(false)
+                      }
+                    }}
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="stat-item">
+                    <span className="stat-label">待审核</span>
+                    <span className="stat-value pending">{stats.pending}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">本期已通过</span>
+                    <span className="stat-value approved">{stats.approved_period}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">累计应用</span>
+                    <span className="stat-value total">{stats.total_apps}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           <div className="section-card">
             <h4 className="section-title">
               <span className="section-icon">⚡</span>
-              <span>快速规则</span>
+              <span>快速入口</span>
             </h4>
             <div className="rule-list">
-              {rules.map((rule) => (
-                <a key={rule.title} href={rule.href} target="_blank" rel="noreferrer" className="rule-item">
-                  <span className="rule-icon">📄</span>
-                  <span>{rule.title}</span>
-                </a>
-              ))}
+              <Link to="/guide" className="rule-item">
+                <span className="rule-icon">📋</span>
+                <span>申报指南</span>
+              </Link>
+              <Link to="/rule" className="rule-item">
+                <span className="rule-icon">📜</span>
+                <span>榜单规则</span>
+              </Link>
+              <Link to="/ranking-management" className="rule-item">
+                <span className="rule-icon">⚙️</span>
+                <span>排行榜管理</span>
+              </Link>
+              <Link to="/submission-review" className="rule-item">
+                <span className="rule-icon">✅</span>
+                <span>申报审核</span>
+              </Link>
+              <Link to="/historical-ranking" className="rule-item">
+                <span className="rule-icon">📊</span>
+                <span>历史榜单</span>
+              </Link>
             </div>
           </div>
         </aside>
@@ -812,6 +1012,85 @@ function App() {
                   <span className="char-count">{submission.expected_benefit.length}/300</span>
                 </div>
               </div>
+
+              {/* 排行榜参数配置 */}
+              <div className="form-section">
+                <h4 className="form-section-title">排行榜参数配置</h4>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">参与排行</label>
+                    <div className="checkbox-group">
+                      <input
+                        type="checkbox"
+                        id="ranking_enabled"
+                        name="ranking_enabled"
+                        checked={submission.ranking_enabled}
+                        onChange={(e) => setSubmission(prev => ({ ...prev, ranking_enabled: e.target.checked }))}
+                      />
+                      <label htmlFor="ranking_enabled">启用排行榜功能</label>
+                    </div>
+                    <p className="form-hint">启用后，应用将参与排行榜排名</p>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">排行权重</label>
+                    <input
+                      type="number"
+                      className={`form-input ${errors.ranking_weight ? 'error' : ''}`}
+                      placeholder="请输入权重值"
+                      min="0.1"
+                      max="10.0"
+                      step="0.1"
+                      value={submission.ranking_weight}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 1.0
+                        setSubmission(prev => ({ ...prev, ranking_weight: value }))
+                        // 实时验证
+                        const error = validateField('ranking_weight', value)
+                        setErrors(prev => ({ ...prev, ranking_weight: error }))
+                      }}
+                    />
+                    {errors.ranking_weight && <span className="error-message">{errors.ranking_weight}</span>}
+                    <p className="form-hint">权重值越高，对排行榜排名的影响越大</p>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">排行标签</label>
+                  <input
+                    type="text"
+                    className={`form-input ${errors.ranking_tags ? 'error' : ''}`}
+                    placeholder="请输入标签，多个标签用逗号分隔"
+                    value={submission.ranking_tags}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSubmission(prev => ({ ...prev, ranking_tags: value }))
+                      // 实时验证
+                      const error = validateField('ranking_tags', value)
+                      setErrors(prev => ({ ...prev, ranking_tags: error }))
+                    }}
+                  />
+                  {errors.ranking_tags && <span className="error-message">{errors.ranking_tags}</span>}
+                  <p className="form-hint">标签将在排行榜中显示，有助于用户快速了解应用特点</p>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">适用维度</label>
+                  <input
+                    type="text"
+                    className={`form-input ${errors.ranking_dimensions ? 'error' : ''}`}
+                    placeholder="请输入维度名称，多个维度用逗号分隔"
+                    value={submission.ranking_dimensions}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSubmission(prev => ({ ...prev, ranking_dimensions: value }))
+                      // 实时验证
+                      const error = validateField('ranking_dimensions', value)
+                      setErrors(prev => ({ ...prev, ranking_dimensions: error }))
+                    }}
+                  />
+                  {errors.ranking_dimensions && <span className="error-message">{errors.ranking_dimensions}</span>}
+                  <p className="form-hint">指定应用参与哪些维度的排名计算</p>
+                  <span className="char-count">{submission.ranking_dimensions.length}/500</span>
+                </div>
+              </div>
             </div>
 
             <div className="modal-footer">
@@ -824,6 +1103,20 @@ function App() {
         </div>
       )}
     </div>
+  )
+}
+
+// 主应用组件，包含路由配置
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/guide" element={<GuidePage />} />
+      <Route path="/rule" element={<RulePage />} />
+      <Route path="/ranking-management" element={<RankingManagementPage />} />
+      <Route path="/submission-review" element={<SubmissionReviewPage />} />
+      <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
+    </Routes>
   )
 }
 

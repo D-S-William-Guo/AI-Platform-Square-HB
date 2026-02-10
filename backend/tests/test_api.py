@@ -39,7 +39,11 @@ def test_submission_flow():
         'effectiveness_type': 'efficiency_gain',
         'effectiveness_metric': '工单流转时长下降20%',
         'data_level': 'L2',
-        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。'
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
     }
     resp = client.post('/api/submissions', json=payload)
     assert resp.status_code == 200

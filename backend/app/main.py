@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage
+from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -21,13 +21,22 @@ from .schemas import (
     Stats,
     SubmissionCreate,
     SubmissionOut,
+    RankingDimensionCreate,
+    RankingDimensionUpdate,
+    RankingDimensionOut,
+    RankingLogOut,
+    AppDimensionScoreOut,
+    HistoricalRankingOut,
+    GroupAppCreate,
 )
 from .seed import seed_data
+from .venv_utils import venv_reader
 
 APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
 METRIC_TYPES = {"composite", "growth_rate", "likes"}
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
+DEFAULT_RANKING_TAG = "推荐"
 
 app = FastAPI(title=settings.app_name)
 
@@ -37,6 +46,277 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def validate_submission_payload(payload: SubmissionCreate) -> None:
+    if payload.effectiveness_type not in VALUE_DIMENSIONS:
+        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
+    if payload.data_level not in DATA_LEVEL_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid data_level")
+    validate_submission_ranking_fields(
+        payload.ranking_weight, payload.ranking_tags, payload.ranking_dimensions
+    )
+
+
+def validate_submission_ranking_fields(
+    ranking_weight: float,
+    ranking_tags: str,
+    ranking_dimensions: str,
+) -> None:
+    if ranking_weight < 0.1 or ranking_weight > 10.0:
+        raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
+    if len(ranking_tags) > 255:
+        raise HTTPException(status_code=422, detail="ranking_tags must not exceed 255 characters")
+    if len(ranking_dimensions) > 500:
+        raise HTTPException(status_code=422, detail="ranking_dimensions must not exceed 500 characters")
+
+
+def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
+    if not dimensions:
+        return max(0, min(int(app.monthly_calls * 10), 1000))
+
+    base_score = 0.0
+    for dimension in dimensions:
+        dimension_score = 0
+        if dimension.name == "用户满意度":
+            dimension_score = min(int(app.monthly_calls * 10), 100)
+        elif dimension.name == "业务价值":
+            if app.effectiveness_type == "revenue_growth":
+                dimension_score = 100
+            elif app.effectiveness_type == "efficiency_gain":
+                dimension_score = 80
+            elif app.effectiveness_type == "cost_reduction":
+                dimension_score = 70
+            else:
+                dimension_score = 60
+        elif dimension.name == "技术创新性":
+            if app.difficulty == "High":
+                dimension_score = 100
+            elif app.difficulty == "Medium":
+                dimension_score = 70
+            else:
+                dimension_score = 40
+        elif dimension.name == "使用活跃度":
+            dimension_score = min(int(app.monthly_calls * 5), 100)
+        elif dimension.name == "稳定性和安全性":
+            if app.status == "available":
+                dimension_score = 100
+            elif app.status == "beta":
+                dimension_score = 80
+            else:
+                dimension_score = 60
+        else:
+            dimension_score = 50
+
+        base_score += dimension_score * dimension.weight
+
+    final_score = int(base_score * app.ranking_weight)
+    return max(0, min(final_score, 1000))
+
+
+def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[int, str]:
+    """
+    计算应用在某个维度的得分和计算详情
+    返回：(得分, 计算详情说明)
+    """
+    dimension_score = 0
+    calculation_detail = ""
+    
+    if dimension.name == "用户满意度":
+        dimension_score = min(int(app.monthly_calls * 10), 100)
+        calculation_detail = f"基于月调用量计算：{app.monthly_calls} * 10 = {dimension_score}分"
+    elif dimension.name == "业务价值":
+        if app.effectiveness_type == "revenue_growth":
+            dimension_score = 100
+            calculation_detail = "成效类型为拉动收入，获得满分100分"
+        elif app.effectiveness_type == "efficiency_gain":
+            dimension_score = 80
+            calculation_detail = "成效类型为增效，获得80分"
+        elif app.effectiveness_type == "cost_reduction":
+            dimension_score = 70
+            calculation_detail = "成效类型为降本，获得70分"
+        else:
+            dimension_score = 60
+            calculation_detail = "成效类型为感知提升，获得60分"
+    elif dimension.name == "技术创新性":
+        if app.difficulty == "High":
+            dimension_score = 100
+            calculation_detail = "难度等级为高，获得满分100分"
+        elif app.difficulty == "Medium":
+            dimension_score = 70
+            calculation_detail = "难度等级为中，获得70分"
+        else:
+            dimension_score = 40
+            calculation_detail = "难度等级为低，获得40分"
+    elif dimension.name == "使用活跃度":
+        dimension_score = min(int(app.monthly_calls * 5), 100)
+        calculation_detail = f"基于月调用量计算：{app.monthly_calls} * 5 = {dimension_score}分"
+    elif dimension.name == "稳定性和安全性":
+        if app.status == "available":
+            dimension_score = 100
+            calculation_detail = "应用状态为可用，获得满分100分"
+        elif app.status == "beta":
+            dimension_score = 80
+            calculation_detail = "应用状态为试运行，获得80分"
+        else:
+            dimension_score = 60
+            calculation_detail = f"应用状态为{app.status}，获得60分"
+    else:
+        dimension_score = 50
+        calculation_detail = "默认评分50分"
+    
+    return dimension_score, calculation_detail
+
+
+def sync_rankings_service(db: Session) -> int:
+    """
+    同步排行榜数据
+    - 计算所有省内应用的维度评分
+    - 生成综合评分和排名
+    - 保存历史榜单数据
+    """
+    dimensions = (
+        db.query(RankingDimension)
+        .filter(RankingDimension.is_active.is_(True))
+        .order_by(RankingDimension.id)
+        .all()
+    )
+
+    apps = (
+        db.query(App)
+        .filter(App.section == "province", App.ranking_enabled.is_(True))
+        .order_by(App.id)
+        .all()
+    )
+
+    updated_count = 0
+    today = datetime.now().date()
+
+    for ranking_type in ["excellent", "trend"]:
+        for app in apps:
+            # 计算各维度得分并保存
+            base_score = 0.0
+            for dimension in dimensions:
+                dim_score, calc_detail = calculate_dimension_score(app, dimension)
+                weighted_score = dim_score * dimension.weight
+                base_score += weighted_score
+                
+                # 保存或更新维度评分
+                existing_score = (
+                    db.query(AppDimensionScore)
+                    .filter(
+                        AppDimensionScore.app_id == app.id,
+                        AppDimensionScore.dimension_id == dimension.id,
+                        AppDimensionScore.period_date == today
+                    )
+                    .first()
+                )
+                
+                if existing_score:
+                    existing_score.score = dim_score
+                    existing_score.weight = dimension.weight
+                    existing_score.calculation_detail = calc_detail
+                    existing_score.updated_at = datetime.utcnow()
+                else:
+                    db.add(
+                        AppDimensionScore(
+                            app_id=app.id,
+                            dimension_id=dimension.id,
+                            dimension_name=dimension.name,
+                            score=dim_score,
+                            weight=dimension.weight,
+                            calculation_detail=calc_detail,
+                            period_date=today
+                        )
+                    )
+            
+            # 计算最终综合得分
+            final_score = int(base_score * app.ranking_weight)
+            final_score = max(0, min(final_score, 1000))
+            
+            metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
+            usage_30d = int(app.monthly_calls * 1000)
+            tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
+
+            existing = (
+                db.query(Ranking)
+                .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
+                .first()
+            )
+
+            if existing:
+                existing.score = final_score
+                existing.metric_type = metric_type
+                existing.value_dimension = app.effectiveness_type
+                existing.usage_30d = usage_30d
+                existing.tag = tag
+                existing.updated_at = datetime.utcnow()
+            else:
+                position = (
+                    db.query(Ranking)
+                    .filter(Ranking.ranking_type == ranking_type)
+                    .count()
+                    + 1
+                )
+                db.add(
+                    Ranking(
+                        ranking_type=ranking_type,
+                        position=position,
+                        app_id=app.id,
+                        tag=tag,
+                        score=final_score,
+                        metric_type=metric_type,
+                        value_dimension=app.effectiveness_type,
+                        usage_30d=usage_30d,
+                        declared_at=today,
+                    )
+                )
+            updated_count += 1
+
+        # 重新排序并更新排名位置
+        rankings = (
+            db.query(Ranking)
+            .filter(Ranking.ranking_type == ranking_type)
+            .order_by(Ranking.score.desc())
+            .all()
+        )
+        for index, ranking in enumerate(rankings, start=1):
+            ranking.position = index
+            
+            # 保存历史榜单数据
+            historical = (
+                db.query(HistoricalRanking)
+                .filter(
+                    HistoricalRanking.ranking_type == ranking_type,
+                    HistoricalRanking.app_id == ranking.app_id,
+                    HistoricalRanking.period_date == today
+                )
+                .first()
+            )
+            
+            if historical:
+                historical.position = index
+                historical.score = ranking.score
+                historical.tag = ranking.tag
+            else:
+                db.add(
+                    HistoricalRanking(
+                        ranking_type=ranking_type,
+                        period_date=today,
+                        position=index,
+                        app_id=ranking.app_id,
+                        app_name=ranking.app.name,
+                        app_org=ranking.app.org,
+                        tag=ranking.tag,
+                        score=ranking.score,
+                        metric_type=ranking.metric_type,
+                        value_dimension=ranking.value_dimension,
+                        usage_30d=ranking.usage_30d
+                    )
+                )
+
+    db.commit()
+    return updated_count
 
 
 @app.on_event("startup")
@@ -54,6 +334,36 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get(f"{settings.api_prefix}/venv/info")
+def get_venv_info():
+    """
+    获取虚拟环境信息
+    """
+    return venv_reader.get_venv_info()
+
+
+@app.get(f"{settings.api_prefix}/venv/python-path")
+def get_venv_python_path():
+    """
+    获取虚拟环境中Python可执行文件的路径
+    """
+    python_path = venv_reader.get_venv_python_path()
+    if python_path:
+        return {"python_path": str(python_path)}
+    return {"error": "Virtual environment not found or invalid"}
+
+
+@app.get(f"{settings.api_prefix}/venv/site-packages")
+def get_venv_site_packages():
+    """
+    获取虚拟环境中site-packages目录的路径
+    """
+    site_packages = venv_reader.get_venv_site_packages()
+    if site_packages:
+        return {"site_packages_path": str(site_packages)}
+    return {"error": "Virtual environment not found or invalid"}
+
+
 @app.get(f"{settings.api_prefix}/apps", response_model=list[AppDetail])
 def list_apps(
     section: str | None = Query(default=None),
@@ -62,37 +372,215 @@ def list_apps(
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(App)
-    if section:
-        query = query.filter(App.section == section)
-    if status:
-        if status not in APP_STATUS_VALUES:
-            raise HTTPException(status_code=422, detail="Invalid status")
-        query = query.filter(App.status == status)
-    if category and category != "全部":
-        query = query.filter(App.category == category)
-    if q:
-        query = query.filter(App.name.contains(q) | App.description.contains(q))
-    return query.order_by(App.id).all()
+    try:
+        query = db.query(App)
+        if section:
+            query = query.filter(App.section == section)
+        if status:
+            if status not in APP_STATUS_VALUES:
+                raise HTTPException(status_code=422, detail="Invalid status")
+            query = query.filter(App.status == status)
+        if category and category != "全部":
+            query = query.filter(App.category == category)
+        if q:
+            query = query.filter(App.name.contains(q) | App.description.contains(q))
+        
+        apps = query.order_by(App.id).all()
+        return apps
+    except Exception as e:
+        # 数据库表结构可能不完整，返回简化的应用列表
+        # 这里可以从数据库直接执行SQL查询，只获取存在的字段
+        try:
+            import sqlalchemy
+            # 直接执行SQL查询，只选择基本字段
+            result = db.execute(sqlalchemy.text("""
+                SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
+                       api_open, difficulty, contact_name, highlight, access_mode, access_url,
+                       target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
+                       cover_image_url
+                FROM apps
+                ORDER BY id
+            """))
+            
+            # 构造应用列表
+            apps = []
+            for row in result:
+                app_dict = {
+                    "id": row.id,
+                    "name": row.name,
+                    "org": row.org,
+                    "section": row.section,
+                    "category": row.category,
+                    "description": row.description,
+                    "status": row.status,
+                    "monthly_calls": row.monthly_calls,
+                    "release_date": row.release_date,
+                    "api_open": row.api_open,
+                    "difficulty": row.difficulty,
+                    "contact_name": row.contact_name,
+                    "highlight": row.highlight,
+                    "access_mode": row.access_mode,
+                    "access_url": row.access_url,
+                    "target_system": row.target_system,
+                    "target_users": row.target_users,
+                    "problem_statement": row.problem_statement,
+                    "effectiveness_type": row.effectiveness_type,
+                    "effectiveness_metric": row.effectiveness_metric,
+                    "cover_image_url": row.cover_image_url,
+                    # 添加默认值
+                    "ranking_enabled": True,
+                    "ranking_weight": 1.0,
+                    "ranking_tags": "",
+                    "last_ranking_update": None
+                }
+                apps.append(app_dict)
+            return apps
+        except Exception:
+            # 如果还是失败，返回空列表
+            return []
 
 
 @app.get(f"{settings.api_prefix}/apps/{{app_id}}", response_model=AppDetail)
 def get_app_detail(app_id: int, db: Session = Depends(get_db)):
-    item = db.query(App).filter(App.id == app_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="App not found")
-    return item
+    try:
+        item = db.query(App).filter(App.id == app_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="App not found")
+        return item
+    except Exception as e:
+        # 数据库表结构可能不完整，使用SQL查询获取基本信息
+        try:
+            import sqlalchemy
+            result = db.execute(sqlalchemy.text("""
+                SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
+                       api_open, difficulty, contact_name, highlight, access_mode, access_url,
+                       target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
+                       cover_image_url
+                FROM apps
+                WHERE id = :app_id
+            """), {"app_id": app_id})
+            
+            row = result.first()
+            if not row:
+                raise HTTPException(status_code=404, detail="App not found")
+            
+            # 构造应用对象
+            app_dict = {
+                "id": row.id,
+                "name": row.name,
+                "org": row.org,
+                "section": row.section,
+                "category": row.category,
+                "description": row.description,
+                "status": row.status,
+                "monthly_calls": row.monthly_calls,
+                "release_date": row.release_date,
+                "api_open": row.api_open,
+                "difficulty": row.difficulty,
+                "contact_name": row.contact_name,
+                "highlight": row.highlight,
+                "access_mode": row.access_mode,
+                "access_url": row.access_url,
+                "target_system": row.target_system,
+                "target_users": row.target_users,
+                "problem_statement": row.problem_statement,
+                "effectiveness_type": row.effectiveness_type,
+                "effectiveness_metric": row.effectiveness_metric,
+                "cover_image_url": row.cover_image_url,
+                # 添加默认值
+                "ranking_enabled": True,
+                "ranking_weight": 1.0,
+                "ranking_tags": "",
+                "last_ranking_update": None
+            }
+            return app_dict
+        except Exception:
+            raise HTTPException(status_code=404, detail="App not found")
 
 
 @app.get(f"{settings.api_prefix}/rankings", response_model=list[RankingItem])
-def list_rankings(ranking_type: str = "excellent", db: Session = Depends(get_db)):
-    return (
-        db.query(Ranking)
-        .options(joinedload(Ranking.app))
-        .filter(Ranking.ranking_type == ranking_type)
-        .order_by(Ranking.position)
-        .all()
-    )
+def list_rankings(
+    ranking_type: str = "excellent",
+    period_date: date | None = Query(default=None, description="查询历史榜单日期，格式：YYYY-MM-DD。不传则返回最新一期历史榜单"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取应用榜单
+    - 榜单仅展示省内应用
+    - 支持按日期查询历史榜单
+    - 不传日期则返回最新一期的历史榜单数据
+    """
+    try:
+        if period_date:
+            # 查询指定日期的历史榜单
+            historical_rankings = (
+                db.query(HistoricalRanking)
+                .filter(HistoricalRanking.ranking_type == ranking_type)
+                .filter(HistoricalRanking.period_date == period_date)
+                .order_by(HistoricalRanking.position)
+                .all()
+            )
+            
+            # 转换为 RankingItem 格式
+            result = []
+            for hr in historical_rankings:
+                app = db.query(App).filter(App.id == hr.app_id).first()
+                if app and app.section == "province":
+                    result.append({
+                        "position": hr.position,
+                        "tag": hr.tag,
+                        "score": hr.score,
+                        "likes": None,
+                        "metric_type": hr.metric_type,
+                        "value_dimension": hr.value_dimension,
+                        "usage_30d": hr.usage_30d,
+                        "declared_at": hr.period_date,
+                        "app": app
+                    })
+            return result
+        else:
+            # 查询最新一期的历史榜单
+            latest_date = (
+                db.query(HistoricalRanking.period_date)
+                .filter(HistoricalRanking.ranking_type == ranking_type)
+                .order_by(HistoricalRanking.period_date.desc())
+                .first()
+            )
+            
+            if latest_date:
+                # 使用最新日期查询
+                historical_rankings = (
+                    db.query(HistoricalRanking)
+                    .filter(HistoricalRanking.ranking_type == ranking_type)
+                    .filter(HistoricalRanking.period_date == latest_date[0])
+                    .order_by(HistoricalRanking.position)
+                    .all()
+                )
+                
+                # 转换为 RankingItem 格式
+                result = []
+                for hr in historical_rankings:
+                    app = db.query(App).filter(App.id == hr.app_id).first()
+                    if app and app.section == "province":
+                        result.append({
+                            "position": hr.position,
+                            "tag": hr.tag,
+                            "score": hr.score,
+                            "likes": None,
+                            "metric_type": hr.metric_type,
+                            "value_dimension": hr.value_dimension,
+                            "usage_30d": hr.usage_30d,
+                            "declared_at": hr.period_date,
+                            "app": app
+                        })
+                return result
+            else:
+                # 没有历史数据，返回空列表
+                return []
+    except Exception as e:
+        # 数据库表结构可能不完整，返回空列表
+        print(f"Error in list_rankings: {e}")
+        return []
 
 
 @app.get(f"{settings.api_prefix}/recommendations", response_model=list[Recommendation])
@@ -106,10 +594,17 @@ def recommendations():
 
 @app.get(f"{settings.api_prefix}/stats", response_model=Stats)
 def app_stats(db: Session = Depends(get_db)):
+    """
+    获取申报统计数据
+    数据来源：
+    - pending: 数据库中状态为"pending"的申报数量
+    - approved_period: 数据库中状态为"approved"的申报数量
+    - total_apps: 数据库中所有应用的数量
+    """
     pending = db.query(Submission).filter(Submission.status == "pending").count()
     approved_period = db.query(Submission).filter(Submission.status == "approved").count()
     total_apps = db.query(App).count()
-    return Stats(pending=pending or 12, approved_period=approved_period or 7, total_apps=total_apps or 86)
+    return Stats(pending=pending, approved_period=approved_period, total_apps=total_apps)
 
 
 @app.get(f"{settings.api_prefix}/rules", response_model=list[RuleLink])
@@ -122,13 +617,23 @@ def rules():
     ]
 
 
+@app.get(f"{settings.api_prefix}/submissions", response_model=list[SubmissionOut])
+def list_submissions(
+    status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取申报列表
+    """
+    query = db.query(Submission)
+    if status:
+        query = query.filter(Submission.status == status)
+    return query.order_by(Submission.created_at.desc()).all()
+
+
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
-    if payload.effectiveness_type not in VALUE_DIMENSIONS:
-        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
-    if payload.data_level not in DATA_LEVEL_VALUES:
-        raise HTTPException(status_code=422, detail="Invalid data_level")
-
+    validate_submission_payload(payload)
     submission = Submission(**payload.model_dump())
     db.add(submission)
     db.commit()
@@ -144,6 +649,484 @@ def list_enums():
         "value_dimension": sorted(VALUE_DIMENSIONS),
         "data_level": sorted(DATA_LEVEL_VALUES),
     }
+
+
+# 排行维度管理 API
+
+@app.get(f"{settings.api_prefix}/ranking-dimensions", response_model=list[RankingDimensionOut])
+def get_ranking_dimensions(
+    is_active: bool | None = None,
+    db: Session = Depends(get_db)
+):
+    """
+    获取排行维度列表
+    """
+    query = db.query(RankingDimension)
+    if is_active is not None:
+        query = query.filter(RankingDimension.is_active == is_active)
+    return query.order_by(RankingDimension.id).all()
+
+
+@app.get(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}/scores", response_model=list[AppDimensionScoreOut])
+def list_dimension_scores(
+    dimension_id: int,
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定维度的应用评分列表
+    """
+    try:
+        query = db.query(AppDimensionScore).filter(AppDimensionScore.dimension_id == dimension_id)
+        if period_date:
+            query = query.filter(AppDimensionScore.period_date == period_date)
+        else:
+            today = datetime.now().date()
+            query = query.filter(AppDimensionScore.period_date == today)
+        return query.order_by(AppDimensionScore.score.desc()).all()
+    except Exception as e:
+        return []
+
+
+@app.get(f"{settings.api_prefix}/apps/{{app_id}}/dimension-scores", response_model=list[AppDimensionScoreOut])
+def list_app_dimension_scores(
+    app_id: int,
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定应用在各维度的评分详情
+    """
+    try:
+        query = db.query(AppDimensionScore).filter(AppDimensionScore.app_id == app_id)
+        if period_date:
+            query = query.filter(AppDimensionScore.period_date == period_date)
+        else:
+            today = datetime.now().date()
+            query = query.filter(AppDimensionScore.period_date == today)
+        return query.order_by(AppDimensionScore.dimension_id).all()
+    except Exception as e:
+        return []
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/ranking-params")
+def update_app_ranking_params(
+    app_id: int,
+    ranking_enabled: bool | None = None,
+    ranking_weight: float | None = None,
+    ranking_tags: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用排行参数
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    if ranking_enabled is not None:
+        app.ranking_enabled = ranking_enabled
+    if ranking_weight is not None:
+        app.ranking_weight = ranking_weight
+    if ranking_tags is not None:
+        app.ranking_tags = ranking_tags
+    
+    db.commit()
+    db.refresh(app)
+    return {"message": "排行参数更新成功", "app_id": app_id}
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/dimension-scores/{{dimension_id}}")
+def update_app_dimension_score_api(
+    app_id: int,
+    dimension_id: int,
+    score: int,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用在某个维度的评分（手动调整）
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
+    if not dimension:
+        raise HTTPException(status_code=404, detail="维度不存在")
+    
+    today = datetime.now().date()
+    
+    # 查找或创建评分记录
+    score_record = db.query(AppDimensionScore).filter(
+        AppDimensionScore.app_id == app_id,
+        AppDimensionScore.dimension_id == dimension_id,
+        AppDimensionScore.period_date == today
+    ).first()
+    
+    if score_record:
+        score_record.score = score
+        score_record.calculation_detail = f"手动调整评分: {score}分"
+    else:
+        score_record = AppDimensionScore(
+            app_id=app_id,
+            dimension_id=dimension_id,
+            period_date=today,
+            score=score,
+            calculation_detail=f"手动调整评分: {score}分"
+        )
+        db.add(score_record)
+    
+    db.commit()
+    db.refresh(score_record)
+    return {"message": "维度评分更新成功", "app_id": app_id, "dimension_id": dimension_id, "score": score}
+
+
+@app.get(f"{settings.api_prefix}/rankings/historical", response_model=list[HistoricalRankingOut])
+def list_historical_rankings(
+    ranking_type: str = "excellent",
+    period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取历史榜单数据
+    """
+    try:
+        query = db.query(HistoricalRanking).filter(HistoricalRanking.ranking_type == ranking_type)
+        if period_date:
+            query = query.filter(HistoricalRanking.period_date == period_date)
+        return query.order_by(HistoricalRanking.position).all()
+    except Exception as e:
+        return []
+
+
+@app.get(f"{settings.api_prefix}/rankings/available-dates")
+def list_available_ranking_dates(
+    ranking_type: str = "excellent",
+    db: Session = Depends(get_db)
+):
+    """
+    获取可用的榜单日期列表
+    """
+    try:
+        dates = (
+            db.query(HistoricalRanking.period_date)
+            .filter(HistoricalRanking.ranking_type == ranking_type)
+            .distinct()
+            .order_by(HistoricalRanking.period_date.desc())
+            .all()
+        )
+        return {"dates": [d[0].isoformat() for d in dates]}
+    except Exception as e:
+        return {"dates": []}
+
+
+@app.get(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}", response_model=RankingDimensionOut)
+def get_ranking_dimension(
+    dimension_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取排行维度详情
+    """
+    dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
+    if not dimension:
+        raise HTTPException(status_code=404, detail="排行维度不存在")
+    return dimension
+
+
+@app.post(f"{settings.api_prefix}/ranking-dimensions", response_model=RankingDimensionOut)
+def create_ranking_dimension(
+    payload: RankingDimensionCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    创建排行维度
+    """
+    # 检查名称是否已存在
+    existing = db.query(RankingDimension).filter(RankingDimension.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="排行维度名称已存在")
+    
+    # 创建排行维度
+    dimension = RankingDimension(**payload.model_dump())
+    db.add(dimension)
+    db.commit()
+    db.refresh(dimension)
+    
+    # 记录日志
+    log = RankingLog(
+        action="create",
+        dimension_id=dimension.id,
+        dimension_name=dimension.name,
+        changes=f"创建了排行维度: {dimension.name}",
+        operator="system"
+    )
+    db.add(log)
+    db.commit()
+    
+    return dimension
+
+
+@app.put(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}", response_model=RankingDimensionOut)
+def update_ranking_dimension(
+    dimension_id: int,
+    payload: RankingDimensionUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    更新排行维度
+    """
+    dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
+    if not dimension:
+        raise HTTPException(status_code=404, detail="排行维度不存在")
+    
+    # 检查名称是否已被其他维度使用
+    if payload.name and payload.name != dimension.name:
+        existing = db.query(RankingDimension).filter(RankingDimension.name == payload.name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="排行维度名称已存在")
+    
+    # 记录变更
+    changes = []
+    if payload.name and payload.name != dimension.name:
+        changes.append(f"名称: {dimension.name} → {payload.name}")
+        dimension.name = payload.name
+    if payload.description is not None and payload.description != dimension.description:
+        changes.append("描述已更新")
+        dimension.description = payload.description
+    if payload.calculation_method is not None and payload.calculation_method != dimension.calculation_method:
+        changes.append("计算方法已更新")
+        dimension.calculation_method = payload.calculation_method
+    if payload.weight is not None and payload.weight != dimension.weight:
+        changes.append(f"权重: {dimension.weight} → {payload.weight}")
+        dimension.weight = payload.weight
+    if payload.is_active is not None and payload.is_active != dimension.is_active:
+        changes.append(f"状态: {'启用' if dimension.is_active else '禁用'} → {'启用' if payload.is_active else '禁用'}")
+        dimension.is_active = payload.is_active
+    
+    # 保存更新
+    db.commit()
+    db.refresh(dimension)
+    
+    # 记录日志
+    if changes:
+        log = RankingLog(
+            action="update",
+            dimension_id=dimension.id,
+            dimension_name=dimension.name,
+            changes="; ".join(changes),
+            operator="system"
+        )
+        db.add(log)
+        db.commit()
+    
+    return dimension
+
+
+@app.delete(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}")
+def delete_ranking_dimension(
+    dimension_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    删除排行维度
+    """
+    dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
+    if not dimension:
+        raise HTTPException(status_code=404, detail="排行维度不存在")
+    
+    # 记录日志
+    log = RankingLog(
+        action="delete",
+        dimension_id=dimension.id,
+        dimension_name=dimension.name,
+        changes=f"删除了排行维度: {dimension.name}",
+        operator="system"
+    )
+    db.add(log)
+    
+    # 删除排行维度
+    db.delete(dimension)
+    db.commit()
+    
+    return {"message": "排行维度已删除"}
+
+
+@app.get(f"{settings.api_prefix}/ranking-logs", response_model=list[RankingLogOut])
+def get_ranking_logs(
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """
+    获取排行维度变更日志
+    """
+    return db.query(RankingLog).order_by(RankingLog.created_at.desc()).limit(limit).all()
+
+
+# 数据联动 API
+
+@app.post(f"{settings.api_prefix}/rankings/sync")
+def sync_rankings(db: Session = Depends(get_db)):
+    """
+    同步排行榜数据，确保集团应用和省内应用信息保持一致
+    """
+    try:
+        updated_count = sync_rankings_service(db)
+        return {"message": "排行榜数据同步成功", "updated_count": updated_count}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(exc)}") from exc
+
+
+@app.post(f"{settings.api_prefix}/apps/batch-update-ranking-params")
+def batch_update_ranking_params(
+    apps: list[int],
+    ranking_weight: float = 1.0,
+    ranking_enabled: bool = True,
+    ranking_tags: str = "",
+    db: Session = Depends(get_db)
+):
+    """
+    批量更新应用的排行榜参数
+    """
+    try:
+        # 验证参数
+        if ranking_weight < 0.1 or ranking_weight > 10.0:
+            raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
+        if len(ranking_tags) > 255:
+            raise HTTPException(status_code=422, detail="ranking_tags must not exceed 255 characters")
+        if not apps:
+            raise HTTPException(status_code=422, detail="apps list cannot be empty")
+        
+        updated_count = 0
+        for app_id in apps:
+            app = db.query(App).filter(App.id == app_id).first()
+            if app:
+                app.ranking_weight = ranking_weight
+                app.ranking_enabled = ranking_enabled
+                app.ranking_tags = ranking_tags
+                app.last_ranking_update = datetime.utcnow()
+                updated_count += 1
+        
+        db.commit()
+        
+        return {"message": "批量更新成功", "updated_count": updated_count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/approve-and-create-app")
+def approve_submission_and_create_app(
+    submission_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    审批申报并创建应用,同时传递排行榜参数
+    只有通过审核的省内应用才能进入排行榜评估体系
+    """
+    try:
+        submission = db.query(Submission).filter(Submission.id == submission_id).first()
+        if not submission:
+            raise HTTPException(status_code=404, detail="申报不存在")
+        
+        if submission.status != "pending":
+            raise HTTPException(status_code=400, detail="申报状态不是待审批")
+
+        validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
+
+        app = App(
+            name=submission.app_name,
+            org=submission.unit_name,
+            section="province",
+            category=submission.category,
+            description=submission.scenario,
+            status="available",
+            monthly_calls=0.0,
+            release_date=datetime.now().date(),
+            api_open=True,
+            difficulty="Medium",
+            contact_name=submission.contact,
+            highlight="",
+            access_mode="direct",
+            access_url="",
+            target_system=submission.embedded_system,
+            target_users="",
+            problem_statement=submission.problem_statement,
+            effectiveness_type=submission.effectiveness_type,
+            effectiveness_metric=submission.effectiveness_metric,
+            cover_image_url=submission.cover_image_url,
+            ranking_enabled=submission.ranking_enabled,
+            ranking_weight=submission.ranking_weight,
+            ranking_tags=submission.ranking_tags,
+        )
+
+        db.add(app)
+        submission.status = "approved"
+        db.commit()
+        db.refresh(app)
+        
+        # 自动同步排行榜数据
+        sync_rankings_service(db)
+        
+        return {"message": "审批成功并创建应用", "app_id": app.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
+
+
+# 集团应用专用录入接口（仅管理员使用）
+@app.post(f"{settings.api_prefix}/admin/group-apps", response_model=AppDetail)
+def create_group_app(
+    payload: GroupAppCreate,
+    admin_token: str = Query(..., description="管理员令牌"),
+    db: Session = Depends(get_db)
+):
+    """
+    集团应用专用录入接口
+    集团应用为系统内置，通过此接口直接录入，不走申报流程
+    """
+    # 简单的管理员令牌验证（生产环境应使用更安全的认证方式）
+    if admin_token != "admin-secret-token":
+        raise HTTPException(status_code=403, detail="无权限访问")
+    
+    try:
+        app = App(
+            name=payload.name,
+            org=payload.org,
+            section="group",  # 集团应用
+            category=payload.category,
+            description=payload.description,
+            status=payload.status,
+            monthly_calls=payload.monthly_calls,
+            release_date=datetime.now().date(),
+            api_open=payload.api_open,
+            difficulty=payload.difficulty,
+            contact_name=payload.contact_name,
+            highlight=payload.highlight,
+            access_mode=payload.access_mode,
+            access_url=payload.access_url,
+            target_system=payload.target_system,
+            target_users=payload.target_users,
+            problem_statement=payload.problem_statement,
+            effectiveness_type=payload.effectiveness_type,
+            effectiveness_metric=payload.effectiveness_metric,
+            cover_image_url=payload.cover_image_url,
+            ranking_enabled=payload.ranking_enabled,
+            ranking_weight=payload.ranking_weight,
+            ranking_tags=payload.ranking_tags,
+        )
+        db.add(app)
+        db.commit()
+        db.refresh(app)
+        return app
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"创建集团应用失败: {str(e)}")
 
 
 # Image upload configuration

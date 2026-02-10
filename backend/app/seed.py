@@ -1,11 +1,15 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from .models import App, Ranking
+from .models import App, Ranking, RankingDimension, Submission
+
+VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
+DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
+DEFAULT_RANKING_TAG = "推荐"
 
 
-APPS = [
+GROUP_APPS = [
     dict(
         name="智能客服助手",
         org="河北移动",
@@ -70,102 +74,489 @@ APPS = [
         effectiveness_metric="MTTR 降低 28%",
     ),
     dict(
-        name="AI会议助手",
+        name="智能营销助手",
         org="河北移动",
-        section="province",
-        category="办公类",
-        description="自动生成会议纪要、待办事项与行动计划",
+        section="group",
+        category="业务前台",
+        description="基于用户画像的智能营销方案生成系统",
         status="available",
-        monthly_calls=12.3,
-        release_date=date(2024, 4, 1),
+        monthly_calls=18.7,
+        release_date=date(2024, 2, 15),
+        api_open=True,
+        difficulty="Medium",
+        contact_name="张旭",
+        highlight="精准营销推荐",
+        access_mode="direct",
+        access_url="https://aiapps.hebei.cn/marketing-assistant",
+        target_system="营销支撑系统",
+        target_users="营销经理、渠道管理员",
+        problem_statement="营销方案制定依赖经验，精准度不足",
+        effectiveness_type="revenue_growth",
+        effectiveness_metric="营销转化率提升 25%",
+    ),
+    dict(
+        name="网络优化专家",
+        org="河北电信",
+        section="group",
+        category="运维后台",
+        description="基于AI的网络参数自动优化系统",
+        status="beta",
+        monthly_calls=12.5,
+        release_date=date(2024, 4, 10),
+        api_open=False,
+        difficulty="High",
+        contact_name="刘阳",
+        highlight="网络质量自动优化",
+        access_mode="direct",
+        access_url="https://aiapps.hebei.cn/network-optimizer",
+        target_system="网络管理系统",
+        target_users="网络优化工程师",
+        problem_statement="网络优化依赖人工分析，效率低下",
+        effectiveness_type="cost_reduction",
+        effectiveness_metric="网络优化成本降低 40%",
+    ),
+    dict(
+        name="人力资源智能助手",
+        org="河北联通",
+        section="group",
+        category="企业管理",
+        description="智能招聘、培训和绩效分析系统",
+        status="available",
+        monthly_calls=9.2,
+        release_date=date(2024, 1, 20),
         api_open=True,
         difficulty="Low",
-        contact_name="孙薇",
-        highlight="纪要自动化",
-        access_mode="direct",
-        access_url="https://aiapps.hebei.cn/meeting-assistant",
-        target_system="OA 会议管理",
-        target_users="项目经理、秘书",
+        contact_name="陈明",
+        highlight="人才管理智能化",
+        access_mode="profile",
+        access_url="",
+        target_system="HR 管理系统",
+        target_users="HR 专员、部门经理",
+        problem_statement="人力资源管理流程繁琐，数据分析困难",
+        effectiveness_type="efficiency_gain",
+        effectiveness_metric="招聘周期缩短 35%",
+    ),
+]
+
+PROVINCE_SUBMISSIONS = [
+    dict(
+        app_name="AI会议助手",
+        unit_name="石家庄移动",
+        contact="孙薇",
+        contact_phone="13800000001",
+        contact_email="sunwei@example.com",
+        category="办公类",
+        scenario="自动生成会议纪要、待办事项与行动计划，提升会议效率并减少人工记录负担。",
+        embedded_system="OA 会议管理",
         problem_statement="会后纪要整理耗时且遗漏风险高",
         effectiveness_type="perception_uplift",
         effectiveness_metric="会议满意度提升 18%",
+        data_level="L2",
+        expected_benefit="缩短会议整理时间并提高执行效率",
+        ranking_tags="新星",
+        ranking_dimensions="1,2",
     ),
     dict(
-        name="智能数据分析",
-        org="河北电信",
-        section="province",
+        app_name="智能数据分析",
+        unit_name="唐山电信",
+        contact="周凡",
+        contact_phone="13800000002",
+        contact_email="zhoufan@example.com",
         category="企业管理",
-        description="一键生成分析报告，支持多维可视化",
-        status="approval",
-        monthly_calls=6.6,
-        release_date=date(2024, 6, 1),
-        api_open=True,
-        difficulty="High",
-        contact_name="周凡",
-        highlight="经营洞察实时化",
-        access_mode="profile",
-        access_url="",
-        target_system="经营分析平台",
-        target_users="经营分析师、部门负责人",
+        scenario="一键生成分析报告，支持多维可视化，帮助管理层快速决策。",
+        embedded_system="经营分析平台",
         problem_statement="跨系统取数慢，报表产出周期长",
         effectiveness_type="revenue_growth",
         effectiveness_metric="营销转化率提升 6.5%",
+        data_level="L3",
+        expected_benefit="缩短报表出具时间并提升决策效率",
+        ranking_tags="推荐",
+        ranking_dimensions="2,4",
     ),
     dict(
-        name="流程自动化引擎",
-        org="河北联通",
-        section="province",
+        app_name="流程自动化引擎",
+        unit_name="邯郸联通",
+        contact="陈涛",
+        contact_phone="13800000003",
+        contact_email="chentao@example.com",
         category="企业管理",
-        description="低代码流程编排，快速实现业务自动化",
-        status="offline",
-        monthly_calls=9.9,
-        release_date=date(2024, 2, 1),
-        api_open=True,
-        difficulty="Medium",
-        contact_name="陈涛",
-        highlight="流程上线周期缩短",
-        access_mode="profile",
-        access_url="",
-        target_system="BPM 流程引擎",
-        target_users="流程管理员、业务运营",
+        scenario="低代码流程编排，快速实现跨部门业务自动化与审批流转。",
+        embedded_system="BPM 流程引擎",
         problem_statement="跨部门流程编排复杂，改动上线慢",
         effectiveness_type="cost_reduction",
         effectiveness_metric="流程搭建成本降低 30%",
+        data_level="L2",
+        expected_benefit="缩短流程上线周期并降低改造成本",
+        ranking_tags="推荐",
+        ranking_dimensions="3,4",
+    ),
+    dict(
+        app_name="智慧校园助手",
+        unit_name="保定移动",
+        contact="王丽",
+        contact_phone="13800000004",
+        contact_email="wangli@example.com",
+        category="业务前台",
+        scenario="面向高校的智能校园服务系统，提供一站式服务与智能问答。",
+        embedded_system="校园管理系统",
+        problem_statement="校园服务分散，用户体验差",
+        effectiveness_type="perception_uplift",
+        effectiveness_metric="校园服务满意度提升 40%",
+        data_level="L1",
+        expected_benefit="提升校园服务体验与学生满意度",
+        ranking_tags="新星",
+        ranking_dimensions="1,5",
+    ),
+    dict(
+        app_name="工业互联网平台",
+        unit_name="沧州电信",
+        contact="李强",
+        contact_phone="13800000005",
+        contact_email="liqiang@example.com",
+        category="业务前台",
+        scenario="面向制造业的智能生产管理平台，辅助生产排程与质量监控。",
+        embedded_system="工业控制系统",
+        problem_statement="生产管理信息化水平低，效率不高",
+        effectiveness_type="efficiency_gain",
+        effectiveness_metric="生产效率提升 30%",
+        data_level="L3",
+        expected_benefit="提升生产效率并减少工序损耗",
+        ranking_tags="推荐",
+        ranking_dimensions="2,4",
+    ),
+    dict(
+        app_name="乡村振兴服务平台",
+        unit_name="邢台移动",
+        contact="赵芳",
+        contact_phone="13800000006",
+        contact_email="zhaofang@example.com",
+        category="业务前台",
+        scenario="面向农村的信息化服务平台，提供政策、培训和服务指引。",
+        embedded_system="农业农村信息系统",
+        problem_statement="农村信息化水平低，服务获取困难",
+        effectiveness_type="perception_uplift",
+        effectiveness_metric="农村服务满意度提升 25%",
+        data_level="L1",
+        expected_benefit="提升农村信息服务覆盖率",
+        ranking_tags="新星",
+        ranking_dimensions="1,5",
+    ),
+    dict(
+        app_name="金融科技助手",
+        unit_name="衡水联通",
+        contact="吴强",
+        contact_phone="13800000007",
+        contact_email="wuqiang@example.com",
+        category="企业管理",
+        scenario="面向金融机构的智能风控和营销系统，提升审批效率与风控能力。",
+        embedded_system="金融核心系统",
+        problem_statement="金融风控依赖人工，效率和准确率低",
+        effectiveness_type="revenue_growth",
+        effectiveness_metric="风控准确率提升 35%",
+        data_level="L4",
+        expected_benefit="提高风控准确率并降低风险成本",
+        ranking_tags="推荐",
+        ranking_dimensions="2,3",
+    ),
+    dict(
+        app_name="文旅智能导览",
+        unit_name="承德电信",
+        contact="郑华",
+        contact_phone="13800000008",
+        contact_email="zhenghua@example.com",
+        category="业务前台",
+        scenario="面向旅游景区的智能导览和推荐系统，支持多语言与个性化推荐。",
+        embedded_system="旅游管理系统",
+        problem_statement="旅游导览同质化，游客体验单一",
+        effectiveness_type="perception_uplift",
+        effectiveness_metric="游客满意度提升 30%",
+        data_level="L2",
+        expected_benefit="提升游客体验并带动二次消费",
+        ranking_tags="推荐",
+        ranking_dimensions="1,2",
+    ),
+    dict(
+        app_name="医疗健康助手",
+        unit_name="秦皇岛移动",
+        contact="孙医生",
+        contact_phone="13800000009",
+        contact_email="sunyi@example.com",
+        category="业务前台",
+        scenario="智能问诊、健康管理和医疗资源调度系统，缓解就医高峰。",
+        embedded_system="医院信息系统",
+        problem_statement="医疗资源分配不均，患者就医体验差",
+        effectiveness_type="efficiency_gain",
+        effectiveness_metric="患者等待时间减少 45%",
+        data_level="L3",
+        expected_benefit="提高医疗资源利用率并缩短等待时间",
+        ranking_tags="新星",
+        ranking_dimensions="4,5",
     ),
 ]
 
 
-RANKINGS = [
-    dict(ranking_type="excellent", position=1, app_name="智能客服助手", tag="历史优秀", score=96, likes=328, metric_type="composite", value_dimension="efficiency_gain", usage_30d=15400, declared_at=date(2024, 12, 1)),
-    dict(ranking_type="excellent", position=2, app_name="运维监控大屏", tag="推荐", score=91, likes=255, metric_type="composite", value_dimension="cost_reduction", usage_30d=23100, declared_at=date(2024, 11, 20)),
-    dict(ranking_type="excellent", position=3, app_name="AI会议助手", tag="新星", score=88, likes=287, metric_type="composite", value_dimension="perception_uplift", usage_30d=12300, declared_at=date(2024, 11, 3)),
-    dict(ranking_type="trend", position=1, app_name="智能数据分析", tag="新星", score=76, likes=198, metric_type="growth_rate", value_dimension="revenue_growth", usage_30d=6600, declared_at=date(2024, 12, 9)),
-    dict(ranking_type="trend", position=2, app_name="文档智能分析", tag="推荐", score=65, likes=176, metric_type="likes", value_dimension="efficiency_gain", usage_30d=8800, declared_at=date(2024, 12, 10)),
+DEFAULT_DIMENSIONS = [
+    {
+        "name": "用户满意度",
+        "description": "基于用户反馈和使用数据评估应用的满意度",
+        "calculation_method": "基于应用的月调用量和用户评分计算",
+        "weight": 3.0,
+        "is_active": True,
+    },
+    {
+        "name": "业务价值",
+        "description": "评估应用对业务的提升作用",
+        "calculation_method": "基于应用的成效类型和指标计算",
+        "weight": 2.5,
+        "is_active": True,
+    },
+    {
+        "name": "技术创新性",
+        "description": "评估应用的技术方案和创新点",
+        "calculation_method": "基于应用的难度等级计算",
+        "weight": 2.0,
+        "is_active": True,
+    },
+    {
+        "name": "使用活跃度",
+        "description": "评估应用的使用频率和用户活跃度",
+        "calculation_method": "基于应用的月调用量计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+    {
+        "name": "稳定性和安全性",
+        "description": "评估应用的可靠性和安全性",
+        "calculation_method": "基于应用的状态和错误率计算",
+        "weight": 1.0,
+        "is_active": True,
+    },
 ]
 
 
-def seed_data(db: Session):
-    if db.query(App).count() > 0:
+def create_submission_direct(db: Session, payload: dict) -> Submission:
+    """直接创建申报记录，不经过Pydantic验证"""
+    submission = Submission(
+        app_name=payload["app_name"],
+        unit_name=payload["unit_name"],
+        contact=payload["contact"],
+        contact_phone=payload.get("contact_phone", ""),
+        contact_email=payload.get("contact_email", ""),
+        category=payload["category"],
+        scenario=payload["scenario"],
+        embedded_system=payload["embedded_system"],
+        problem_statement=payload["problem_statement"],
+        effectiveness_type=payload["effectiveness_type"],
+        effectiveness_metric=payload["effectiveness_metric"],
+        data_level=payload["data_level"],
+        expected_benefit=payload["expected_benefit"],
+        status="pending",
+        ranking_enabled=payload.get("ranking_enabled", True),
+        ranking_weight=payload.get("ranking_weight", 1.0),
+        ranking_tags=payload.get("ranking_tags", ""),
+        ranking_dimensions=payload.get("ranking_dimensions", ""),
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+def approve_submission_and_create_app(db: Session, submission: Submission) -> App:
+    if submission.status != "pending":
+        raise ValueError("submission is not pending")
+
+    app = App(
+        name=submission.app_name,
+        org=submission.unit_name,
+        section="province",
+        category=submission.category,
+        description=submission.scenario,
+        status="available",
+        monthly_calls=0.0,
+        release_date=date.today(),
+        api_open=True,
+        difficulty="Medium",
+        contact_name=submission.contact,
+        highlight="",
+        access_mode="direct",
+        access_url="",
+        target_system=submission.embedded_system,
+        target_users="",
+        problem_statement=submission.problem_statement,
+        effectiveness_type=submission.effectiveness_type,
+        effectiveness_metric=submission.effectiveness_metric,
+        cover_image_url="",
+        ranking_enabled=submission.ranking_enabled,
+        ranking_weight=submission.ranking_weight,
+        ranking_tags=submission.ranking_tags,
+    )
+
+    db.add(app)
+    submission.status = "approved"
+    db.commit()
+    db.refresh(app)
+    return app
+
+
+def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
+    if not dimensions:
+        return max(0, min(int(app.monthly_calls * 10), 1000))
+
+    base_score = 0.0
+    for dimension in dimensions:
+        dimension_score = 0
+        if dimension.name == "用户满意度":
+            dimension_score = min(int(app.monthly_calls * 10), 100)
+        elif dimension.name == "业务价值":
+            if app.effectiveness_type == "revenue_growth":
+                dimension_score = 100
+            elif app.effectiveness_type == "efficiency_gain":
+                dimension_score = 80
+            elif app.effectiveness_type == "cost_reduction":
+                dimension_score = 70
+            else:
+                dimension_score = 60
+        elif dimension.name == "技术创新性":
+            if app.difficulty == "High":
+                dimension_score = 100
+            elif app.difficulty == "Medium":
+                dimension_score = 70
+            else:
+                dimension_score = 40
+        elif dimension.name == "使用活跃度":
+            dimension_score = min(int(app.monthly_calls * 5), 100)
+        elif dimension.name == "稳定性和安全性":
+            if app.status == "available":
+                dimension_score = 100
+            elif app.status == "beta":
+                dimension_score = 80
+            else:
+                dimension_score = 60
+        else:
+            dimension_score = 50
+
+        base_score += dimension_score * dimension.weight
+
+    final_score = int(base_score * app.ranking_weight)
+    return max(0, min(final_score, 1000))
+
+
+def sync_rankings(db: Session) -> int:
+    dimensions = (
+        db.query(RankingDimension)
+        .filter(RankingDimension.is_active.is_(True))
+        .order_by(RankingDimension.id)
+        .all()
+    )
+    apps = (
+        db.query(App)
+        .filter(App.section == "province", App.ranking_enabled.is_(True))
+        .order_by(App.id)
+        .all()
+    )
+    updated_count = 0
+    for ranking_type in ["excellent", "trend"]:
+        for app in apps:
+            score = calculate_app_score(app, dimensions)
+            metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
+            usage_30d = int(app.monthly_calls * 1000)
+            tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
+            existing = (
+                db.query(Ranking)
+                .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
+                .first()
+            )
+            if existing:
+                existing.score = score
+                existing.metric_type = metric_type
+                existing.value_dimension = app.effectiveness_type
+                existing.usage_30d = usage_30d
+                existing.tag = tag
+            else:
+                position = (
+                    db.query(Ranking)
+                    .filter(Ranking.ranking_type == ranking_type)
+                    .count()
+                    + 1
+                )
+                db.add(
+                    Ranking(
+                        ranking_type=ranking_type,
+                        position=position,
+                        app_id=app.id,
+                        tag=tag,
+                        score=score,
+                        metric_type=metric_type,
+                        value_dimension=app.effectiveness_type,
+                        usage_30d=usage_30d,
+                        declared_at=date.today(),
+                    )
+                )
+            updated_count += 1
+        rankings = (
+            db.query(Ranking)
+            .filter(Ranking.ranking_type == ranking_type)
+            .order_by(Ranking.score.desc())
+            .all()
+        )
+        for index, ranking in enumerate(rankings, start=1):
+            ranking.position = index
+    db.commit()
+    return updated_count
+
+
+def seed_data(db: Session) -> None:
+    """初始化数据库数据
+    - 集团应用直接录入（系统内置）
+    - 省内应用通过申报流程录入
+    """
+    try:
+        if db.query(App).count() > 0 or db.query(Submission).count() > 0:
+            return
+    except Exception as exc:
+        print(f"Database error during seed: {exc}")
         return
 
-    for app in APPS:
-        db.add(App(**app))
-    db.commit()
+    try:
+        if db.query(RankingDimension).count() == 0:
+            for dimension in DEFAULT_DIMENSIONS:
+                db.add(RankingDimension(**dimension))
+            db.commit()
+    except Exception as exc:
+        print(f"Error seeding ranking dimensions: {exc}")
+        db.rollback()
 
-    app_map = {a.name: a.id for a in db.query(App).all()}
-    for item in RANKINGS:
-        db.add(
-            Ranking(
-                ranking_type=item["ranking_type"],
-                position=item["position"],
-                app_id=app_map[item["app_name"]],
-                tag=item["tag"],
-                score=item["score"],
-                likes=item["likes"],
-                metric_type=item["metric_type"],
-                value_dimension=item["value_dimension"],
-                usage_30d=item["usage_30d"],
-                declared_at=item["declared_at"],
-            )
-        )
-    db.commit()
+    # 1. 录入集团应用（直接录入，不走申报流程）
+    try:
+        for app in GROUP_APPS:
+            app.setdefault("ranking_enabled", False)  # 集团应用不参与排行榜
+            app.setdefault("ranking_weight", 1.0)
+            app.setdefault("ranking_tags", "")
+            app.setdefault("last_ranking_update", None)
+            db.add(App(**app))
+        db.commit()
+        print(f"Seeded {len(GROUP_APPS)} group apps")
+    except Exception as exc:
+        print(f"Error seeding group apps: {exc}")
+        db.rollback()
+
+    # 2. 省内应用通过申报流程录入
+    try:
+        approved_ids = []
+        for index, payload in enumerate(PROVINCE_SUBMISSIONS):
+            # 创建申报
+            submission = create_submission_direct(db, payload)
+            # 前7个申报自动审批通过（模拟审核流程）
+            if index < 7:
+                approved = approve_submission_and_create_app(db, submission)
+                approved_ids.append(approved.id)
+                print(f"Approved submission {submission.id} -> app {approved.id}")
+        
+        if approved_ids:
+            # 同步排行榜数据
+            sync_rankings(db)
+            print(f"Synced rankings for {len(approved_ids)} apps")
+    except Exception as exc:
+        print(f"Error seeding province submissions: {exc}")
+        db.rollback()

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -30,6 +30,13 @@ class App(Base):
     effectiveness_type: Mapped[str] = mapped_column(String(40), default="cost_reduction")
     effectiveness_metric: Mapped[str] = mapped_column(String(120), default="")
     cover_image_url: Mapped[str] = mapped_column(String(500), default="")
+    # 排行榜相关字段
+    ranking_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=True)
+    ranking_weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=True)
+    ranking_tags: Mapped[str] = mapped_column(String(255), default="", nullable=True)
+    last_ranking_update: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 关联关系
+    rankings = relationship("Ranking", back_populates="app")
 
 
 class Ranking(Base):
@@ -46,8 +53,9 @@ class Ranking(Base):
     value_dimension: Mapped[str] = mapped_column(String(40), default="cost_reduction")
     usage_30d: Mapped[int] = mapped_column(Integer, default=0)
     declared_at: Mapped[datetime] = mapped_column(Date, nullable=False)
-
-    app = relationship("App")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # 关联关系
+    app = relationship("App", back_populates="rankings")
 
 
 class Submission(Base):
@@ -59,6 +67,7 @@ class Submission(Base):
     contact: Mapped[str] = mapped_column(String(80), nullable=False)
     contact_phone: Mapped[str] = mapped_column(String(20), default="")
     contact_email: Mapped[str] = mapped_column(String(120), default="")
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
     scenario: Mapped[str] = mapped_column(String(500), nullable=False)
     embedded_system: Mapped[str] = mapped_column(String(120), nullable=False)
     problem_statement: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -68,7 +77,13 @@ class Submission(Base):
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     cover_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cover_image_url: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 排行榜相关字段
+    ranking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    ranking_weight: Mapped[float] = mapped_column(Float, default=1.0)
+    ranking_tags: Mapped[str] = mapped_column(String(255), default="")
+    ranking_dimensions: Mapped[str] = mapped_column(String(500), default="")  # 逗号分隔的维度ID列表
 
 
 class SubmissionImage(Base):
@@ -85,3 +100,68 @@ class SubmissionImage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     submission = relationship("Submission")
+
+
+class RankingDimension(Base):
+    __tablename__ = "ranking_dimensions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    calculation_method: Mapped[str] = mapped_column(Text, nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RankingLog(Base):
+    __tablename__ = "ranking_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # create | update | delete
+    dimension_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dimension_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    changes: Mapped[str] = mapped_column(Text, nullable=False)
+    operator: Mapped[str] = mapped_column(String(100), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AppDimensionScore(Base):
+    """应用在各维度的评分数据"""
+    __tablename__ = "app_dimension_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    dimension_id: Mapped[int] = mapped_column(ForeignKey("ranking_dimensions.id"), nullable=False)
+    dimension_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)  # 0-100分
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    calculation_detail: Mapped[str] = mapped_column(Text, default="")  # 计算详情说明
+    period_date: Mapped[date] = mapped_column(Date, nullable=False)  # 统计周期日期
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    app = relationship("App")
+    dimension = relationship("RankingDimension")
+
+
+class HistoricalRanking(Base):
+    """历史榜单数据"""
+    __tablename__ = "historical_rankings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
+    period_date: Mapped[date] = mapped_column(Date, nullable=False)  # 榜单周期日期
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    app_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    app_org: Mapped[str] = mapped_column(String(60), nullable=False)
+    tag: Mapped[str] = mapped_column(String(20), default="推荐")
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    metric_type: Mapped[str] = mapped_column(String(20), default="composite")
+    value_dimension: Mapped[str] = mapped_column(String(40), default="cost_reduction")
+    usage_30d: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    app = relationship("App")
