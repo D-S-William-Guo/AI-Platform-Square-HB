@@ -7,6 +7,26 @@
 
 ## [Unreleased]
 
+### 新增
+
+#### 项目结构优化
+- 提取验证模块到独立的 `validators.py`
+- 创建服务层 `services/ranking_service.py` 分离业务逻辑
+- 添加统一错误处理中间件 `middleware/error_handler.py`
+- 完善 FastAPI 文档配置，支持 Swagger UI 和 ReDoc
+
+#### 文档完善
+- 新增数据库表结构文档 (`docs/database-schema.md`)，包含 ER 图
+- 新增部署指南 (`docs/deployment-guide.md`)，支持 Docker 和手动部署
+- 完善 API 文档注释，所有接口添加描述和标签
+
+### 改进
+
+#### 代码质量
+- 优化代码结构，分离关注点
+- 统一错误响应格式
+- 添加类型注解
+
 ## [2.0.0] - 2026-02-10
 
 ### 新增
