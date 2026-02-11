@@ -50,6 +50,9 @@ class Ranking(Base):
     __tablename__ = "rankings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 外键关联榜单配置
+    ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
+    # 保留 ranking_type 用于快速识别和兼容旧代码
     ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
@@ -63,6 +66,7 @@ class Ranking(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # 关联关系
     app = relationship("App", back_populates="rankings")
+    ranking_config = relationship("RankingConfig", back_populates="rankings")
 
 
 class Submission(Base):
@@ -158,6 +162,9 @@ class HistoricalRanking(Base):
     __tablename__ = "historical_rankings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 外键关联榜单配置
+    ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
+    # 保留 ranking_type 用于快速识别
     ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
     period_date: Mapped[date] = mapped_column(Date, nullable=False)  # 榜单周期日期
     position: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -172,6 +179,7 @@ class HistoricalRanking(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     app = relationship("App")
+    ranking_config = relationship("RankingConfig", back_populates="historical_rankings")
 
 
 # ==================== 三层架构新表 ====================
@@ -192,6 +200,8 @@ class RankingConfig(Base):
     
     # 关联关系
     app_settings = relationship("AppRankingSetting", back_populates="ranking_config")
+    rankings = relationship("Ranking", back_populates="ranking_config")
+    historical_rankings = relationship("HistoricalRanking", back_populates="ranking_config")
 
 
 class AppRankingSetting(Base):
