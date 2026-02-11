@@ -395,7 +395,7 @@ function HomePage() {
   }
 
   return (
-    <div className="page">
+    <div className="page home-page">
       <header className="header">
         <div className="brand">
           <div className="brand-icon">河</div>

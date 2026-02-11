@@ -1,65 +1,101 @@
 import { useState, useEffect } from 'react'
 import type { RankingDimension, AppItem } from '../types'
-import { 
-  fetchRankingDimensions, 
-  createRankingDimension, 
-  updateRankingDimension, 
-  deleteRankingDimension, 
-  fetchRankingLogs, 
-  syncRankings, 
-  updateAppRankingParams,
+import {
+  fetchRankingDimensions,
+  createRankingDimension,
+  updateRankingDimension,
+  deleteRankingDimension,
+  fetchRankingLogs,
+  syncRankings,
   fetchApps,
-  updateAppDimensionScore
+  fetchRankingConfigs,
+  createRankingConfig,
+  updateRankingConfig,
+  deleteRankingConfig,
+  fetchAppRankingSettings,
+  fetchAllAppRankingSettings,
+  createAppRankingSetting,
+  updateAppRankingSetting,
+  deleteAppRankingSetting
 } from '../api/client'
 
-// 应用排行榜配置类型
-interface AppRankingConfig {
+// 榜单配置类型
+interface RankingConfig {
+  id: string
+  name: string
+  description: string
+  dimensions_config: string
+  calculation_method: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// 应用榜单设置类型
+interface AppRankingSettingItem {
+  id: number
   app_id: number
-  app_name: string
-  app_org: string
-  section: 'group' | 'province'
-  
-  // 优秀应用榜配置
-  excellent_enabled: boolean
-  excellent_weight: number
-  excellent_tags: string
-  excellent_dimensions: number[]  // 参与评分的维度ID列表
-  
-  // 趋势榜配置
-  trend_enabled: boolean
-  trend_weight: number
-  trend_tags: string
-  trend_dimensions: number[]
-  
-  // 维度评分（可手动调整）
-  dimension_scores: Record<number, number>  // dimension_id -> score
+  ranking_config_id: string
+  is_enabled: boolean
+  weight_factor: number
+  custom_tags: string
+  created_at: string
+  updated_at: string
+}
+
+// 维度配置项
+interface DimensionConfig {
+  dim_id: number
+  weight: number
 }
 
 const RankingManagementPage = () => {
+  // 维度管理状态
   const [dimensions, setDimensions] = useState<RankingDimension[]>([])
   const [logs, setLogs] = useState<any[]>([])
+
+  // 榜单配置管理状态
+  const [rankingConfigs, setRankingConfigs] = useState<RankingConfig[]>([])
+  const [showConfigModal, setShowConfigModal] = useState(false)
+  const [editingConfig, setEditingConfig] = useState<RankingConfig | null>(null)
+  const [configFormData, setConfigFormData] = useState({
+    id: '',
+    name: '',
+    description: '',
+    calculation_method: 'composite',
+    is_active: true,
+    selectedDimensions: [] as { dim_id: number; weight: number }[]
+  })
+
+  // 应用参与管理状态
   const [apps, setApps] = useState<AppItem[]>([])
-  const [appConfigs, setAppConfigs] = useState<AppRankingConfig[]>([])
+  const [appSettings, setAppSettings] = useState<Record<number, AppRankingSettingItem[]>>({})
+  const [selectedAppForConfig, setSelectedAppForConfig] = useState<AppItem | null>(null)
+  const [showAppSettingModal, setShowAppSettingModal] = useState(false)
+  const [appSettingForm, setAppSettingForm] = useState({
+    ranking_config_id: '',
+    is_enabled: true,
+    weight_factor: 1.0,
+    custom_tags: ''
+  })
+
+  // 通用状态
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'configs' | 'app-settings' | 'dimensions' | 'logs'>('configs')
+
+  // 维度表单状态
+  const [showDimensionModal, setShowDimensionModal] = useState(false)
   const [editingDimension, setEditingDimension] = useState<RankingDimension | null>(null)
-  const [formData, setFormData] = useState({
+  const [dimensionFormData, setDimensionFormData] = useState({
     name: '',
     description: '',
     calculation_method: '',
     weight: 1.0,
     is_active: true
   })
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-  const [syncing, setSyncing] = useState(false)
-  const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'dimensions' | 'app-config' | 'excellent' | 'trend' | 'logs'>('dimensions')
-  const [selectedApp, setSelectedApp] = useState<AppRankingConfig | null>(null)
-  const [showAppConfigModal, setShowAppConfigModal] = useState(false)
-  const [configFilter, setConfigFilter] = useState<'all' | 'group' | 'province'>('all')
-  const [searchKeyword, setSearchKeyword] = useState('')
 
   useEffect(() => {
     loadData()
@@ -69,34 +105,27 @@ const RankingManagementPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const [dimensionsData, logsData, appsData] = await Promise.all([
+      const [dimensionsData, logsData, appsData, configsData] = await Promise.all([
         fetchRankingDimensions(),
         fetchRankingLogs(),
-        fetchApps()
+        fetchApps(),
+        fetchRankingConfigs()
       ])
       setDimensions(dimensionsData)
       setLogs(logsData)
-      setApps(appsData)
-      
-      // 转换应用数据为配置格式（只包含省内应用）
-      const configs: AppRankingConfig[] = appsData
-        .filter(app => app.section === 'province')
-        .map(app => ({
-          app_id: app.id,
-          app_name: app.name,
-          app_org: app.org,
-          section: app.section as 'group' | 'province',
-          excellent_enabled: app.ranking_enabled ?? true,
-          excellent_weight: app.ranking_weight ?? 1.0,
-          excellent_tags: app.ranking_tags ?? '',
-          excellent_dimensions: dimensionsData.filter(d => d.is_active).map(d => d.id),
-          trend_enabled: app.ranking_enabled ?? true,
-          trend_weight: app.ranking_weight ?? 1.0,
-          trend_tags: app.ranking_tags ?? '',
-          trend_dimensions: dimensionsData.filter(d => d.is_active).map(d => d.id),
-          dimension_scores: {}
-        }))
-      setAppConfigs(configs)
+      setApps(appsData.filter(app => app.section === 'province'))
+      setRankingConfigs(configsData)
+
+      // 加载所有应用榜单设置
+      const allSettings = await fetchAllAppRankingSettings()
+      const settingsMap: Record<number, AppRankingSettingItem[]> = {}
+      for (const setting of allSettings) {
+        if (!settingsMap[setting.app_id]) {
+          settingsMap[setting.app_id] = []
+        }
+        settingsMap[setting.app_id].push(setting)
+      }
+      setAppSettings(settingsMap)
     } catch (err) {
       setError('加载数据失败')
       console.error('Failed to load data:', err)
@@ -105,94 +134,227 @@ const RankingManagementPage = () => {
     }
   }
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {}
-    if (!formData.name.trim()) {
-      errors.name = '名称不能为空'
-    }
-    if (!formData.description.trim()) {
-      errors.description = '描述不能为空'
-    }
-    if (!formData.calculation_method.trim()) {
-      errors.calculation_method = '计算方法不能为空'
-    }
-    if (formData.weight < 0.1 || formData.weight > 10.0) {
-      errors.weight = '权重必须在0.1到10.0之间'
-    }
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }
+  // ==================== 榜单配置管理 ====================
 
-  const handleCreate = async () => {
-    if (!validateForm()) return
-
+  const handleSaveConfig = async () => {
     try {
-      await createRankingDimension(formData)
-      setShowCreateModal(false)
-      resetForm()
+      const payload = {
+        id: configFormData.id,
+        name: configFormData.name,
+        description: configFormData.description,
+        calculation_method: configFormData.calculation_method,
+        is_active: configFormData.is_active,
+        dimensions_config: JSON.stringify(configFormData.selectedDimensions)
+      }
+
+      if (editingConfig) {
+        await updateRankingConfig(editingConfig.id, payload)
+      } else {
+        await createRankingConfig(payload)
+      }
+
+      setShowConfigModal(false)
+      resetConfigForm()
       loadData()
     } catch (err) {
-      setError('创建排行维度失败')
-      console.error('Failed to create dimension:', err)
+      setError('保存榜单配置失败')
+      console.error('Failed to save config:', err)
     }
   }
 
-  const handleUpdate = async () => {
-    if (!validateForm() || !editingDimension) return
+  const handleDeleteConfig = async (id: string, name: string) => {
+    if (!confirm(`确定要删除榜单配置 "${name}" 吗？`)) return
 
     try {
-      await updateRankingDimension(editingDimension.id, formData)
-      setShowEditModal(false)
-      resetForm()
+      await deleteRankingConfig(id)
       loadData()
     } catch (err) {
-      setError('更新排行维度失败')
-      console.error('Failed to update dimension:', err)
+      setError('删除榜单配置失败')
+      console.error('Failed to delete config:', err)
     }
   }
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`确定要删除排行维度 "${name}" 吗？`)) return
+  const handleEditConfig = (config: RankingConfig) => {
+    setEditingConfig(config)
+    let selectedDims: { dim_id: number; weight: number }[] = []
+    try {
+      selectedDims = JSON.parse(config.dimensions_config) || []
+    } catch (e) {
+      selectedDims = []
+    }
+    setConfigFormData({
+      id: config.id,
+      name: config.name,
+      description: config.description,
+      calculation_method: config.calculation_method,
+      is_active: config.is_active,
+      selectedDimensions: selectedDims
+    })
+    setShowConfigModal(true)
+  }
+
+  const resetConfigForm = () => {
+    setConfigFormData({
+      id: '',
+      name: '',
+      description: '',
+      calculation_method: 'composite',
+      is_active: true,
+      selectedDimensions: []
+    })
+    setEditingConfig(null)
+  }
+
+  const toggleDimensionInConfig = (dimId: number) => {
+    const exists = configFormData.selectedDimensions.find(d => d.dim_id === dimId)
+    if (exists) {
+      setConfigFormData(prev => ({
+        ...prev,
+        selectedDimensions: prev.selectedDimensions.filter(d => d.dim_id !== dimId)
+      }))
+    } else {
+      setConfigFormData(prev => ({
+        ...prev,
+        selectedDimensions: [...prev.selectedDimensions, { dim_id: dimId, weight: 1.0 }]
+      }))
+    }
+  }
+
+  const updateDimensionWeight = (dimId: number, weight: number) => {
+    setConfigFormData(prev => ({
+      ...prev,
+      selectedDimensions: prev.selectedDimensions.map(d =>
+        d.dim_id === dimId ? { ...d, weight } : d
+      )
+    }))
+  }
+
+  // ==================== 应用榜单设置管理 ====================
+
+  const handleSaveAppSetting = async () => {
+    if (!selectedAppForConfig) return
+
+    try {
+      const existingSetting = appSettings[selectedAppForConfig.id]?.find(
+        s => s.ranking_config_id === appSettingForm.ranking_config_id
+      )
+
+      if (existingSetting) {
+        await updateAppRankingSetting(selectedAppForConfig.id, existingSetting.id, {
+          is_enabled: appSettingForm.is_enabled,
+          weight_factor: appSettingForm.weight_factor,
+          custom_tags: appSettingForm.custom_tags
+        })
+      } else {
+        await createAppRankingSetting(selectedAppForConfig.id, {
+          ranking_config_id: appSettingForm.ranking_config_id,
+          is_enabled: appSettingForm.is_enabled,
+          weight_factor: appSettingForm.weight_factor,
+          custom_tags: appSettingForm.custom_tags
+        })
+      }
+
+      setShowAppSettingModal(false)
+      loadData()
+    } catch (err) {
+      setError('保存应用榜单设置失败')
+      console.error('Failed to save app setting:', err)
+    }
+  }
+
+  const handleDeleteAppSetting = async (appId: number, settingId: number) => {
+    if (!confirm('确定要删除此榜单设置吗？')) return
+
+    try {
+      await deleteAppRankingSetting(appId, settingId)
+      loadData()
+    } catch (err) {
+      setError('删除应用榜单设置失败')
+      console.error('Failed to delete app setting:', err)
+    }
+  }
+
+  const openAppSettingModal = (app: AppItem, existingSetting?: AppRankingSettingItem) => {
+    setSelectedAppForConfig(app)
+    if (existingSetting) {
+      setAppSettingForm({
+        ranking_config_id: existingSetting.ranking_config_id,
+        is_enabled: existingSetting.is_enabled,
+        weight_factor: existingSetting.weight_factor,
+        custom_tags: existingSetting.custom_tags
+      })
+    } else {
+      setAppSettingForm({
+        ranking_config_id: rankingConfigs[0]?.id || '',
+        is_enabled: true,
+        weight_factor: 1.0,
+        custom_tags: ''
+      })
+    }
+    setShowAppSettingModal(true)
+  }
+
+  // ==================== 维度管理 ====================
+
+  const handleSaveDimension = async () => {
+    try {
+      if (editingDimension) {
+        await updateRankingDimension(editingDimension.id, dimensionFormData)
+      } else {
+        await createRankingDimension(dimensionFormData)
+      }
+      setShowDimensionModal(false)
+      resetDimensionForm()
+      loadData()
+    } catch (err) {
+      setError('保存维度失败')
+      console.error('Failed to save dimension:', err)
+    }
+  }
+
+  const handleDeleteDimension = async (id: number, name: string) => {
+    if (!confirm(`确定要删除维度 "${name}" 吗？`)) return
 
     try {
       await deleteRankingDimension(id)
       loadData()
     } catch (err) {
-      setError('删除排行维度失败')
+      setError('删除维度失败')
       console.error('Failed to delete dimension:', err)
     }
   }
 
-  const handleEdit = (dimension: RankingDimension) => {
+  const handleEditDimension = (dimension: RankingDimension) => {
     setEditingDimension(dimension)
-    setFormData({
+    setDimensionFormData({
       name: dimension.name,
       description: dimension.description,
       calculation_method: dimension.calculation_method,
       weight: dimension.weight,
       is_active: dimension.is_active
     })
-    setShowEditModal(true)
+    setShowDimensionModal(true)
   }
 
-  const resetForm = () => {
-    setFormData({
+  const resetDimensionForm = () => {
+    setDimensionFormData({
       name: '',
       description: '',
       calculation_method: '',
       weight: 1.0,
       is_active: true
     })
-    setFormErrors({})
     setEditingDimension(null)
   }
+
+  // ==================== 排行榜同步 ====================
 
   const handleSyncRankings = async () => {
     setSyncing(true)
     setSyncMessage(null)
     try {
       const result = await syncRankings()
-      setSyncMessage(`同步成功！更新了 ${result.updated_count} 个应用的排行榜数据`)
+      setSyncMessage(`同步成功！更新了 ${result.updated_count} 条排名数据`)
       loadData()
     } catch (err) {
       console.error('同步失败:', err)
@@ -202,172 +364,10 @@ const RankingManagementPage = () => {
     }
   }
 
-  const handleSaveAppConfig = async (config: AppRankingConfig) => {
-    try {
-      // 保存优秀应用榜配置
-      await updateAppRankingParams(config.app_id, {
-        ranking_enabled: config.excellent_enabled,
-        ranking_weight: config.excellent_weight,
-        ranking_tags: config.excellent_tags
-      })
-      
-      // 保存维度评分
-      for (const [dimensionId, score] of Object.entries(config.dimension_scores)) {
-        await updateAppDimensionScore(config.app_id, parseInt(dimensionId), score)
-      }
-      
-      alert('配置保存成功！')
-      setShowAppConfigModal(false)
-      loadData()
-    } catch (err) {
-      alert('保存失败，请重试')
-      console.error('Failed to save config:', err)
-    }
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    const { name, value, type } = target
-    const checked = 'checked' in target ? target.checked : false
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : type === 'number' ? parseFloat(value) : value
-    }))
-    if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }))
-    }
-  }
-
-  // 过滤应用配置
-  const filteredConfigs = appConfigs.filter(config => {
-    if (configFilter !== 'all' && config.section !== configFilter) return false
-    if (searchKeyword && !config.app_name.toLowerCase().includes(searchKeyword.toLowerCase())) return false
-    return true
-  })
-
-  // 渲染应用配置列表
-  const renderAppConfigList = (rankingType: 'excellent' | 'trend') => {
-    const isExcellent = rankingType === 'excellent'
-    
-    return (
-      <section className="app-config-section">
-        <div className="section-header">
-          <h2>{isExcellent ? '优秀应用榜' : '趋势榜'} - 应用配置</h2>
-          <div className="header-actions">
-            <button 
-              className="primary-button" 
-              onClick={handleSyncRankings}
-              disabled={syncing}
-            >
-              {syncing ? '🔄 同步中...' : '🔄 同步排行榜数据'}
-            </button>
-          </div>
-        </div>
-        
-        {syncMessage && (
-          <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
-            {syncMessage}
-          </div>
-        )}
-
-        {/* 筛选栏 */}
-        <div className="filter-bar">
-          <div className="filter-group">
-            <span className="filter-label">应用类型：</span>
-            <select 
-              className="filter-select"
-              value={configFilter}
-              onChange={(e) => setConfigFilter(e.target.value as 'all' | 'group' | 'province')}
-            >
-              <option value="all">全部应用</option>
-              <option value="group">集团应用</option>
-              <option value="province">省内应用</option>
-            </select>
-          </div>
-          <div className="filter-group">
-            <span className="filter-label">搜索：</span>
-            <input
-              type="text"
-              className="filter-input"
-              placeholder="搜索应用名称..."
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* 应用列表 */}
-        <div className="app-config-list">
-          {filteredConfigs.length === 0 ? (
-            <div className="empty-state">
-              <span>📱</span>
-              <p>暂无应用数据</p>
-            </div>
-          ) : (
-            <table className="app-config-table">
-              <thead>
-                <tr>
-                  <th>应用名称</th>
-                  <th>所属单位</th>
-                  <th>类型</th>
-                  <th>参与排行</th>
-                  <th>排行权重</th>
-                  <th>标签</th>
-                  <th>参与维度</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredConfigs.map(config => (
-                  <tr key={config.app_id}>
-                    <td className="app-name">{config.app_name}</td>
-                    <td className="app-org">{config.app_org}</td>
-                    <td className="app-section">
-                      <span className={`section-badge ${config.section}`}>
-                        {config.section === 'group' ? '集团' : '省内'}
-                      </span>
-                    </td>
-                    <td className="app-enabled">
-                      <span className={`status-badge ${isExcellent ? config.excellent_enabled : config.trend_enabled ? 'active' : 'inactive'}`}>
-                        {isExcellent ? (config.excellent_enabled ? '是' : '否') : (config.trend_enabled ? '是' : '否')}
-                      </span>
-                    </td>
-                    <td className="app-weight">
-                      {isExcellent ? config.excellent_weight : config.trend_weight}
-                    </td>
-                    <td className="app-tags">
-                      <div className="tags-preview">
-                        {(isExcellent ? config.excellent_tags : config.trend_tags)?.split(',').filter(Boolean).map((tag, idx) => (
-                          <span key={idx} className="tag-badge">{tag.trim()}</span>
-                        )) || '-'}
-                      </div>
-                    </td>
-                    <td className="app-dimensions">
-                      {(isExcellent ? config.excellent_dimensions : config.trend_dimensions)?.length || 0} 个维度
-                    </td>
-                    <td className="app-actions">
-                      <button 
-                        className="edit-button"
-                        onClick={() => {
-                          setSelectedApp(config)
-                          setShowAppConfigModal(true)
-                        }}
-                      >
-                        配置
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-    )
-  }
+  // ==================== 渲染 ====================
 
   return (
-    <div className="page">
+    <div className="page ranking-management-page">
       <header className="header">
         <div className="brand">
           <div className="brand-icon">河</div>
@@ -384,34 +384,34 @@ const RankingManagementPage = () => {
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">排行榜管理</h1>
-          <p className="page-subtitle">配置排行维度、管理应用榜单参数、调整维度评分</p>
+          <p className="page-subtitle">配置榜单规则、管理应用参与、调整评价维度</p>
         </div>
 
         <div className="page-content">
           {/* 标签页导航 */}
           <div className="tab-navigation">
-            <button 
+            <button
+              className={`tab-button ${activeTab === 'configs' ? 'active' : ''}`}
+              onClick={() => setActiveTab('configs')}
+            >
+              <span>🏆</span>
+              <span>榜单配置</span>
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'app-settings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('app-settings')}
+            >
+              <span>📱</span>
+              <span>应用参与</span>
+            </button>
+            <button
               className={`tab-button ${activeTab === 'dimensions' ? 'active' : ''}`}
               onClick={() => setActiveTab('dimensions')}
             >
               <span>📊</span>
-              <span>排行维度</span>
+              <span>评价维度</span>
             </button>
-            <button 
-              className={`tab-button ${activeTab === 'excellent' ? 'active' : ''}`}
-              onClick={() => setActiveTab('excellent')}
-            >
-              <span>🏆</span>
-              <span>优秀应用榜</span>
-            </button>
-            <button 
-              className={`tab-button ${activeTab === 'trend' ? 'active' : ''}`}
-              onClick={() => setActiveTab('trend')}
-            >
-              <span>📈</span>
-              <span>趋势榜</span>
-            </button>
-            <button 
+            <button
               className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`}
               onClick={() => setActiveTab('logs')}
             >
@@ -420,12 +420,210 @@ const RankingManagementPage = () => {
             </button>
           </div>
 
-          {/* 排行维度管理标签页 */}
+          {/* 榜单配置管理 */}
+          {activeTab === 'configs' && (
+            <section className="config-section">
+              <div className="section-header">
+                <h2>榜单配置管理</h2>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    resetConfigForm()
+                    setShowConfigModal(true)
+                  }}
+                >
+                  <span>+</span>
+                  <span>新增榜单</span>
+                </button>
+              </div>
+
+              {syncMessage && (
+                <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
+                  {syncMessage}
+                </div>
+              )}
+
+              {loading ? (
+                <div className="loading">加载中...</div>
+              ) : error ? (
+                <div className="error-message">{error}</div>
+              ) : (
+                <div className="config-list">
+                  {rankingConfigs.length === 0 ? (
+                    <div className="empty-state">
+                      <span>🏆</span>
+                      <p>暂无榜单配置</p>
+                    </div>
+                  ) : (
+                    <div className="config-cards">
+                      {rankingConfigs.map(config => {
+                        let dimCount = 0
+                        try {
+                          const dims = JSON.parse(config.dimensions_config)
+                          dimCount = Array.isArray(dims) ? dims.length : 0
+                        } catch (e) {
+                          dimCount = 0
+                        }
+
+                        return (
+                          <div key={config.id} className={`config-card ${config.is_active ? 'active' : 'inactive'}`}>
+                            <div className="config-card-header">
+                              <h3 className="config-card-title">
+                                {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+                                {config.name}
+                              </h3>
+                              <span className={`config-status ${config.is_active ? 'active' : 'inactive'}`}>
+                                {config.is_active ? '启用' : '停用'}
+                              </span>
+                            </div>
+                            <p className="config-card-description">{config.description}</p>
+                            <div className="config-card-meta">
+                              <span>计算公式: {config.calculation_method === 'composite' ? '综合评分' : '增长率'}</span>
+                              <span>参与维度: {dimCount} 个</span>
+                            </div>
+                            <div className="config-card-actions">
+                              <button
+                                className="edit-button"
+                                onClick={() => handleEditConfig(config)}
+                              >
+                                编辑
+                              </button>
+                              <button
+                                className="sync-button"
+                                onClick={() => handleSyncRankings()}
+                                disabled={syncing}
+                              >
+                                {syncing ? '同步中...' : '同步排名'}
+                              </button>
+                              <button
+                                className="delete-button"
+                                onClick={() => handleDeleteConfig(config.id, config.name)}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 应用参与管理 */}
+          {activeTab === 'app-settings' && (
+            <section className="app-settings-section">
+              <div className="section-header">
+                <h2>应用榜单参与管理</h2>
+                <button
+                  className="primary-button"
+                  onClick={() => handleSyncRankings()}
+                  disabled={syncing}
+                >
+                  {syncing ? '🔄 同步中...' : '🔄 同步所有榜单'}
+                </button>
+              </div>
+
+              {syncMessage && (
+                <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
+                  {syncMessage}
+                </div>
+              )}
+
+              {loading ? (
+                <div className="loading">加载中...</div>
+              ) : (
+                <div className="app-settings-list">
+                  {apps.length === 0 ? (
+                    <div className="empty-state">
+                      <span>📱</span>
+                      <p>暂无应用数据</p>
+                    </div>
+                  ) : (
+                    <table className="app-settings-table">
+                      <thead>
+                        <tr>
+                          <th>应用名称</th>
+                          <th>所属单位</th>
+                          <th>参与的榜单</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apps.map(app => {
+                          const settings = appSettings[app.id] || []
+                          return (
+                            <tr key={app.id}>
+                              <td className="app-name">{app.name}</td>
+                              <td className="app-org">{app.org}</td>
+                              <td className="app-participation">
+                                {settings.length === 0 ? (
+                                  <span className="no-participation">未参与任何榜单</span>
+                                ) : (
+                                  <div className="participation-tags">
+                                    {settings.map(setting => {
+                                      const config = rankingConfigs.find(c => c.id === setting.ranking_config_id)
+                                      return (
+                                        <span
+                                          key={setting.id}
+                                          className={`participation-tag ${setting.is_enabled ? 'enabled' : 'disabled'}`}
+                                        >
+                                          {config?.name || setting.ranking_config_id}
+                                          {setting.weight_factor !== 1.0 && ` (×${setting.weight_factor})`}
+                                          <button
+                                            className="remove-tag"
+                                            onClick={() => handleDeleteAppSetting(app.id, setting.id)}
+                                          >
+                                            ×
+                                          </button>
+                                        </span>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="app-actions">
+                                <button
+                                  className="edit-button"
+                                  onClick={() => openAppSettingModal(app)}
+                                >
+                                  添加参与
+                                </button>
+                                {settings.map(setting => (
+                                  <button
+                                    key={setting.id}
+                                    className="edit-button secondary"
+                                    onClick={() => openAppSettingModal(app, setting)}
+                                  >
+                                    编辑
+                                  </button>
+                                ))}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 维度管理 */}
           {activeTab === 'dimensions' && (
             <section className="dimension-section">
               <div className="section-header">
-                <h2>排行维度管理</h2>
-                <button className="primary-button" onClick={() => setShowCreateModal(true)}>
+                <h2>评价维度管理</h2>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    resetDimensionForm()
+                    setShowDimensionModal(true)
+                  }}
+                >
                   <span>+</span>
                   <span>新增维度</span>
                 </button>
@@ -440,7 +638,7 @@ const RankingManagementPage = () => {
                   {dimensions.length === 0 ? (
                     <div className="empty-state">
                       <span>📊</span>
-                      <p>暂无排行维度</p>
+                      <p>暂无评价维度</p>
                     </div>
                   ) : (
                     <table className="dimension-table">
@@ -449,7 +647,7 @@ const RankingManagementPage = () => {
                           <th>名称</th>
                           <th>描述</th>
                           <th>计算方法</th>
-                          <th>权重</th>
+                          <th>默认权重</th>
                           <th>状态</th>
                           <th>操作</th>
                         </tr>
@@ -460,11 +658,9 @@ const RankingManagementPage = () => {
                             <td className="dimension-name">{dimension.name}</td>
                             <td className="dimension-description">{dimension.description}</td>
                             <td className="dimension-calculation">
-                              <div className="calculation-preview">
-                                {dimension.calculation_method.length > 50
-                                  ? `${dimension.calculation_method.substring(0, 50)}...`
-                                  : dimension.calculation_method}
-                              </div>
+                              {dimension.calculation_method.length > 50
+                                ? `${dimension.calculation_method.substring(0, 50)}...`
+                                : dimension.calculation_method}
                             </td>
                             <td className="dimension-weight">{dimension.weight}</td>
                             <td className="dimension-status">
@@ -473,15 +669,15 @@ const RankingManagementPage = () => {
                               </span>
                             </td>
                             <td className="dimension-actions">
-                              <button 
-                                className="edit-button" 
-                                onClick={() => handleEdit(dimension)}
+                              <button
+                                className="edit-button"
+                                onClick={() => handleEditDimension(dimension)}
                               >
                                 编辑
                               </button>
-                              <button 
-                                className="delete-button" 
-                                onClick={() => handleDelete(dimension.id, dimension.name)}
+                              <button
+                                className="delete-button"
+                                onClick={() => handleDeleteDimension(dimension.id, dimension.name)}
                               >
                                 删除
                               </button>
@@ -496,16 +692,12 @@ const RankingManagementPage = () => {
             </section>
           )}
 
-          {/* 优秀应用榜配置 */}
-          {activeTab === 'excellent' && renderAppConfigList('excellent')}
-
-          {/* 趋势榜配置 */}
-          {activeTab === 'trend' && renderAppConfigList('trend')}
-
-          {/* 变更日志标签页 */}
+          {/* 变更日志 */}
           {activeTab === 'logs' && (
             <section className="logs-section">
-              <h2>变更日志</h2>
+              <div className="section-header">
+                <h2>变更日志</h2>
+              </div>
               <div className="logs-list">
                 {logs.length === 0 ? (
                   <div className="empty-state">
@@ -518,7 +710,7 @@ const RankingManagementPage = () => {
                       <tr>
                         <th>时间</th>
                         <th>操作</th>
-                        <th>维度名称</th>
+                        <th>对象</th>
                         <th>变更内容</th>
                         <th>操作人</th>
                       </tr>
@@ -548,306 +740,268 @@ const RankingManagementPage = () => {
         </div>
       </div>
 
-      {/* 创建维度模态框 */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-container" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>新增排行维度</h3>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <form className="dimension-form">
-                <div className="form-group">
-                  <label htmlFor="name">维度名称 *</label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className={formErrors.name ? 'error' : ''}
-                    placeholder="请输入排行维度名称"
-                  />
-                  {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="description">维度描述 *</label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    className={formErrors.description ? 'error' : ''}
-                    placeholder="请输入排行维度描述"
-                    rows={3}
-                  />
-                  {formErrors.description && <span className="error-text">{formErrors.description}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="calculation_method">计算方法 *</label>
-                  <textarea
-                    id="calculation_method"
-                    name="calculation_method"
-                    value={formData.calculation_method}
-                    onChange={handleInputChange}
-                    className={formErrors.calculation_method ? 'error' : ''}
-                    placeholder="请输入排行维度计算方法"
-                    rows={4}
-                  />
-                  {formErrors.calculation_method && <span className="error-text">{formErrors.calculation_method}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="weight">权重 *</label>
-                  <input
-                    type="number"
-                    id="weight"
-                    name="weight"
-                    value={formData.weight}
-                    onChange={handleInputChange}
-                    className={formErrors.weight ? 'error' : ''}
-                    min="0.1"
-                    max="10.0"
-                    step="0.1"
-                    placeholder="请输入权重"
-                  />
-                  {formErrors.weight && <span className="error-text">{formErrors.weight}</span>}
-                </div>
-
-                <div className="form-group checkbox-group">
-                  <input
-                    type="checkbox"
-                    id="is_active"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleInputChange}
-                  />
-                  <label htmlFor="is_active">启用此维度</label>
-                </div>
-              </form>
-            </div>
-            <div className="modal-footer">
-              <button className="secondary-button" onClick={() => setShowCreateModal(false)}>
-                取消
-              </button>
-              <button className="primary-button" onClick={handleCreate}>
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 编辑维度模态框 */}
-      {showEditModal && editingDimension && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-container" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>编辑排行维度</h3>
-              <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <form className="dimension-form">
-                <div className="form-group">
-                  <label htmlFor="name">维度名称 *</label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className={formErrors.name ? 'error' : ''}
-                    placeholder="请输入排行维度名称"
-                  />
-                  {formErrors.name && <span className="error-text">{formErrors.name}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="description">维度描述 *</label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    className={formErrors.description ? 'error' : ''}
-                    placeholder="请输入排行维度描述"
-                    rows={3}
-                  />
-                  {formErrors.description && <span className="error-text">{formErrors.description}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="calculation_method">计算方法 *</label>
-                  <textarea
-                    id="calculation_method"
-                    name="calculation_method"
-                    value={formData.calculation_method}
-                    onChange={handleInputChange}
-                    className={formErrors.calculation_method ? 'error' : ''}
-                    placeholder="请输入排行维度计算方法"
-                    rows={4}
-                  />
-                  {formErrors.calculation_method && <span className="error-text">{formErrors.calculation_method}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="weight">权重 *</label>
-                  <input
-                    type="number"
-                    id="weight"
-                    name="weight"
-                    value={formData.weight}
-                    onChange={handleInputChange}
-                    className={formErrors.weight ? 'error' : ''}
-                    min="0.1"
-                    max="10.0"
-                    step="0.1"
-                    placeholder="请输入权重"
-                  />
-                  {formErrors.weight && <span className="error-text">{formErrors.weight}</span>}
-                </div>
-
-                <div className="form-group checkbox-group">
-                  <input
-                    type="checkbox"
-                    id="is_active"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleInputChange}
-                  />
-                  <label htmlFor="is_active">启用此维度</label>
-                </div>
-              </form>
-            </div>
-            <div className="modal-footer">
-              <button className="secondary-button" onClick={() => setShowEditModal(false)}>
-                取消
-              </button>
-              <button className="primary-button" onClick={handleUpdate}>
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 应用配置模态框 */}
-      {showAppConfigModal && selectedApp && (
-        <div className="modal-overlay" onClick={() => setShowAppConfigModal(false)}>
+      {/* 榜单配置模态框 */}
+      {showConfigModal && (
+        <div className="modal-overlay" onClick={() => setShowConfigModal(false)}>
           <div className="modal-container large" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>配置应用排行参数 - {selectedApp.app_name}</h3>
-              <button className="modal-close" onClick={() => setShowAppConfigModal(false)}>×</button>
+              <h3>{editingConfig ? '编辑榜单配置' : '新增榜单配置'}</h3>
+              <button className="modal-close" onClick={() => setShowConfigModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <div className="app-config-form">
-                {/* 优秀应用榜配置 */}
-                <div className="config-section">
-                  <h4>🏆 优秀应用榜配置</h4>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>参与排行</label>
-                      <input
-                        type="checkbox"
-                        checked={selectedApp.excellent_enabled}
-                        onChange={(e) => setSelectedApp({...selectedApp, excellent_enabled: e.target.checked})}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>排行权重</label>
-                      <input
-                        type="number"
-                        min="0.1"
-                        max="10.0"
-                        step="0.1"
-                        value={selectedApp.excellent_weight}
-                        onChange={(e) => setSelectedApp({...selectedApp, excellent_weight: parseFloat(e.target.value)})}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>标签</label>
-                      <input
-                        type="text"
-                        value={selectedApp.excellent_tags}
-                        onChange={(e) => setSelectedApp({...selectedApp, excellent_tags: e.target.value})}
-                        placeholder="多个标签用逗号分隔"
-                      />
-                    </div>
+              <form className="config-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="config-id">榜单ID *</label>
+                    <input
+                      type="text"
+                      id="config-id"
+                      value={configFormData.id}
+                      onChange={(e) => setConfigFormData(prev => ({ ...prev, id: e.target.value }))}
+                      placeholder="如: excellent, trend"
+                      disabled={!!editingConfig}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="config-name">榜单名称 *</label>
+                    <input
+                      type="text"
+                      id="config-name"
+                      value={configFormData.name}
+                      onChange={(e) => setConfigFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="请输入榜单名称"
+                    />
                   </div>
                 </div>
 
-                {/* 趋势榜配置 */}
-                <div className="config-section">
-                  <h4>📈 趋势榜配置</h4>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>参与排行</label>
-                      <input
-                        type="checkbox"
-                        checked={selectedApp.trend_enabled}
-                        onChange={(e) => setSelectedApp({...selectedApp, trend_enabled: e.target.checked})}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>排行权重</label>
-                      <input
-                        type="number"
-                        min="0.1"
-                        max="10.0"
-                        step="0.1"
-                        value={selectedApp.trend_weight}
-                        onChange={(e) => setSelectedApp({...selectedApp, trend_weight: parseFloat(e.target.value)})}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>标签</label>
-                      <input
-                        type="text"
-                        value={selectedApp.trend_tags}
-                        onChange={(e) => setSelectedApp({...selectedApp, trend_tags: e.target.value})}
-                        placeholder="多个标签用逗号分隔"
-                      />
-                    </div>
+                <div className="form-group">
+                  <label htmlFor="config-description">榜单描述</label>
+                  <textarea
+                    id="config-description"
+                    value={configFormData.description}
+                    onChange={(e) => setConfigFormData(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="请输入榜单描述"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="config-method">计算公式</label>
+                    <select
+                      id="config-method"
+                      value={configFormData.calculation_method}
+                      onChange={(e) => setConfigFormData(prev => ({ ...prev, calculation_method: e.target.value }))}
+                    >
+                      <option value="composite">综合评分</option>
+                      <option value="growth_rate">增长率</option>
+                    </select>
+                  </div>
+                  <div className="form-group checkbox-group">
+                    <input
+                      type="checkbox"
+                      id="config-active"
+                      checked={configFormData.is_active}
+                      onChange={(e) => setConfigFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    />
+                    <label htmlFor="config-active">启用此榜单</label>
                   </div>
                 </div>
 
-                {/* 维度评分配置 */}
-                <div className="config-section">
-                  <h4>📊 维度评分调整（可选）</h4>
-                  <p className="section-tip">不填写则使用系统自动计算的评分</p>
-                  <div className="dimension-scores">
-                    {dimensions.filter(d => d.is_active).map(dimension => (
-                      <div key={dimension.id} className="dimension-score-item">
-                        <label>{dimension.name}</label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={selectedApp.dimension_scores[dimension.id] || ''}
-                          onChange={(e) => setSelectedApp({
-                            ...selectedApp,
-                            dimension_scores: {
-                              ...selectedApp.dimension_scores,
-                              [dimension.id]: parseInt(e.target.value) || 0
-                            }
-                          })}
-                          placeholder="自动计算"
-                        />
-                      </div>
-                    ))}
+                <div className="form-group">
+                  <label>选择评价维度</label>
+                  <div className="dimensions-selector">
+                    {dimensions.filter(d => d.is_active).map(dimension => {
+                      const selected = configFormData.selectedDimensions.find(d => d.dim_id === dimension.id)
+                      return (
+                        <div key={dimension.id} className={`dimension-select-item ${selected ? 'selected' : ''}`}>
+                          <label className="dimension-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={!!selected}
+                              onChange={() => toggleDimensionInConfig(dimension.id)}
+                            />
+                            <span className="dimension-name">{dimension.name}</span>
+                          </label>
+                          {selected && (
+                            <div className="dimension-weight-input">
+                              <span>权重:</span>
+                              <input
+                                type="number"
+                                min="0.1"
+                                max="10"
+                                step="0.1"
+                                value={selected.weight}
+                                onChange={(e) => updateDimensionWeight(dimension.id, parseFloat(e.target.value))}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              </div>
+              </form>
             </div>
             <div className="modal-footer">
-              <button className="secondary-button" onClick={() => setShowAppConfigModal(false)}>
+              <button className="secondary-button" onClick={() => setShowConfigModal(false)}>
                 取消
               </button>
-              <button className="primary-button" onClick={() => handleSaveAppConfig(selectedApp)}>
-                保存配置
+              <button className="primary-button" onClick={handleSaveConfig}>
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 应用榜单设置模态框 */}
+      {showAppSettingModal && selectedAppForConfig && (
+        <div className="modal-overlay" onClick={() => setShowAppSettingModal(false)}>
+          <div className="modal-container" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>配置应用参与 - {selectedAppForConfig.name}</h3>
+              <button className="modal-close" onClick={() => setShowAppSettingModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <form className="app-setting-form">
+                <div className="form-group">
+                  <label htmlFor="setting-config">选择榜单 *</label>
+                  <select
+                    id="setting-config"
+                    value={appSettingForm.ranking_config_id}
+                    onChange={(e) => setAppSettingForm(prev => ({ ...prev, ranking_config_id: e.target.value }))}
+                    disabled={appSettings[selectedAppForConfig.id]?.some(s => s.ranking_config_id === appSettingForm.ranking_config_id)}
+                  >
+                    <option value="">请选择榜单</option>
+                    {rankingConfigs.map(config => (
+                      <option key={config.id} value={config.id}>{config.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group checkbox-group">
+                    <input
+                      type="checkbox"
+                      id="setting-enabled"
+                      checked={appSettingForm.is_enabled}
+                      onChange={(e) => setAppSettingForm(prev => ({ ...prev, is_enabled: e.target.checked }))}
+                    />
+                    <label htmlFor="setting-enabled">启用参与</label>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="setting-weight">权重系数</label>
+                    <input
+                      type="number"
+                      id="setting-weight"
+                      min="0.1"
+                      max="10"
+                      step="0.1"
+                      value={appSettingForm.weight_factor}
+                      onChange={(e) => setAppSettingForm(prev => ({ ...prev, weight_factor: parseFloat(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="setting-tags">自定义标签</label>
+                  <input
+                    type="text"
+                    id="setting-tags"
+                    value={appSettingForm.custom_tags}
+                    onChange={(e) => setAppSettingForm(prev => ({ ...prev, custom_tags: e.target.value }))}
+                    placeholder="多个标签用逗号分隔"
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button className="secondary-button" onClick={() => setShowAppSettingModal(false)}>
+                取消
+              </button>
+              <button className="primary-button" onClick={handleSaveAppSetting}>
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 维度管理模态框 */}
+      {showDimensionModal && (
+        <div className="modal-overlay" onClick={() => setShowDimensionModal(false)}>
+          <div className="modal-container" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingDimension ? '编辑评价维度' : '新增评价维度'}</h3>
+              <button className="modal-close" onClick={() => setShowDimensionModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <form className="dimension-form">
+                <div className="form-group">
+                  <label htmlFor="dim-name">维度名称 *</label>
+                  <input
+                    type="text"
+                    id="dim-name"
+                    value={dimensionFormData.name}
+                    onChange={(e) => setDimensionFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="请输入维度名称"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="dim-description">维度描述 *</label>
+                  <textarea
+                    id="dim-description"
+                    value={dimensionFormData.description}
+                    onChange={(e) => setDimensionFormData(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="请输入维度描述"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="dim-calculation">计算方法 *</label>
+                  <textarea
+                    id="dim-calculation"
+                    value={dimensionFormData.calculation_method}
+                    onChange={(e) => setDimensionFormData(prev => ({ ...prev, calculation_method: e.target.value }))}
+                    placeholder="请输入计算方法"
+                    rows={4}
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="dim-weight">默认权重</label>
+                    <input
+                      type="number"
+                      id="dim-weight"
+                      min="0.1"
+                      max="10"
+                      step="0.1"
+                      value={dimensionFormData.weight}
+                      onChange={(e) => setDimensionFormData(prev => ({ ...prev, weight: parseFloat(e.target.value) }))}
+                    />
+                  </div>
+                  <div className="form-group checkbox-group">
+                    <input
+                      type="checkbox"
+                      id="dim-active"
+                      checked={dimensionFormData.is_active}
+                      onChange={(e) => setDimensionFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    />
+                    <label htmlFor="dim-active">启用</label>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button className="secondary-button" onClick={() => setShowDimensionModal(false)}>
+                取消
+              </button>
+              <button className="primary-button" onClick={handleSaveDimension}>
+                保存
               </button>
             </div>
           </div>

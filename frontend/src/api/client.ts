@@ -289,6 +289,14 @@ export async function fetchAppRankingSettings(appId: number) {
   return data
 }
 
+// 获取所有应用榜单设置（支持按榜单配置筛选）
+export async function fetchAllAppRankingSettings(rankingConfigId?: string) {
+  const { data } = await client.get<any[]>('/api/app-ranking-settings', {
+    params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {}
+  })
+  return data
+}
+
 export async function createAppRankingSetting(
   appId: number,
   payload: {

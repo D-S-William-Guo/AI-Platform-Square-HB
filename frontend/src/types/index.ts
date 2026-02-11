@@ -41,6 +41,7 @@ export type RankingItem = {
   usage_30d: number
   declared_at: string
   app: AppItem
+  dimensionScore?: number  // 用于维度筛选排序
 }
 
 export type Recommendation = {

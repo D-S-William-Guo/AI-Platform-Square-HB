@@ -17,7 +17,11 @@ AI-Platform-Square-HB/
 │   │   ├── pages/     # 页面组件
 │   │   ├── api/       # API客户端
 │   │   ├── types/     # TypeScript类型定义
-│   │   └── styles.css # 全局样式
+│   │   ├── styles/    # 样式文件
+│   │   │   ├── global-layout.css  # 全局布局样式
+│   │   │   ├── ranking-detail.css # 榜单详情样式
+│   │   │   └── ranking-management.css # 排行榜管理样式
+│   │   └── styles.css # 全局样式入口
 │   └── package.json
 ├── backend/           # 后端项目
 │   ├── app/
@@ -69,6 +73,179 @@ npm run dev
 ```
 
 访问：`http://localhost:5173`
+
+## ⚠️ 前端开发规范（重要）
+
+### CSS 命名空间规范（必读）
+
+**⚠️ 警告**：本项目使用 **CSS 命名空间** 来隔离不同页面的样式，以避免样式冲突。这是经过实践验证的最佳方案，**所有前端开发人员必须遵守**。
+
+#### 为什么需要命名空间？
+
+在之前的开发中，我们遇到了严重的样式冲突问题：
+- 修改排行榜管理页面样式 → 首页样式被破坏
+- 全局样式 `.card`、`.grid`、`.main` 被多个页面共用 → 相互覆盖
+- Vite 开发模式下 CSS 优先级难以预测
+
+**解决方案**：每个页面使用独立的命名空间前缀
+
+#### 命名空间规则
+
+| 页面 | 命名空间类名 | 示例 |
+|------|-------------|------|
+| 首页 | `.home-page` | `.home-page .card` |
+| 排行榜管理 | `.ranking-management-page` | `.ranking-management-page .page-container` |
+| 榜单详情 | `.ranking-detail-page` | `.ranking-detail-page .section` |
+
+#### 实施步骤
+
+**1. 在页面根元素添加命名空间类：**
+```tsx
+// App.tsx（首页）
+<div className="page home-page">  {/* 添加 home-page 类 */}
+  {/* 页面内容 */}
+</div>
+
+// RankingManagementPage.tsx
+<div className="page ranking-management-page">  {/* 添加 ranking-management-page 类 */}
+  {/* 页面内容 */}
+</div>
+```
+
+**2. 在样式文件中使用命名空间：**
+```css
+/* styles/home-page.css */
+.home-page .card {
+  /* 首页特有的卡片样式 */
+}
+
+.home-page .grid {
+  /* 首页特有的网格布局 */
+}
+
+/* styles/ranking-management.css */
+.ranking-management-page .page-container {
+  max-width: 1400px;
+}
+
+.ranking-management-page .table {
+  /* 排行榜管理特有的表格样式 */
+}
+```
+
+**3. 样式文件导入顺序（styles.css）：**
+```css
+/* CSS 变量必须在 @import 之前定义 */
+:root {
+  --primary-color: #4f7cff;
+  /* ... */
+}
+
+/* 1. 全局布局样式（先导入，优先级最低） */
+@import './styles/global-layout.css';
+
+/* 2. 页面特定样式（后导入，优先级更高） */
+@import './styles/home-page.css';
+@import './styles/ranking-detail.css';
+@import './styles/ranking-management.css';
+```
+
+#### 文件组织规范
+
+```
+src/styles/
+├── global-layout.css      # 全局布局样式（简单类名，如 .page-container）
+├── home-page.css          # 首页样式（使用 .home-page 命名空间）
+├── ranking-detail.css     # 榜单详情样式（使用 .ranking-detail-page 命名空间）
+└── ranking-management.css # 排行榜管理样式（使用 .ranking-management-page 命名空间）
+```
+
+#### 开发注意事项
+
+**✅ 正确的做法：**
+```css
+/* 页面特定样式使用命名空间 */
+.home-page .card {
+  background: white;
+}
+
+/* 全局通用组件不使用命名空间 */
+.btn-primary {
+  background: var(--primary-color);
+}
+```
+
+**❌ 错误的做法：**
+```css
+/* 不要在没有命名空间的情况下定义页面特定样式 */
+.card {
+  /* 这会影响所有页面！ */
+}
+
+/* 不要在页面样式中修改全局组件 */
+.ranking-management-page .btn {
+  /* 这会破坏其他页面的按钮样式！ */
+}
+```
+
+#### Vite 开发模式注意事项
+
+⚠️ **重要**：Vite 开发模式下 CSS 处理与生产模式有差异：
+
+- CSS `@import` 顺序决定最终优先级
+- 后导入的文件中的同名选择器会覆盖先导入的
+- 开发模式下样式是动态注入的，可能与生产构建结果不同
+
+**验证样式**：修改样式后，务必运行以下命令验证：
+```bash
+npm run verify:styles  # 构建并预览生产版本
+```
+
+#### 调试技巧
+
+1. 使用浏览器 DevTools 检查元素样式来源
+2. 确认样式选择器包含正确的命名空间前缀
+3. 检查 `styles.css` 中的 `@import` 顺序是否正确
+4. 如果样式不生效，尝试重启开发服务器
+
+#### 常见问题
+
+**Q: 为什么我的样式修改没有生效？**
+A: 检查以下几点：
+1. 是否在页面根元素添加了命名空间类（如 `className="page home-page"`）？
+2. 样式选择器是否正确使用了命名空间（如 `.home-page .card`）？
+3. 是否在 `styles.css` 中正确导入了样式文件？
+4. 是否重启了开发服务器？
+
+**Q: 如何修改全局共享组件的样式？**
+A: 在 `styles.css` 中定义通用组件样式（如 `.btn`、`.card`），**不要**使用命名空间。如果某个页面需要特殊样式，使用命名空间覆盖：
+```css
+/* 全局样式 */
+.card {
+  padding: 20px;
+}
+
+/* 首页特殊样式 */
+.home-page .card {
+  padding: 24px;
+}
+```
+
+### 开发脚本
+
+```bash
+# 开发模式（热更新）
+npm run dev
+
+# 构建生产版本
+npm run build
+
+# 预览生产版本（验证样式）
+npm run preview
+
+# 验证样式（构建+预览）
+npm run verify:styles
+```
 
 ## 核心功能模块
 
