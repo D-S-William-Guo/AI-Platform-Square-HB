@@ -1,8 +1,9 @@
+import json
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from .models import App, Ranking, RankingDimension, Submission
+from .models import App, Ranking, RankingConfig, RankingDimension, Submission, AppRankingSetting
 
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
@@ -295,12 +296,13 @@ PROVINCE_SUBMISSIONS = [
 ]
 
 
+# 8个维度：5个现有 + 3个新增（增长趋势、用户增长、市场热度）
 DEFAULT_DIMENSIONS = [
     {
         "name": "用户满意度",
         "description": "基于用户反馈和使用数据评估应用的满意度",
         "calculation_method": "基于应用的月调用量和用户评分计算",
-        "weight": 3.0,
+        "weight": 2.5,
         "is_active": True,
     },
     {
@@ -314,7 +316,7 @@ DEFAULT_DIMENSIONS = [
         "name": "技术创新性",
         "description": "评估应用的技术方案和创新点",
         "calculation_method": "基于应用的难度等级计算",
-        "weight": 2.0,
+        "weight": 1.5,
         "is_active": True,
     },
     {
@@ -329,6 +331,61 @@ DEFAULT_DIMENSIONS = [
         "description": "评估应用的可靠性和安全性",
         "calculation_method": "基于应用的状态和错误率计算",
         "weight": 1.0,
+        "is_active": True,
+    },
+    # 新增维度
+    {
+        "name": "增长趋势",
+        "description": "评估应用的增长速度和发展潜力",
+        "calculation_method": "基于上月调用量增长率和新增用户计算",
+        "weight": 2.0,
+        "is_active": True,
+    },
+    {
+        "name": "用户增长",
+        "description": "评估应用的用户增长速度",
+        "calculation_method": "基于新增用户数和用户留存率计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+    {
+        "name": "市场热度",
+        "description": "评估应用在市场上的关注度和传播度",
+        "calculation_method": "基于搜索次数、分享次数和收藏次数计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+]
+
+# 榜单配置
+DEFAULT_RANKING_CONFIGS = [
+    {
+        "id": "excellent",
+        "name": "优秀应用榜",
+        "description": "综合评估应用的业务价值和技术水平，突出成熟稳定的优秀应用",
+        "dimensions_config": json.dumps([
+            {"dim_id": 1, "weight": 2.5},  # 用户满意度
+            {"dim_id": 2, "weight": 3.0},  # 业务价值（权重更高）
+            {"dim_id": 3, "weight": 2.0},  # 技术创新性
+            {"dim_id": 4, "weight": 1.5},  # 使用活跃度
+            {"dim_id": 5, "weight": 1.0},  # 稳定性和安全性
+        ]),
+        "calculation_method": "composite",
+        "is_active": True,
+    },
+    {
+        "id": "trend",
+        "name": "趋势榜",
+        "description": "关注应用的增长速度和市场热度，突出新兴潜力应用",
+        "dimensions_config": json.dumps([
+            {"dim_id": 1, "weight": 1.5},  # 用户满意度
+            {"dim_id": 2, "weight": 1.5},  # 业务价值
+            {"dim_id": 4, "weight": 2.0},  # 使用活跃度
+            {"dim_id": 6, "weight": 2.5},  # 增长趋势（权重更高）
+            {"dim_id": 7, "weight": 2.0},  # 用户增长（权重更高）
+            {"dim_id": 8, "weight": 1.5},  # 市场热度（权重更高）
+        ]),
+        "calculation_method": "growth_rate",
         "is_active": True,
     },
 ]
@@ -390,6 +447,12 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
         ranking_enabled=submission.ranking_enabled,
         ranking_weight=submission.ranking_weight,
         ranking_tags=submission.ranking_tags,
+        # 新增增长指标字段（初始化为模拟数据）
+        last_month_calls=0.0,
+        new_users_count=0,
+        search_count=0,
+        share_count=0,
+        favorite_count=0,
     )
 
     db.add(app)
@@ -443,6 +506,11 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
 
 
 def sync_rankings(db: Session) -> int:
+    """同步排行榜数据
+    - 计算应用在各维度的得分
+    - 生成排行榜
+    - 初始化应用榜单设置
+    """
     dimensions = (
         db.query(RankingDimension)
         .filter(RankingDimension.is_active.is_(True))
@@ -455,6 +523,11 @@ def sync_rankings(db: Session) -> int:
         .order_by(App.id)
         .all()
     )
+    
+    # 获取榜单配置
+    ranking_configs = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True)).all()
+    config_map = {config.id: config for config in ranking_configs}
+    
     updated_count = 0
     for ranking_type in ["excellent", "trend"]:
         for app in apps:
@@ -462,6 +535,27 @@ def sync_rankings(db: Session) -> int:
             metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
             usage_30d = int(app.monthly_calls * 1000)
             tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
+            
+            # 初始化应用榜单设置（如果不存在）
+            existing_setting = (
+                db.query(AppRankingSetting)
+                .filter(
+                    AppRankingSetting.app_id == app.id,
+                    AppRankingSetting.ranking_config_id == ranking_type
+                )
+                .first()
+            )
+            if not existing_setting:
+                db.add(
+                    AppRankingSetting(
+                        app_id=app.id,
+                        ranking_config_id=ranking_type,
+                        is_enabled=True,
+                        weight_factor=1.0,
+                        custom_tags=tag,
+                    )
+                )
+            
             existing = (
                 db.query(Ranking)
                 .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
@@ -510,6 +604,7 @@ def seed_data(db: Session) -> None:
     """初始化数据库数据
     - 集团应用直接录入（系统内置）
     - 省内应用通过申报流程录入
+    - 初始化排行榜维度和榜单配置
     """
     try:
         if db.query(App).count() > 0 or db.query(Submission).count() > 0:
@@ -518,13 +613,26 @@ def seed_data(db: Session) -> None:
         print(f"Database error during seed: {exc}")
         return
 
+    # 1. 初始化维度
     try:
         if db.query(RankingDimension).count() == 0:
             for dimension in DEFAULT_DIMENSIONS:
                 db.add(RankingDimension(**dimension))
             db.commit()
+            print(f"Seeded {len(DEFAULT_DIMENSIONS)} ranking dimensions")
     except Exception as exc:
         print(f"Error seeding ranking dimensions: {exc}")
+        db.rollback()
+
+    # 2. 初始化榜单配置
+    try:
+        if db.query(RankingConfig).count() == 0:
+            for config in DEFAULT_RANKING_CONFIGS:
+                db.add(RankingConfig(**config))
+            db.commit()
+            print(f"Seeded {len(DEFAULT_RANKING_CONFIGS)} ranking configs")
+    except Exception as exc:
+        print(f"Error seeding ranking configs: {exc}")
         db.rollback()
 
     # 1. 录入集团应用（直接录入，不走申报流程）

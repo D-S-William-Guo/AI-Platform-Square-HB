@@ -35,8 +35,15 @@ class App(Base):
     ranking_weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=True)
     ranking_tags: Mapped[str] = mapped_column(String(255), default="", nullable=True)
     last_ranking_update: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 新增增长指标字段
+    last_month_calls: Mapped[float] = mapped_column(Float, default=0.0, nullable=True)
+    new_users_count: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
+    search_count: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
+    share_count: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
+    favorite_count: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
     # 关联关系
     rankings = relationship("Ranking", back_populates="app")
+    ranking_settings = relationship("AppRankingSetting", back_populates="app")
 
 
 class Ranking(Base):
@@ -165,3 +172,41 @@ class HistoricalRanking(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     app = relationship("App")
+
+
+# ==================== 三层架构新表 ====================
+
+class RankingConfig(Base):
+    """榜单配置表 - 第二层：榜单配置层"""
+    __tablename__ = "ranking_configs"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # excellent, trend
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    # 维度配置 JSON格式: [{"dim_id": 1, "weight": 2.5}, ...]
+    dimensions_config: Mapped[str] = mapped_column(Text, default="[]")
+    calculation_method: Mapped[str] = mapped_column(String(50), default="composite")  # composite | growth_rate
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关联关系
+    app_settings = relationship("AppRankingSetting", back_populates="ranking_config")
+
+
+class AppRankingSetting(Base):
+    """应用榜单设置表 - 第三层：应用参与层"""
+    __tablename__ = "app_ranking_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    weight_factor: Mapped[float] = mapped_column(Float, default=1.0)  # 权重系数
+    custom_tags: Mapped[str] = mapped_column(String(255), default="")  # 该榜单的自定义标签
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关联关系
+    app = relationship("App", back_populates="ranking_settings")
+    ranking_config = relationship("RankingConfig", back_populates="app_settings")
