@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking
+from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -28,6 +28,14 @@ from .schemas import (
     AppDimensionScoreOut,
     HistoricalRankingOut,
     GroupAppCreate,
+    RankingConfigCreate,
+    RankingConfigUpdate,
+    RankingConfigOut,
+    AppRankingSettingCreate,
+    AppRankingSettingUpdate,
+    AppRankingSettingOut,
+    DimensionConfigItem,
+    RankingConfigWithDimensions,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
@@ -1316,3 +1324,242 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# ==================== 三层架构排行榜系统 API ====================
+
+@app.get(f"{settings.api_prefix}/ranking-configs", response_model=list[RankingConfigOut])
+def list_ranking_configs(
+    is_active: bool | None = Query(default=None, description="按启用状态筛选"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置列表
+    """
+    query = db.query(RankingConfig)
+    if is_active is not None:
+        query = query.filter(RankingConfig.is_active == is_active)
+    return query.order_by(RankingConfig.id).all()
+
+
+@app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
+def get_ranking_config(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置详情
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    return config
+
+
+@app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}/with-dimensions", response_model=RankingConfigWithDimensions)
+def get_ranking_config_with_dimensions(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置详情（包含维度配置）
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    import json
+    dimensions_config = json.loads(config.dimensions_config) if config.dimensions_config else []
+    
+    return {
+        "id": config.id,
+        "name": config.name,
+        "description": config.description,
+        "dimensions": [DimensionConfigItem(**d) for d in dimensions_config],
+        "calculation_method": config.calculation_method,
+        "is_active": config.is_active,
+        "created_at": config.created_at,
+        "updated_at": config.updated_at,
+    }
+
+
+@app.post(f"{settings.api_prefix}/ranking-configs", response_model=RankingConfigOut)
+def create_ranking_config(
+    payload: RankingConfigCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    创建榜单配置
+    """
+    # 检查ID是否已存在
+    existing = db.query(RankingConfig).filter(RankingConfig.id == payload.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="榜单配置ID已存在")
+    
+    config = RankingConfig(**payload.model_dump())
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@app.put(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
+def update_ranking_config(
+    config_id: str,
+    payload: RankingConfigUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    更新榜单配置
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    if payload.name is not None:
+        config.name = payload.name
+    if payload.description is not None:
+        config.description = payload.description
+    if payload.dimensions_config is not None:
+        config.dimensions_config = payload.dimensions_config
+    if payload.calculation_method is not None:
+        config.calculation_method = payload.calculation_method
+    if payload.is_active is not None:
+        config.is_active = payload.is_active
+    
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@app.delete(f"{settings.api_prefix}/ranking-configs/{{config_id}}")
+def delete_ranking_config(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    删除榜单配置
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    db.delete(config)
+    db.commit()
+    return {"message": "榜单配置已删除"}
+
+
+@app.get(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=list[AppRankingSettingOut])
+def list_app_ranking_settings(
+    app_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取应用的榜单设置列表
+    """
+    settings_list = (
+        db.query(AppRankingSetting)
+        .filter(AppRankingSetting.app_id == app_id)
+        .options(joinedload(AppRankingSetting.ranking_config))
+        .all()
+    )
+    return settings_list
+
+
+@app.post(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=AppRankingSettingOut)
+def create_app_ranking_setting(
+    app_id: int,
+    payload: AppRankingSettingCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    创建应用榜单设置
+    """
+    # 检查应用是否存在
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    # 检查榜单配置是否存在
+    config = db.query(RankingConfig).filter(RankingConfig.id == payload.ranking_config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    # 检查是否已存在
+    existing = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.app_id == app_id,
+            AppRankingSetting.ranking_config_id == payload.ranking_config_id
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="该榜单设置已存在")
+    
+    setting = AppRankingSetting(
+        app_id=app_id,
+        **payload.model_dump()
+    )
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings/{{setting_id}}", response_model=AppRankingSettingOut)
+def update_app_ranking_setting(
+    app_id: int,
+    setting_id: int,
+    payload: AppRankingSettingUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用榜单设置
+    """
+    setting = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.id == setting_id,
+            AppRankingSetting.app_id == app_id
+        )
+        .first()
+    )
+    if not setting:
+        raise HTTPException(status_code=404, detail="榜单设置不存在")
+    
+    if payload.is_enabled is not None:
+        setting.is_enabled = payload.is_enabled
+    if payload.weight_factor is not None:
+        setting.weight_factor = payload.weight_factor
+    if payload.custom_tags is not None:
+        setting.custom_tags = payload.custom_tags
+    
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+@app.delete(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings/{{setting_id}}")
+def delete_app_ranking_setting(
+    app_id: int,
+    setting_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    删除应用榜单设置
+    """
+    setting = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.id == setting_id,
+            AppRankingSetting.app_id == app_id
+        )
+        .first()
+    )
+    if not setting:
+        raise HTTPException(status_code=404, detail="榜单设置不存在")
+    
+    db.delete(setting)
+    db.commit()
+    return {"message": "榜单设置已删除"}

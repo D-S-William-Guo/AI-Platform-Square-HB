@@ -227,3 +227,91 @@ class GroupAppCreate(BaseModel):
     ranking_enabled: bool = Field(default=True)
     ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
     ranking_tags: str = Field(default="", max_length=255)
+
+
+# ==================== 三层架构排行榜系统 Schemas ====================
+
+class RankingConfigBase(BaseModel):
+    """榜单配置基础模型"""
+    id: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(default="")
+    dimensions_config: str = Field(default="[]")  # JSON格式
+    calculation_method: str = Field(default="composite")
+    is_active: bool = Field(default=True)
+
+
+class RankingConfigCreate(RankingConfigBase):
+    """创建榜单配置"""
+    pass
+
+
+class RankingConfigUpdate(BaseModel):
+    """更新榜单配置"""
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    dimensions_config: str | None = None
+    calculation_method: str | None = None
+    is_active: bool | None = None
+
+
+class RankingConfigOut(RankingConfigBase):
+    """榜单配置输出"""
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AppRankingSettingBase(BaseModel):
+    """应用榜单设置基础模型"""
+    app_id: int
+    ranking_config_id: str
+    is_enabled: bool = True
+    weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
+    custom_tags: str = Field(default="", max_length=255)
+
+
+class AppRankingSettingCreate(BaseModel):
+    """创建应用榜单设置"""
+    ranking_config_id: str
+    is_enabled: bool = True
+    weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
+    custom_tags: str = Field(default="", max_length=255)
+
+
+class AppRankingSettingUpdate(BaseModel):
+    """更新应用榜单设置"""
+    is_enabled: bool | None = None
+    weight_factor: float | None = Field(None, ge=0.1, le=10.0)
+    custom_tags: str | None = Field(None, max_length=255)
+
+
+class AppRankingSettingOut(AppRankingSettingBase):
+    """应用榜单设置输出"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    ranking_config: RankingConfigOut | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class DimensionConfigItem(BaseModel):
+    """维度配置项"""
+    dim_id: int
+    weight: float
+
+
+class RankingConfigWithDimensions(BaseModel):
+    """带维度详情的榜单配置"""
+    id: str
+    name: str
+    description: str
+    dimensions: list[DimensionConfigItem]
+    calculation_method: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
