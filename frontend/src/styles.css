@@ -1,3 +1,5 @@
+@import './styles/ranking-detail.css';
+
 :root {
   --primary-color: #4f7cff;
   --primary-hover: #3d6ae8;

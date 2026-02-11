@@ -319,3 +319,20 @@ export async function deleteAppRankingSetting(appId: number, settingId: number) 
   const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`)
   return data
 }
+
+// 获取榜单排名数据（新API - 支持按榜单配置ID查询）
+export async function fetchRankingsByConfig(configId: string) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_config_id: configId } })
+  return data
+}
+
+// 获取应用在各维度的得分（用于榜单详情页展示）
+export async function fetchAppDimensionScoresForConfig(
+  appId: number,
+  configId: string
+) {
+  const { data } = await client.get<any[]>(`/api/apps/${appId}/dimension-scores`, {
+    params: { ranking_config_id: configId }
+  })
+  return data
+}

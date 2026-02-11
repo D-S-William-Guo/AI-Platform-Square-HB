@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores } from './api/client'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores, fetchRankingConfigs } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
+import RankingDetailPage from './pages/RankingDetailPage'
 import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -105,6 +106,7 @@ function HomePage() {
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
+  const [rankingConfigs, setRankingConfigs] = useState<any[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
@@ -124,6 +126,11 @@ function HomePage() {
     fetchRankingDimensions()
       .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
       .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
+    
+    // 加载榜单配置
+    fetchRankingConfigs(true)
+      .then((data) => setRankingConfigs(data))
+      .catch((error) => console.error('Failed to fetch ranking configs:', error))
     
     // 获取统计数据，添加加载状态和错误处理
     const loadStats = async () => {
@@ -430,14 +437,30 @@ function HomePage() {
               <span className="nav-icon">📍</span>
               <span>省内应用</span>
             </button>
-            <button 
-              className={`nav-item ${activeNav === 'ranking' ? 'active' : ''}`} 
-              onClick={() => setActiveNav('ranking')}
-            >
-              <span className="nav-icon">🏆</span>
-              <span>应用榜单</span>
-            </button>
           </div>
+
+          {/* 动态榜单导航 */}
+          {rankingConfigs.length > 0 && (
+            <div className="nav-section">
+              <div className="nav-section-title">应用榜单</div>
+              {rankingConfigs.map((config) => (
+                <Link
+                  key={config.id}
+                  to={`/ranking/${config.id}`}
+                  className={`nav-item ${activeNav === 'ranking' && rankingType === config.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveNav('ranking')
+                    setRankingType(config.id as 'excellent' | 'trend')
+                  }}
+                >
+                  <span className="nav-icon">
+                    {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+                  </span>
+                  <span>{config.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           <div className="filter-section">
             <div className="nav-section-title">分类筛选</div>
@@ -1116,6 +1139,7 @@ function App() {
       <Route path="/ranking-management" element={<RankingManagementPage />} />
       <Route path="/submission-review" element={<SubmissionReviewPage />} />
       <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
+      <Route path="/ranking/:configId" element={<RankingDetailPage />} />
     </Routes>
   )
 }
