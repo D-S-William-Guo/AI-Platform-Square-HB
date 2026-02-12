@@ -732,72 +732,74 @@ function HomePage() {
               <button className="modal-close" onClick={() => setSelectedApp(null)}>×</button>
             </div>
             
-            <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
-              <span className={`modal-status-badge ${selectedApp.status}`}>
-                {statusOptions.find((x) => x.value === selectedApp.status)?.label}
-              </span>
-            </div>
-
-            <div className="modal-tags">
-              <span className="modal-tag primary">{selectedApp.category}</span>
-              <span className="modal-tag">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
-            </div>
-
-            <div className="modal-section">
-              <div className="modal-section-title">场景介绍</div>
-              <p className="modal-content">{selectedApp.description}</p>
-            </div>
-
-            <div className="modal-metrics">
-              <div className="modal-metric-item">
-                <div className="modal-metric-icon">📊</div>
-                <div className="modal-metric-label">月调用量</div>
-                <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
+            <div className="modal-body">
+              <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
+                <span className={`modal-status-badge ${selectedApp.status}`}>
+                  {statusOptions.find((x) => x.value === selectedApp.status)?.label}
+                </span>
               </div>
-              <div className="modal-metric-item">
-                <div className="modal-metric-icon">📅</div>
-                <div className="modal-metric-label">上线时间</div>
-                <div className="modal-metric-value">{selectedApp.release_date}</div>
-              </div>
-            </div>
 
-            <div className="modal-section">
-              <div className="modal-section-title">基本信息</div>
-              <div className="modal-info-grid">
-                <div className="modal-info-item">
-                  <span className="modal-info-label">接入系统</span>
-                  <span className="modal-info-value">{selectedApp.target_system}</span>
+              <div className="modal-tags">
+                <span className="modal-tag primary">{selectedApp.category}</span>
+                <span className="modal-tag">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-title">场景介绍</div>
+                <p className="modal-content">{selectedApp.description}</p>
+              </div>
+
+              <div className="modal-metrics">
+                <div className="modal-metric-item">
+                  <div className="modal-metric-icon">📊</div>
+                  <div className="modal-metric-label">月调用量</div>
+                  <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
                 </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">适用人群</span>
-                  <span className="modal-info-value">{selectedApp.target_users}</span>
-                </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">解决问题</span>
-                  <span className="modal-info-value">{selectedApp.problem_statement}</span>
-                </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">接入难度</span>
-                  <span className="modal-info-value">{selectedApp.difficulty}</span>
+                <div className="modal-metric-item">
+                  <div className="modal-metric-icon">📅</div>
+                  <div className="modal-metric-label">上线时间</div>
+                  <div className="modal-metric-value">{selectedApp.release_date}</div>
                 </div>
               </div>
-            </div>
 
-            <div className="modal-section">
-              <div className="modal-section-title">成效评估</div>
-              <div className="modal-effectiveness">
-                <div className="modal-effectiveness-item">
-                  <span className="modal-effectiveness-label">成效类型</span>
-                  <span className="modal-effectiveness-value">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+              <div className="modal-section">
+                <div className="modal-section-title">基本信息</div>
+                <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">接入系统</span>
+                    <span className="modal-info-value">{selectedApp.target_system}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">适用人群</span>
+                    <span className="modal-info-value">{selectedApp.target_users}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">解决问题</span>
+                    <span className="modal-info-value">{selectedApp.problem_statement}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">接入难度</span>
+                    <span className="modal-info-value">{selectedApp.difficulty}</span>
+                  </div>
                 </div>
-                <div className="modal-effectiveness-item">
-                  <span className="modal-effectiveness-label">指标评估</span>
-                  <span className="modal-effectiveness-value highlight">{selectedApp.effectiveness_metric}</span>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-title">成效评估</div>
+                <div className="modal-effectiveness">
+                  <div className="modal-effectiveness-item">
+                    <span className="modal-effectiveness-label">成效类型</span>
+                    <span className="modal-effectiveness-value">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+                  </div>
+                  <div className="modal-effectiveness-item">
+                    <span className="modal-effectiveness-label">指标评估</span>
+                    <span className="modal-effectiveness-value highlight">{selectedApp.effectiveness_metric}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="modal-actions">
+            <div className="modal-footer">
               {selectedApp.access_mode === 'direct' ? (
                 <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
                   <span>🚀</span>

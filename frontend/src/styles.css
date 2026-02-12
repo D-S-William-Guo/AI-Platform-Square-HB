@@ -14,6 +14,9 @@
 @import './styles/ranking-detail.css';
 @import './styles/ranking-management.css';
 
+/* 3. 模态框视觉重设计（最后导入，确保最高优先级） */
+@import './styles/modal-redesign.css';
+
 /* 基础重置 */
 * {
   box-sizing: border-box;
@@ -364,6 +367,7 @@ body {
   max-height: 90vh;
   overflow: hidden;
   box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
 }
 
 .modal-header {

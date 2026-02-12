@@ -119,7 +119,7 @@ export default function HistoricalRankingPage() {
         </div>
       </header>
 
-      <div className="page-container">
+      <div className="page-container historical-ranking-page">
         <div className="page-header">
           <h1 className="page-title">历史榜单查询</h1>
           <p className="page-subtitle">查看历史榜单数据，追溯应用排名变化趋势</p>

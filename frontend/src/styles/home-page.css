@@ -1,6 +1,14 @@
 /* ==================== 首页专用样式 ==================== */
 /* 使用 .home-page 命名空间，确保样式只作用于首页 */
 
+/* 首页根容器 */
+.home-page {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 /* 首页布局 */
 .home-page .body {
   display: grid;
@@ -10,6 +18,8 @@
   margin: 0 auto;
   padding: 24px;
   flex: 1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 左侧导航 */
@@ -44,6 +54,7 @@
   width: 100%;
   padding: 12px 16px;
   border: none;
+  border-bottom: none;
   background: transparent;
   color: var(--text-secondary);
   font-size: 14px;
@@ -52,6 +63,7 @@
   border-radius: var(--radius-md);
   transition: all 0.2s;
   text-align: left;
+  text-decoration: none;
 }
 
 .home-page .nav-item:hover {
@@ -68,14 +80,92 @@
   font-size: 18px;
 }
 
-/* 中间内容区 */
+/* 分类筛选区域 */
+.home-page .filter-section {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.home-page .filter-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.home-page .filter-item:hover {
+  background: var(--bg-color);
+}
+
+.home-page .filter-item.active {
+  background: rgba(79, 124, 255, 0.1);
+}
+
+.home-page .filter-item.active .filter-label {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.home-page .filter-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.home-page .filter-item.active .filter-checkbox {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* 快速入口区域 */
+.home-page .quick-links {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.home-page .quick-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.home-page .quick-link:hover {
+  background: var(--bg-color);
+  color: var(--primary-color);
+}
+
+/* 中间内容区 - 重置全局 .main 样式的影响 */
 .home-page .main {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding: 0;
+  max-width: none;
+  margin: 0;
 }
 
 .home-page .block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 8px;
 }
 
@@ -92,7 +182,66 @@
   margin: 0;
 }
 
-/* 筛选栏 */
+/* 筛选区域 */
+.home-page .filters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.home-page .filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.home-page .filter-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.home-page .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-page .filter-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.home-page .filter-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.home-page .filter-btn.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.home-page .filter-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* 筛选栏（旧版兼容） */
 .home-page .filter-bar {
   display: flex;
   gap: 12px;
@@ -111,13 +260,14 @@
   cursor: pointer;
 }
 
-/* 应用卡片网格 */
+/* 应用卡片网格 - 重置全局 .grid 样式的影响 */
 .home-page .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 24px;
 }
 
+/* 应用卡片 - 重置全局 .card 样式的影响 */
 .home-page .card {
   background: var(--card-bg);
   border-radius: var(--radius-lg);
@@ -126,6 +276,8 @@
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid var(--border-color);
+  padding: 0;
+  margin-bottom: 0;
 }
 
 .home-page .card:hover {
@@ -376,21 +528,33 @@
   gap: 16px;
 }
 
-.home-page .stats-item {
+.home-page .stat-item {
   text-align: center;
   padding: 16px;
   background: var(--bg-color);
   border-radius: var(--radius-md);
 }
 
-.home-page .stats-value {
+.home-page .stat-value {
   font-size: 24px;
   font-weight: 700;
   color: var(--primary-color);
   margin: 0 0 4px 0;
 }
 
-.home-page .stats-label {
+.home-page .stat-value.pending {
+  color: #f59e0b;
+}
+
+.home-page .stat-value.approved {
+  color: #10b981;
+}
+
+.home-page .stat-value.total {
+  color: var(--primary-color);
+}
+
+.home-page .stat-label {
   font-size: 13px;
   color: var(--text-secondary);
   margin: 0;
@@ -536,20 +700,20 @@
   .home-page .body {
     padding: 16px;
   }
-  
+
   .home-page .grid {
     grid-template-columns: 1fr;
   }
-  
+
   .home-page .search-wrapper {
     display: none;
   }
-  
+
   .home-page .ranking-row {
     flex-wrap: wrap;
     gap: 8px;
   }
-  
+
   .home-page .rank-metric {
     width: 100%;
     text-align: left;
@@ -557,4 +721,486 @@
     padding-top: 8px;
     border-top: 1px solid var(--border-color);
   }
+
+  /* 模态框响应式适配 */
+  .home-page .modal-container {
+    width: 95%;
+    max-width: 95%;
+    margin: 16px;
+  }
+
+  .home-page .modal-body {
+    padding: 16px;
+  }
+
+  .home-page .modal-info-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .home-page .modal-metrics {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .home-page .modal-metric-item {
+    padding: 12px;
+  }
+
+  .home-page .modal-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .home-page .modal-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ==================== 模态框样式 ==================== */
+
+/* 模态框标题区域 */
+.home-page .modal-title-section {
+  flex: 1;
+}
+
+.home-page .modal-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.home-page .modal-org {
+  color: var(--text-muted);
+}
+
+/* 模态框封面 */
+.home-page .modal-cover {
+  height: 200px;
+  position: relative;
+  margin: -20px -24px 20px -24px;
+}
+
+.home-page .modal-status-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.home-page .modal-status-badge.available {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.home-page .modal-status-badge.approval {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.home-page .modal-status-badge.beta {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.home-page .modal-status-badge.offline {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* 模态框标签 */
+.home-page .modal-tags {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.home-page .modal-tag {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-color);
+  color: var(--text-secondary);
+}
+
+.home-page .modal-tag.primary {
+  background: rgba(79, 124, 255, 0.1);
+  color: var(--primary-color);
+}
+
+/* 模态框内容区块 */
+.home-page .modal-section {
+  margin-bottom: 24px;
+}
+
+.home-page .modal-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.home-page .modal-content {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 模态框指标 */
+.home-page .modal-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.home-page .modal-metric-item {
+  text-align: center;
+  padding: 16px;
+  background: var(--bg-color);
+  border-radius: var(--radius-md);
+}
+
+.home-page .modal-metric-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.home-page .modal-metric-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.home-page .modal-metric-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 模态框信息网格 */
+.home-page .modal-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.home-page .modal-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-page .modal-info-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.home-page .modal-info-value {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+/* 模态框成效评估 */
+.home-page .modal-effectiveness {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home-page .modal-effectiveness-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-color);
+  border-radius: var(--radius-md);
+}
+
+.home-page .modal-effectiveness-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.home-page .modal-effectiveness-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.home-page .modal-effectiveness-value.highlight {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* 模态框底部操作区域 */
+.home-page .modal-footer {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.home-page .modal-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.home-page .modal-btn.primary {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+}
+
+.home-page .modal-btn.primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.home-page .modal-btn.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.home-page .modal-btn.secondary {
+  background: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.home-page .modal-btn.secondary:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* 模态框通用样式 */
+.home-page .modal-overlay .modal-container {
+  max-width: 900px;
+  width: 90%;
+  max-height: 85vh;
+  box-sizing: border-box;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page .modal-overlay .modal-container .modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 20px 24px;
+  min-height: 0;
+  max-height: none;
+}
+
+/* 申报模态框 */
+.home-page .modal-overlay .submission-modal {
+  max-width: 700px;
+}
+
+/* 表单区块 */
+.home-page .form-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.home-page .form-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.home-page .form-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.home-page .form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.home-page .form-input,
+.home-page .form-select,
+.home-page .form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  transition: all 0.2s;
+}
+
+.home-page .form-input:focus,
+.home-page .form-select:focus,
+.home-page .form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+}
+
+.home-page .form-input.error,
+.home-page .form-textarea.error {
+  border-color: #dc2626;
+}
+
+.home-page .form-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.home-page .form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.home-page .error-message {
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.home-page .char-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: 4px;
+}
+
+.home-page .checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-page .checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* 图片上传区域 */
+.home-page .image-upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.home-page .image-upload-area:hover {
+  border-color: var(--primary-color);
+  background: rgba(79, 124, 255, 0.02);
+}
+
+.home-page .image-upload-area.has-image {
+  padding: 0;
+  border-style: solid;
+}
+
+.home-page .upload-placeholder {
+  color: var(--text-muted);
+}
+
+.home-page .upload-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.home-page .upload-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.home-page .image-preview {
+  position: relative;
+}
+
+.home-page .image-preview img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.home-page .remove-image {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-page .file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.home-page .upload-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--border-color);
+}
+
+.home-page .progress-bar {
+  height: 100%;
+  background: var(--primary-color);
+  transition: width 0.3s;
+}
+
+.home-page .progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-color);
 }
