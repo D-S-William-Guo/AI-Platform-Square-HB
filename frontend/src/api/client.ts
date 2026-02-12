@@ -231,3 +231,116 @@ export async function createGroupApp(
   })
   return data
 }
+
+// ==================== 三层架构排行榜系统 API ====================
+
+// 榜单配置 API
+export async function fetchRankingConfigs(is_active?: boolean) {
+  const { data } = await client.get<any[]>('/api/ranking-configs', {
+    params: is_active !== undefined ? { is_active } : {}
+  })
+  return data
+}
+
+export async function fetchRankingConfig(configId: string) {
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`)
+  return data
+}
+
+export async function fetchRankingConfigWithDimensions(configId: string) {
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`)
+  return data
+}
+
+export async function createRankingConfig(payload: {
+  id: string
+  name: string
+  description?: string
+  dimensions_config?: string
+  calculation_method?: string
+  is_active?: boolean
+}) {
+  const { data } = await client.post('/api/ranking-configs', payload)
+  return data
+}
+
+export async function updateRankingConfig(
+  configId: string,
+  payload: {
+    name?: string
+    description?: string
+    dimensions_config?: string
+    calculation_method?: string
+    is_active?: boolean
+  }
+) {
+  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload)
+  return data
+}
+
+export async function deleteRankingConfig(configId: string) {
+  const { data } = await client.delete(`/api/ranking-configs/${configId}`)
+  return data
+}
+
+// 应用榜单设置 API
+export async function fetchAppRankingSettings(appId: number) {
+  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`)
+  return data
+}
+
+// 获取所有应用榜单设置（支持按榜单配置筛选）
+export async function fetchAllAppRankingSettings(rankingConfigId?: string) {
+  const { data } = await client.get<any[]>('/api/app-ranking-settings', {
+    params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {}
+  })
+  return data
+}
+
+export async function createAppRankingSetting(
+  appId: number,
+  payload: {
+    ranking_config_id: string
+    is_enabled?: boolean
+    weight_factor?: number
+    custom_tags?: string
+  }
+) {
+  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload)
+  return data
+}
+
+export async function updateAppRankingSetting(
+  appId: number,
+  settingId: number,
+  payload: {
+    is_enabled?: boolean
+    weight_factor?: number
+    custom_tags?: string
+  }
+) {
+  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload)
+  return data
+}
+
+export async function deleteAppRankingSetting(appId: number, settingId: number) {
+  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`)
+  return data
+}
+
+// 获取榜单排名数据（新API - 支持按榜单配置ID查询）
+export async function fetchRankingsByConfig(configId: string) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_config_id: configId } })
+  return data
+}
+
+// 获取应用在各维度的得分（用于榜单详情页展示）
+export async function fetchAppDimensionScoresForConfig(
+  appId: number,
+  configId: string
+) {
+  const { data } = await client.get<any[]>(`/api/apps/${appId}/dimension-scores`, {
+    params: { ranking_config_id: configId }
+  })
+  return data
+}

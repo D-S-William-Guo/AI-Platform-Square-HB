@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-02-12
+
+### 改进
+
+#### 前端架构
+- 实现CSS模块化架构，采用命名空间隔离策略
+- 新增页面特定样式文件（guide-page.css, submission-review-page.css, historical-ranking-page.css）
+- 新增模态框视觉重设计样式文件（modal-redesign.css）
+- 统一模态框结构，使用`.modal-body`和`.modal-footer`保持一致性
+- 修复模态框底部按钮被截断的问题
+- 使用CSS变量替代硬编码颜色值，提高可维护性
+
+#### 文档
+- 新增CSS模块化架构文档（frontend/src/styles/README.md）
+- 详细说明样式分层结构、命名空间规范和最佳实践
+- 更新CHANGELOG.md记录本次更改
+
 ## [2.0.0] - 2026-02-10
 
 ### 新增

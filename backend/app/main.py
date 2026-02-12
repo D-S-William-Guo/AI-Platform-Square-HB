@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking
+from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -28,6 +29,14 @@ from .schemas import (
     AppDimensionScoreOut,
     HistoricalRankingOut,
     GroupAppCreate,
+    RankingConfigCreate,
+    RankingConfigUpdate,
+    RankingConfigOut,
+    AppRankingSettingCreate,
+    AppRankingSettingUpdate,
+    AppRankingSettingOut,
+    DimensionConfigItem,
+    RankingConfigWithDimensions,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
@@ -170,38 +179,75 @@ def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[in
 
 def sync_rankings_service(db: Session) -> int:
     """
-    同步排行榜数据
-    - 计算所有省内应用的维度评分
-    - 生成综合评分和排名
-    - 保存历史榜单数据
+    同步排行榜数据（支持三层架构）
+    - 遍历每个榜单配置
+    - 获取参与该榜单的应用
+    - 根据榜单配置的维度权重计算得分
+    - 生成排名并保存历史数据
     """
+    import json
+    
+    # 获取所有活跃的榜单配置
+    ranking_configs = (
+        db.query(RankingConfig)
+        .filter(RankingConfig.is_active.is_(True))
+        .all()
+    )
+    
+    # 获取所有维度
     dimensions = (
         db.query(RankingDimension)
         .filter(RankingDimension.is_active.is_(True))
         .order_by(RankingDimension.id)
         .all()
     )
-
-    apps = (
-        db.query(App)
-        .filter(App.section == "province", App.ranking_enabled.is_(True))
-        .order_by(App.id)
-        .all()
-    )
-
+    
+    # 创建维度ID到维度对象的映射
+    dimension_map = {d.id: d for d in dimensions}
+    
     updated_count = 0
     today = datetime.now().date()
-
-    for ranking_type in ["excellent", "trend"]:
-        for app in apps:
-            # 计算各维度得分并保存
+    
+    for config in ranking_configs:
+        # 解析榜单配置的维度权重
+        try:
+            config_dimensions = json.loads(config.dimensions_config) if config.dimensions_config else []
+        except json.JSONDecodeError:
+            config_dimensions = []
+        
+        # 获取参与该榜单的应用设置
+        app_settings = (
+            db.query(AppRankingSetting)
+            .filter(
+                AppRankingSetting.ranking_config_id == config.id,
+                AppRankingSetting.is_enabled.is_(True)
+            )
+            .options(joinedload(AppRankingSetting.app))
+            .all()
+        )
+        
+        # 计算每个应用的得分
+        app_scores = []
+        for setting in app_settings:
+            app = setting.app
+            if not app or app.section != "province":
+                continue
+                
+            # 根据榜单配置的维度权重计算得分
             base_score = 0.0
-            for dimension in dimensions:
+            for dim_config in config_dimensions:
+                dim_id = dim_config.get("dim_id")
+                weight = dim_config.get("weight", 1.0)
+                
+                dimension = dimension_map.get(dim_id)
+                if not dimension:
+                    continue
+                    
                 dim_score, calc_detail = calculate_dimension_score(app, dimension)
-                weighted_score = dim_score * dimension.weight
+                weighted_score = dim_score * weight
                 base_score += weighted_score
                 
-                # 保存或更新维度评分
+                # 保存维度评分
                 existing_score = (
                     db.query(AppDimensionScore)
                     .filter(
@@ -214,7 +260,7 @@ def sync_rankings_service(db: Session) -> int:
                 
                 if existing_score:
                     existing_score.score = dim_score
-                    existing_score.weight = dimension.weight
+                    existing_score.weight = weight
                     existing_score.calculation_detail = calc_detail
                     existing_score.updated_at = datetime.utcnow()
                 else:
@@ -224,71 +270,71 @@ def sync_rankings_service(db: Session) -> int:
                             dimension_id=dimension.id,
                             dimension_name=dimension.name,
                             score=dim_score,
-                            weight=dimension.weight,
+                            weight=weight,
                             calculation_detail=calc_detail,
                             period_date=today
                         )
                     )
             
-            # 计算最终综合得分
-            final_score = int(base_score * app.ranking_weight)
+            # 应用权重因子
+            final_score = int(base_score * setting.weight_factor)
             final_score = max(0, min(final_score, 1000))
             
-            metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
-            usage_30d = int(app.monthly_calls * 1000)
-            tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
-
+            app_scores.append({
+                "app": app,
+                "setting": setting,
+                "score": final_score
+            })
+        
+        # 按得分排序
+        app_scores.sort(key=lambda x: x["score"], reverse=True)
+        
+        # 更新或创建排名记录
+        for index, item in enumerate(app_scores, start=1):
+            app = item["app"]
+            setting = item["setting"]
+            score = item["score"]
+            
+            tag = setting.custom_tags.strip() if setting.custom_tags else DEFAULT_RANKING_TAG
+            usage_30d = int(app.monthly_calls * 1000) if app.monthly_calls else 0
+            
             existing = (
                 db.query(Ranking)
-                .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
+                .filter(
+                    Ranking.ranking_config_id == config.id,
+                    Ranking.app_id == app.id
+                )
                 .first()
             )
-
+            
             if existing:
-                existing.score = final_score
-                existing.metric_type = metric_type
-                existing.value_dimension = app.effectiveness_type
-                existing.usage_30d = usage_30d
+                existing.position = index
+                existing.score = score
                 existing.tag = tag
+                existing.usage_30d = usage_30d
                 existing.updated_at = datetime.utcnow()
             else:
-                position = (
-                    db.query(Ranking)
-                    .filter(Ranking.ranking_type == ranking_type)
-                    .count()
-                    + 1
-                )
                 db.add(
                     Ranking(
-                        ranking_type=ranking_type,
-                        position=position,
+                        ranking_config_id=config.id,
+                        ranking_type=config.id,  # 保持兼容性
+                        position=index,
                         app_id=app.id,
                         tag=tag,
-                        score=final_score,
-                        metric_type=metric_type,
+                        score=score,
+                        metric_type=config.calculation_method or "composite",
                         value_dimension=app.effectiveness_type,
                         usage_30d=usage_30d,
                         declared_at=today,
                     )
                 )
-            updated_count += 1
-
-        # 重新排序并更新排名位置
-        rankings = (
-            db.query(Ranking)
-            .filter(Ranking.ranking_type == ranking_type)
-            .order_by(Ranking.score.desc())
-            .all()
-        )
-        for index, ranking in enumerate(rankings, start=1):
-            ranking.position = index
             
             # 保存历史榜单数据
             historical = (
                 db.query(HistoricalRanking)
                 .filter(
-                    HistoricalRanking.ranking_type == ranking_type,
-                    HistoricalRanking.app_id == ranking.app_id,
+                    HistoricalRanking.ranking_config_id == config.id,
+                    HistoricalRanking.app_id == app.id,
                     HistoricalRanking.period_date == today
                 )
                 .first()
@@ -296,25 +342,28 @@ def sync_rankings_service(db: Session) -> int:
             
             if historical:
                 historical.position = index
-                historical.score = ranking.score
-                historical.tag = ranking.tag
+                historical.score = score
+                historical.tag = tag
             else:
                 db.add(
                     HistoricalRanking(
-                        ranking_type=ranking_type,
+                        ranking_config_id=config.id,
+                        ranking_type=config.id,  # 保持兼容性
                         period_date=today,
                         position=index,
-                        app_id=ranking.app_id,
-                        app_name=ranking.app.name,
-                        app_org=ranking.app.org,
-                        tag=ranking.tag,
-                        score=ranking.score,
-                        metric_type=ranking.metric_type,
-                        value_dimension=ranking.value_dimension,
-                        usage_30d=ranking.usage_30d
+                        app_id=app.id,
+                        app_name=app.name,
+                        app_org=app.org,
+                        tag=tag,
+                        score=score,
+                        metric_type=config.calculation_method or "composite",
+                        value_dimension=app.effectiveness_type,
+                        usage_30d=usage_30d
                     )
                 )
-
+            
+            updated_count += 1
+    
     db.commit()
     return updated_count
 
@@ -1316,3 +1365,262 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# ==================== 三层架构排行榜系统 API ====================
+
+@app.get(f"{settings.api_prefix}/ranking-configs", response_model=list[RankingConfigOut])
+def list_ranking_configs(
+    is_active: bool | None = Query(default=None, description="按启用状态筛选"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置列表
+    """
+    query = db.query(RankingConfig)
+    if is_active is not None:
+        query = query.filter(RankingConfig.is_active == is_active)
+    return query.order_by(RankingConfig.id).all()
+
+
+@app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
+def get_ranking_config(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置详情
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    return config
+
+
+@app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}/with-dimensions", response_model=RankingConfigWithDimensions)
+def get_ranking_config_with_dimensions(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    获取榜单配置详情（包含维度配置）
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    import json
+    dimensions_config = json.loads(config.dimensions_config) if config.dimensions_config else []
+    
+    return {
+        "id": config.id,
+        "name": config.name,
+        "description": config.description,
+        "dimensions": [DimensionConfigItem(**d) for d in dimensions_config],
+        "calculation_method": config.calculation_method,
+        "is_active": config.is_active,
+        "created_at": config.created_at,
+        "updated_at": config.updated_at,
+    }
+
+
+@app.post(f"{settings.api_prefix}/ranking-configs", response_model=RankingConfigOut)
+def create_ranking_config(
+    payload: RankingConfigCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    创建榜单配置
+    """
+    # 检查ID是否已存在
+    existing = db.query(RankingConfig).filter(RankingConfig.id == payload.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="榜单配置ID已存在")
+    
+    config = RankingConfig(**payload.model_dump())
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@app.put(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
+def update_ranking_config(
+    config_id: str,
+    payload: RankingConfigUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    更新榜单配置
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    if payload.name is not None:
+        config.name = payload.name
+    if payload.description is not None:
+        config.description = payload.description
+    if payload.dimensions_config is not None:
+        config.dimensions_config = payload.dimensions_config
+    if payload.calculation_method is not None:
+        config.calculation_method = payload.calculation_method
+    if payload.is_active is not None:
+        config.is_active = payload.is_active
+    
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@app.delete(f"{settings.api_prefix}/ranking-configs/{{config_id}}")
+def delete_ranking_config(
+    config_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    删除榜单配置
+    """
+    config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    db.delete(config)
+    db.commit()
+    return {"message": "榜单配置已删除"}
+
+
+@app.get(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=list[AppRankingSettingOut])
+def list_app_ranking_settings(
+    app_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取应用的榜单设置列表
+    """
+    settings_list = (
+        db.query(AppRankingSetting)
+        .filter(AppRankingSetting.app_id == app_id)
+        .options(joinedload(AppRankingSetting.ranking_config))
+        .all()
+    )
+    return settings_list
+
+
+@app.post(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=AppRankingSettingOut)
+def create_app_ranking_setting(
+    app_id: int,
+    payload: AppRankingSettingCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    创建应用榜单设置
+    """
+    # 检查应用是否存在
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    # 检查榜单配置是否存在
+    config = db.query(RankingConfig).filter(RankingConfig.id == payload.ranking_config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="榜单配置不存在")
+    
+    # 检查是否已存在
+    existing = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.app_id == app_id,
+            AppRankingSetting.ranking_config_id == payload.ranking_config_id
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="该榜单设置已存在")
+    
+    setting = AppRankingSetting(
+        app_id=app_id,
+        **payload.model_dump()
+    )
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+@app.put(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings/{{setting_id}}", response_model=AppRankingSettingOut)
+def update_app_ranking_setting(
+    app_id: int,
+    setting_id: int,
+    payload: AppRankingSettingUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    更新应用榜单设置
+    """
+    setting = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.id == setting_id,
+            AppRankingSetting.app_id == app_id
+        )
+        .first()
+    )
+    if not setting:
+        raise HTTPException(status_code=404, detail="榜单设置不存在")
+    
+    if payload.is_enabled is not None:
+        setting.is_enabled = payload.is_enabled
+    if payload.weight_factor is not None:
+        setting.weight_factor = payload.weight_factor
+    if payload.custom_tags is not None:
+        setting.custom_tags = payload.custom_tags
+    
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+@app.delete(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings/{{setting_id}}")
+def delete_app_ranking_setting(
+    app_id: int,
+    setting_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    删除应用榜单设置
+    """
+    setting = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.id == setting_id,
+            AppRankingSetting.app_id == app_id
+        )
+        .first()
+    )
+    if not setting:
+        raise HTTPException(status_code=404, detail="榜单设置不存在")
+    
+    db.delete(setting)
+    db.commit()
+    return {"message": "榜单设置已删除"}
+
+
+@app.get(f"{settings.api_prefix}/app-ranking-settings", response_model=list[AppRankingSettingOut])
+def list_all_app_ranking_settings(
+    ranking_config_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    获取所有应用榜单设置列表（支持按榜单配置筛选）
+    """
+    query = db.query(AppRankingSetting).options(
+        joinedload(AppRankingSetting.app),
+        joinedload(AppRankingSetting.ranking_config)
+    )
+    
+    if ranking_config_id:
+        query = query.filter(AppRankingSetting.ranking_config_id == ranking_config_id)
+    
+    settings_list = query.all()
+    return settings_list

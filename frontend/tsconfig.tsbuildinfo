@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/pages/guidepage.tsx","./src/pages/rankingmanagementpage.tsx","./src/pages/rulepage.tsx","./src/types/index.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/pages/guidepage.tsx","./src/pages/historicalrankingpage.tsx","./src/pages/rankingdetailpage.tsx","./src/pages/rankingmanagementpage.tsx","./src/pages/rulepage.tsx","./src/pages/submissionreviewpage.tsx","./src/types/index.ts"],"version":"5.9.3"}

@@ -1,8 +1,9 @@
+import json
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from .models import App, Ranking, RankingDimension, Submission
+from .models import App, Ranking, RankingConfig, RankingDimension, Submission, AppRankingSetting
 
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
@@ -295,12 +296,13 @@ PROVINCE_SUBMISSIONS = [
 ]
 
 
+# 8个维度：5个现有 + 3个新增（增长趋势、用户增长、市场热度）
 DEFAULT_DIMENSIONS = [
     {
         "name": "用户满意度",
         "description": "基于用户反馈和使用数据评估应用的满意度",
         "calculation_method": "基于应用的月调用量和用户评分计算",
-        "weight": 3.0,
+        "weight": 2.5,
         "is_active": True,
     },
     {
@@ -314,7 +316,7 @@ DEFAULT_DIMENSIONS = [
         "name": "技术创新性",
         "description": "评估应用的技术方案和创新点",
         "calculation_method": "基于应用的难度等级计算",
-        "weight": 2.0,
+        "weight": 1.5,
         "is_active": True,
     },
     {
@@ -329,6 +331,61 @@ DEFAULT_DIMENSIONS = [
         "description": "评估应用的可靠性和安全性",
         "calculation_method": "基于应用的状态和错误率计算",
         "weight": 1.0,
+        "is_active": True,
+    },
+    # 新增维度
+    {
+        "name": "增长趋势",
+        "description": "评估应用的增长速度和发展潜力",
+        "calculation_method": "基于上月调用量增长率和新增用户计算",
+        "weight": 2.0,
+        "is_active": True,
+    },
+    {
+        "name": "用户增长",
+        "description": "评估应用的用户增长速度",
+        "calculation_method": "基于新增用户数和用户留存率计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+    {
+        "name": "市场热度",
+        "description": "评估应用在市场上的关注度和传播度",
+        "calculation_method": "基于搜索次数、分享次数和收藏次数计算",
+        "weight": 1.5,
+        "is_active": True,
+    },
+]
+
+# 榜单配置
+DEFAULT_RANKING_CONFIGS = [
+    {
+        "id": "excellent",
+        "name": "优秀应用榜",
+        "description": "综合评估应用的业务价值和技术水平，突出成熟稳定的优秀应用",
+        "dimensions_config": json.dumps([
+            {"dim_id": 1, "weight": 2.5},  # 用户满意度
+            {"dim_id": 2, "weight": 3.0},  # 业务价值（权重更高）
+            {"dim_id": 3, "weight": 2.0},  # 技术创新性
+            {"dim_id": 4, "weight": 1.5},  # 使用活跃度
+            {"dim_id": 5, "weight": 1.0},  # 稳定性和安全性
+        ]),
+        "calculation_method": "composite",
+        "is_active": True,
+    },
+    {
+        "id": "trend",
+        "name": "趋势榜",
+        "description": "关注应用的增长速度和市场热度，突出新兴潜力应用",
+        "dimensions_config": json.dumps([
+            {"dim_id": 1, "weight": 1.5},  # 用户满意度
+            {"dim_id": 2, "weight": 1.5},  # 业务价值
+            {"dim_id": 4, "weight": 2.0},  # 使用活跃度
+            {"dim_id": 6, "weight": 2.5},  # 增长趋势（权重更高）
+            {"dim_id": 7, "weight": 2.0},  # 用户增长（权重更高）
+            {"dim_id": 8, "weight": 1.5},  # 市场热度（权重更高）
+        ]),
+        "calculation_method": "growth_rate",
         "is_active": True,
     },
 ]
@@ -390,6 +447,12 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
         ranking_enabled=submission.ranking_enabled,
         ranking_weight=submission.ranking_weight,
         ranking_tags=submission.ranking_tags,
+        # 新增增长指标字段（初始化为模拟数据）
+        last_month_calls=0.0,
+        new_users_count=0,
+        search_count=0,
+        share_count=0,
+        favorite_count=0,
     )
 
     db.add(app)
@@ -399,12 +462,36 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
     return app
 
 
-def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
-    if not dimensions:
+def calculate_app_score(
+    app: App,
+    ranking_config: RankingConfig,
+    dimensions: list[RankingDimension],
+    app_setting: AppRankingSetting | None = None
+) -> int:
+    """
+    根据榜单配置计算应用得分
+
+    1. 解析榜单配置的维度权重
+    2. 计算各维度得分
+    3. 应用权重系数
+    4. 返回最终分数
+    """
+    # 解析维度配置
+    dim_config = json.loads(ranking_config.dimensions_config) if ranking_config.dimensions_config else []
+    dim_weight_map = {d["dim_id"]: d["weight"] for d in dim_config}
+
+    # 如果没有维度配置，使用默认计算
+    if not dim_config or not dimensions:
         return max(0, min(int(app.monthly_calls * 10), 1000))
 
+    # 计算基础分数
     base_score = 0.0
+    total_weight = 0.0
+
     for dimension in dimensions:
+        if dimension.id not in dim_weight_map:
+            continue
+
         dimension_score = 0
         if dimension.name == "用户满意度":
             dimension_score = min(int(app.monthly_calls * 10), 100)
@@ -433,75 +520,140 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
                 dimension_score = 80
             else:
                 dimension_score = 60
+        elif dimension.name == "增长趋势":
+            # 基于上月调用量增长率计算
+            if app.last_month_calls > 0:
+                growth_rate = (app.monthly_calls - app.last_month_calls) / app.last_month_calls
+                dimension_score = min(max(int(growth_rate * 100), 0), 100)
+            else:
+                dimension_score = 50
+        elif dimension.name == "用户增长":
+            # 基于新增用户数计算
+            dimension_score = min(int(app.new_users_count / 10), 100)
+        elif dimension.name == "市场热度":
+            # 基于搜索、分享、收藏计算
+            heat_score = app.search_count + app.share_count * 2 + app.favorite_count * 3
+            dimension_score = min(int(heat_score / 10), 100)
         else:
             dimension_score = 50
 
-        base_score += dimension_score * dimension.weight
+        weight = dim_weight_map[dimension.id]
+        base_score += dimension_score * weight
+        total_weight += weight
 
-    final_score = int(base_score * app.ranking_weight)
-    return max(0, min(final_score, 1000))
+    # 归一化
+    if total_weight > 0:
+        final_score = base_score / total_weight
+    else:
+        final_score = base_score
+
+    # 应用权重系数（如果应用有自定义设置）
+    if app_setting and app_setting.weight_factor:
+        final_score *= app_setting.weight_factor
+
+    return max(0, min(int(final_score), 1000))
 
 
-def sync_rankings(db: Session) -> int:
+def sync_rankings(db: Session, ranking_config_id: str | None = None) -> int:
+    """
+    同步排行榜数据
+
+    1. 获取榜单配置
+    2. 获取参与该榜单的所有应用（通过 AppRankingSetting）
+    3. 计算每个应用的分数
+    4. 生成 Ranking 记录
+    """
+    updated_count = 0
+
+    # 获取需要同步的榜单配置
+    configs_query = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True))
+    if ranking_config_id:
+        configs_query = configs_query.filter(RankingConfig.id == ranking_config_id)
+    configs = configs_query.all()
+
+    # 获取所有维度
     dimensions = (
         db.query(RankingDimension)
         .filter(RankingDimension.is_active.is_(True))
-        .order_by(RankingDimension.id)
         .all()
     )
-    apps = (
-        db.query(App)
-        .filter(App.section == "province", App.ranking_enabled.is_(True))
-        .order_by(App.id)
-        .all()
-    )
-    updated_count = 0
-    for ranking_type in ["excellent", "trend"]:
-        for app in apps:
-            score = calculate_app_score(app, dimensions)
-            metric_type = "composite" if ranking_type == "excellent" else "growth_rate"
-            usage_30d = int(app.monthly_calls * 1000)
-            tag = app.ranking_tags.strip() if app.ranking_tags else DEFAULT_RANKING_TAG
+
+    for config in configs:
+        # 获取参与该榜单的应用设置
+        app_settings = (
+            db.query(AppRankingSetting)
+            .filter(
+                AppRankingSetting.ranking_config_id == config.id,
+                AppRankingSetting.is_enabled.is_(True)
+            )
+            .all()
+        )
+
+        # 获取应用列表
+        app_ids = [s.app_id for s in app_settings]
+        apps = db.query(App).filter(App.id.in_(app_ids)).all()
+        app_map = {app.id: app for app in apps}
+        setting_map = {s.app_id: s for s in app_settings}
+
+        # 计算分数
+        app_scores = []
+        for app_id in app_ids:
+            app = app_map.get(app_id)
+            setting = setting_map.get(app_id)
+            if not app:
+                continue
+
+            score = calculate_app_score(app, config, dimensions, setting)
+            app_scores.append((app, score, setting))
+
+        # 排序
+        app_scores.sort(key=lambda x: x[1], reverse=True)
+
+        # 生成 Ranking 记录
+        for position, (app, score, setting) in enumerate(app_scores, start=1):
+            tag = setting.custom_tags if setting and setting.custom_tags else DEFAULT_RANKING_TAG
+
             existing = (
                 db.query(Ranking)
-                .filter(Ranking.ranking_type == ranking_type, Ranking.app_id == app.id)
+                .filter(
+                    Ranking.ranking_config_id == config.id,
+                    Ranking.app_id == app.id
+                )
                 .first()
             )
+
             if existing:
+                existing.position = position
                 existing.score = score
-                existing.metric_type = metric_type
-                existing.value_dimension = app.effectiveness_type
-                existing.usage_30d = usage_30d
                 existing.tag = tag
+                existing.ranking_type = config.id  # 同步更新
             else:
-                position = (
-                    db.query(Ranking)
-                    .filter(Ranking.ranking_type == ranking_type)
-                    .count()
-                    + 1
-                )
                 db.add(
                     Ranking(
-                        ranking_type=ranking_type,
+                        ranking_config_id=config.id,
+                        ranking_type=config.id,
                         position=position,
                         app_id=app.id,
                         tag=tag,
                         score=score,
-                        metric_type=metric_type,
+                        metric_type=config.calculation_method,
                         value_dimension=app.effectiveness_type,
-                        usage_30d=usage_30d,
+                        usage_30d=int(app.monthly_calls * 1000),
                         declared_at=date.today(),
                     )
                 )
             updated_count += 1
+
+        # 重新排序所有排名
         rankings = (
             db.query(Ranking)
-            .filter(Ranking.ranking_type == ranking_type)
+            .filter(Ranking.ranking_config_id == config.id)
             .order_by(Ranking.score.desc())
             .all()
         )
         for index, ranking in enumerate(rankings, start=1):
             ranking.position = index
+
     db.commit()
     return updated_count
 
@@ -510,6 +662,7 @@ def seed_data(db: Session) -> None:
     """初始化数据库数据
     - 集团应用直接录入（系统内置）
     - 省内应用通过申报流程录入
+    - 初始化排行榜维度和榜单配置
     """
     try:
         if db.query(App).count() > 0 or db.query(Submission).count() > 0:
@@ -518,13 +671,26 @@ def seed_data(db: Session) -> None:
         print(f"Database error during seed: {exc}")
         return
 
+    # 1. 初始化维度
     try:
         if db.query(RankingDimension).count() == 0:
             for dimension in DEFAULT_DIMENSIONS:
                 db.add(RankingDimension(**dimension))
             db.commit()
+            print(f"Seeded {len(DEFAULT_DIMENSIONS)} ranking dimensions")
     except Exception as exc:
         print(f"Error seeding ranking dimensions: {exc}")
+        db.rollback()
+
+    # 2. 初始化榜单配置
+    try:
+        if db.query(RankingConfig).count() == 0:
+            for config in DEFAULT_RANKING_CONFIGS:
+                db.add(RankingConfig(**config))
+            db.commit()
+            print(f"Seeded {len(DEFAULT_RANKING_CONFIGS)} ranking configs")
+    except Exception as exc:
+        print(f"Error seeding ranking configs: {exc}")
         db.rollback()
 
     # 1. 录入集团应用（直接录入，不走申报流程）
@@ -544,6 +710,7 @@ def seed_data(db: Session) -> None:
     # 2. 省内应用通过申报流程录入
     try:
         approved_ids = []
+        approved_apps = []
         for index, payload in enumerate(PROVINCE_SUBMISSIONS):
             # 创建申报
             submission = create_submission_direct(db, payload)
@@ -551,10 +718,38 @@ def seed_data(db: Session) -> None:
             if index < 7:
                 approved = approve_submission_and_create_app(db, submission)
                 approved_ids.append(approved.id)
+                approved_apps.append(approved)
                 print(f"Approved submission {submission.id} -> app {approved.id}")
-        
+
+        # 3. 初始化应用榜单设置（在同步排行榜之前）
+        if approved_apps:
+            configs = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True)).all()
+            for app in approved_apps:
+                for config in configs:
+                    # 检查是否已存在
+                    existing = (
+                        db.query(AppRankingSetting)
+                        .filter(
+                            AppRankingSetting.app_id == app.id,
+                            AppRankingSetting.ranking_config_id == config.id
+                        )
+                        .first()
+                    )
+                    if not existing:
+                        db.add(
+                            AppRankingSetting(
+                                app_id=app.id,
+                                ranking_config_id=config.id,
+                                is_enabled=True,
+                                weight_factor=1.0,
+                                custom_tags=app.ranking_tags or DEFAULT_RANKING_TAG,
+                            )
+                        )
+            db.commit()
+            print(f"Initialized ranking settings for {len(approved_apps)} apps")
+
+        # 4. 同步排行榜数据
         if approved_ids:
-            # 同步排行榜数据
             sync_rankings(db)
             print(f"Synced rankings for {len(approved_ids)} apps")
     except Exception as exc:

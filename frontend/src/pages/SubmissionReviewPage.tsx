@@ -88,7 +88,7 @@ export default function SubmissionReviewPage() {
         </div>
       </header>
 
-      <div className="page-container">
+      <div className="page-container submission-review-page">
         <div className="page-header">
           <h1 className="page-title">省内应用申报审核</h1>
           <p className="page-subtitle">审核省内应用申报，通过审核的应用将进入排行榜评估体系</p>

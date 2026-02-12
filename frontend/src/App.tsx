@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores } from './api/client'
+import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores, fetchRankingConfigs } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
+import RankingDetailPage from './pages/RankingDetailPage'
 import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -105,6 +106,7 @@ function HomePage() {
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
+  const [rankingConfigs, setRankingConfigs] = useState<any[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
@@ -124,6 +126,11 @@ function HomePage() {
     fetchRankingDimensions()
       .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
       .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
+    
+    // 加载榜单配置
+    fetchRankingConfigs(true)
+      .then((data) => setRankingConfigs(data))
+      .catch((error) => console.error('Failed to fetch ranking configs:', error))
     
     // 获取统计数据，添加加载状态和错误处理
     const loadStats = async () => {
@@ -388,7 +395,7 @@ function HomePage() {
   }
 
   return (
-    <div className="page">
+    <div className="page home-page">
       <header className="header">
         <div className="brand">
           <div className="brand-icon">河</div>
@@ -430,14 +437,30 @@ function HomePage() {
               <span className="nav-icon">📍</span>
               <span>省内应用</span>
             </button>
-            <button 
-              className={`nav-item ${activeNav === 'ranking' ? 'active' : ''}`} 
-              onClick={() => setActiveNav('ranking')}
-            >
-              <span className="nav-icon">🏆</span>
-              <span>应用榜单</span>
-            </button>
           </div>
+
+          {/* 动态榜单导航 */}
+          {rankingConfigs.length > 0 && (
+            <div className="nav-section">
+              <div className="nav-section-title">应用榜单</div>
+              {rankingConfigs.map((config) => (
+                <Link
+                  key={config.id}
+                  to={`/ranking/${config.id}`}
+                  className={`nav-item ${activeNav === 'ranking' && rankingType === config.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveNav('ranking')
+                    setRankingType(config.id as 'excellent' | 'trend')
+                  }}
+                >
+                  <span className="nav-icon">
+                    {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+                  </span>
+                  <span>{config.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           <div className="filter-section">
             <div className="nav-section-title">分类筛选</div>
@@ -709,72 +732,74 @@ function HomePage() {
               <button className="modal-close" onClick={() => setSelectedApp(null)}>×</button>
             </div>
             
-            <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
-              <span className={`modal-status-badge ${selectedApp.status}`}>
-                {statusOptions.find((x) => x.value === selectedApp.status)?.label}
-              </span>
-            </div>
-
-            <div className="modal-tags">
-              <span className="modal-tag primary">{selectedApp.category}</span>
-              <span className="modal-tag">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
-            </div>
-
-            <div className="modal-section">
-              <div className="modal-section-title">场景介绍</div>
-              <p className="modal-content">{selectedApp.description}</p>
-            </div>
-
-            <div className="modal-metrics">
-              <div className="modal-metric-item">
-                <div className="modal-metric-icon">📊</div>
-                <div className="modal-metric-label">月调用量</div>
-                <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
+            <div className="modal-body">
+              <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
+                <span className={`modal-status-badge ${selectedApp.status}`}>
+                  {statusOptions.find((x) => x.value === selectedApp.status)?.label}
+                </span>
               </div>
-              <div className="modal-metric-item">
-                <div className="modal-metric-icon">📅</div>
-                <div className="modal-metric-label">上线时间</div>
-                <div className="modal-metric-value">{selectedApp.release_date}</div>
-              </div>
-            </div>
 
-            <div className="modal-section">
-              <div className="modal-section-title">基本信息</div>
-              <div className="modal-info-grid">
-                <div className="modal-info-item">
-                  <span className="modal-info-label">接入系统</span>
-                  <span className="modal-info-value">{selectedApp.target_system}</span>
+              <div className="modal-tags">
+                <span className="modal-tag primary">{selectedApp.category}</span>
+                <span className="modal-tag">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-title">场景介绍</div>
+                <p className="modal-content">{selectedApp.description}</p>
+              </div>
+
+              <div className="modal-metrics">
+                <div className="modal-metric-item">
+                  <div className="modal-metric-icon">📊</div>
+                  <div className="modal-metric-label">月调用量</div>
+                  <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
                 </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">适用人群</span>
-                  <span className="modal-info-value">{selectedApp.target_users}</span>
-                </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">解决问题</span>
-                  <span className="modal-info-value">{selectedApp.problem_statement}</span>
-                </div>
-                <div className="modal-info-item">
-                  <span className="modal-info-label">接入难度</span>
-                  <span className="modal-info-value">{selectedApp.difficulty}</span>
+                <div className="modal-metric-item">
+                  <div className="modal-metric-icon">📅</div>
+                  <div className="modal-metric-label">上线时间</div>
+                  <div className="modal-metric-value">{selectedApp.release_date}</div>
                 </div>
               </div>
-            </div>
 
-            <div className="modal-section">
-              <div className="modal-section-title">成效评估</div>
-              <div className="modal-effectiveness">
-                <div className="modal-effectiveness-item">
-                  <span className="modal-effectiveness-label">成效类型</span>
-                  <span className="modal-effectiveness-value">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+              <div className="modal-section">
+                <div className="modal-section-title">基本信息</div>
+                <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">接入系统</span>
+                    <span className="modal-info-value">{selectedApp.target_system}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">适用人群</span>
+                    <span className="modal-info-value">{selectedApp.target_users}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">解决问题</span>
+                    <span className="modal-info-value">{selectedApp.problem_statement}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">接入难度</span>
+                    <span className="modal-info-value">{selectedApp.difficulty}</span>
+                  </div>
                 </div>
-                <div className="modal-effectiveness-item">
-                  <span className="modal-effectiveness-label">指标评估</span>
-                  <span className="modal-effectiveness-value highlight">{selectedApp.effectiveness_metric}</span>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-title">成效评估</div>
+                <div className="modal-effectiveness">
+                  <div className="modal-effectiveness-item">
+                    <span className="modal-effectiveness-label">成效类型</span>
+                    <span className="modal-effectiveness-value">{valueDimensionLabel[selectedApp.effectiveness_type]}</span>
+                  </div>
+                  <div className="modal-effectiveness-item">
+                    <span className="modal-effectiveness-label">指标评估</span>
+                    <span className="modal-effectiveness-value highlight">{selectedApp.effectiveness_metric}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="modal-actions">
+            <div className="modal-footer">
               {selectedApp.access_mode === 'direct' ? (
                 <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
                   <span>🚀</span>
@@ -1116,6 +1141,7 @@ function App() {
       <Route path="/ranking-management" element={<RankingManagementPage />} />
       <Route path="/submission-review" element={<SubmissionReviewPage />} />
       <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
+      <Route path="/ranking/:configId" element={<RankingDetailPage />} />
     </Routes>
   )
 }
