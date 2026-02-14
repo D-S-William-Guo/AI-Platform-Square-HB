@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import date, datetime
@@ -10,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
-from .config import settings
+from .config import resolve_runtime_path, settings
 from .database import Base, engine, get_db
 from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
@@ -46,6 +47,18 @@ METRIC_TYPES = {"composite", "growth_rate", "likes"}
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
 DEFAULT_RANKING_TAG = "推荐"
+STATIC_DIR = resolve_runtime_path(settings.static_dir)
+UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
+IMAGE_DIR = resolve_runtime_path(settings.image_dir)
+
+
+logger = logging.getLogger(__name__)
+
+
+def ensure_runtime_directories() -> None:
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title=settings.app_name)
 
@@ -81,6 +94,8 @@ def validate_submission_ranking_fields(
 
 
 def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
+    """Deprecated: 保留旧版评分逻辑仅用于审计/回顾，不作为当前榜单权威计算路径。"""
+    logger.warning("Deprecated ranking path used: calculate_app_score(). Use sync_rankings_service() as source of truth.")
     if not dimensions:
         return max(0, min(int(app.monthly_calls * 10), 1000))
 
@@ -177,6 +192,29 @@ def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[in
     return dimension_score, calculation_detail
 
 
+
+
+def calculate_three_layer_score(
+    app: App,
+    config_dimensions: list[dict],
+    dimension_map: dict[int, RankingDimension],
+    weight_factor: float = 1.0,
+) -> int:
+    """三层榜单权威评分路径（纯计算函数，便于回归测试）。"""
+    base_score = 0.0
+    for dim_config in config_dimensions:
+        dim_id = dim_config.get("dim_id")
+        weight = dim_config.get("weight", 1.0)
+        dimension = dimension_map.get(dim_id)
+        if not dimension:
+            continue
+        dim_score, _ = calculate_dimension_score(app, dimension)
+        base_score += dim_score * weight
+
+    final_score = int(base_score * weight_factor)
+    return max(0, min(final_score, 1000))
+
+
 def sync_rankings_service(db: Session) -> int:
     """
     同步排行榜数据（支持三层架构）
@@ -233,20 +271,17 @@ def sync_rankings_service(db: Session) -> int:
             if not app or app.section != "province":
                 continue
                 
-            # 根据榜单配置的维度权重计算得分
-            base_score = 0.0
+            # 根据榜单配置的维度权重计算得分（权威路径）
             for dim_config in config_dimensions:
                 dim_id = dim_config.get("dim_id")
                 weight = dim_config.get("weight", 1.0)
-                
+
                 dimension = dimension_map.get(dim_id)
                 if not dimension:
                     continue
-                    
+
                 dim_score, calc_detail = calculate_dimension_score(app, dimension)
-                weighted_score = dim_score * weight
-                base_score += weighted_score
-                
+
                 # 保存维度评分
                 existing_score = (
                     db.query(AppDimensionScore)
@@ -277,8 +312,12 @@ def sync_rankings_service(db: Session) -> int:
                     )
             
             # 应用权重因子
-            final_score = int(base_score * setting.weight_factor)
-            final_score = max(0, min(final_score, 1000))
+            final_score = calculate_three_layer_score(
+                app=app,
+                config_dimensions=config_dimensions,
+                dimension_map=dimension_map,
+                weight_factor=setting.weight_factor,
+            )
             
             app_scores.append({
                 "app": app,
@@ -370,6 +409,8 @@ def sync_rankings_service(db: Session) -> int:
 
 @app.on_event("startup")
 def on_startup():
+    ensure_runtime_directories()
+
     Base.metadata.create_all(bind=engine)
     db = next(get_db())
     try:
@@ -1179,8 +1220,6 @@ def create_group_app(
 
 
 # Image upload configuration
-UPLOAD_DIR = Path("static/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -1364,7 +1403,8 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
 
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+ensure_runtime_directories()
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ==================== 三层架构排行榜系统 API ====================
