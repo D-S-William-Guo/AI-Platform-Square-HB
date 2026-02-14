@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
-from .config import settings
+from .config import resolve_runtime_path, settings
 from .database import Base, engine, get_db
 from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
@@ -46,6 +46,15 @@ METRIC_TYPES = {"composite", "growth_rate", "likes"}
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
 DEFAULT_RANKING_TAG = "推荐"
+STATIC_DIR = resolve_runtime_path(settings.static_dir)
+UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
+IMAGE_DIR = resolve_runtime_path(settings.image_dir)
+
+
+def ensure_runtime_directories() -> None:
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title=settings.app_name)
 
@@ -370,6 +379,8 @@ def sync_rankings_service(db: Session) -> int:
 
 @app.on_event("startup")
 def on_startup():
+    ensure_runtime_directories()
+
     Base.metadata.create_all(bind=engine)
     db = next(get_db())
     try:
@@ -1179,8 +1190,6 @@ def create_group_app(
 
 
 # Image upload configuration
-UPLOAD_DIR = Path("static/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -1364,7 +1373,8 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
 
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+ensure_runtime_directories()
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ==================== 三层架构排行榜系统 API ====================
