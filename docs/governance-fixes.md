@@ -69,3 +69,32 @@ PY
 ```
 
 期望两次输出一致，且均落在 `<repo>/backend/static`、`<repo>/backend/static/uploads`、`<repo>/backend/static/images`。
+
+## Batch 2 - 榜单双真相治理（restart from PR11）
+
+### 目标
+- 明确运行时榜单计算唯一权威路径。
+- 保持现有业务结果与对外接口行为不变。
+
+### 变更摘要
+- 明确 `sync_rankings_service()` 为运行时权威路径。
+- 将 `calculate_app_score()` 标注为 deprecated（仅审计/回溯），并加日志告警。
+- 提取 `calculate_three_layer_score()` 作为纯计算函数供权威路径复用。
+- 新增稳定性回归锚点测试，验证相同输入输出稳定。
+
+### 修改文件清单
+- `backend/app/main.py`
+- `backend/tests/test_ranking_consistency.py`
+- `docs/ranking-source-of-truth.md`
+- `docs/governance-fixes.md`
+
+### 验证步骤
+```bash
+cd /workspace/AI-Platform-Square-HB/backend
+PYTHONPATH=. pytest -q tests/test_ranking_consistency.py tests/test_api.py::test_health
+```
+
+### 回滚方式
+```bash
+git revert <batch2-commit-sha>
+```

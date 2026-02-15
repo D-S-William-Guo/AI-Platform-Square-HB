@@ -1,3 +1,19 @@
+import logging
+from .config import resolve_runtime_path, settings
+STATIC_DIR = resolve_runtime_path(settings.static_dir)
+UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
+IMAGE_DIR = resolve_runtime_path(settings.image_dir)
+
+
+logger = logging.getLogger(__name__)
+
+
+def ensure_runtime_directories() -> None:
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    """Deprecated: 仅保留用于审计/回溯，生产榜单以三层配置路径为准。"""
+    logger.warning("Deprecated ranking path used: calculate_app_score(). Use sync_rankings_service() as source of truth.")
 import os
 import uuid
 from datetime import date, datetime
@@ -51,7 +67,23 @@ UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
 IMAGE_DIR = resolve_runtime_path(settings.image_dir)
 
 
+logger = logging.getLogger(__name__)
+
+
+def validate_static_upload_path_consistency(static_dir: Path, upload_dir: Path) -> None:
+    """校验上传目录与 /static 挂载目录一致，避免返回的 /static/uploads/... 出现 404。"""
+    expected_upload_dir = (static_dir / "uploads").resolve()
+    resolved_upload_dir = upload_dir.resolve()
+    if resolved_upload_dir != expected_upload_dir:
+        raise RuntimeError(
+            "Invalid runtime path config: UPLOAD_DIR must resolve to STATIC_DIR/uploads "
+            f"to match '/static/uploads/...'. Got STATIC_DIR={static_dir}, "
+            f"UPLOAD_DIR={upload_dir}, expected={expected_upload_dir}."
+        )
+
+
 def ensure_runtime_directories() -> None:
+    validate_static_upload_path_consistency(STATIC_DIR, UPLOAD_DIR)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -90,6 +122,8 @@ def validate_submission_ranking_fields(
 
 
 def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
+    """Deprecated: 保留旧版评分逻辑仅用于审计/回顾，不作为当前榜单权威计算路径。"""
+    logger.warning("Deprecated ranking path used: calculate_app_score(). Use sync_rankings_service() as source of truth.")
     if not dimensions:
         return max(0, min(int(app.monthly_calls * 10), 1000))
 
@@ -133,6 +167,29 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
 
 
 def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[int, str]:
+
+
+def calculate_three_layer_score(
+    app: App,
+    config_dimensions: list[dict],
+    dimension_map: dict[int, RankingDimension],
+    weight_factor: float = 1.0,
+) -> int:
+    """三层榜单权威评分路径（纯计算函数，用于稳定性回归锚点）。"""
+    base_score = 0.0
+    for dim_config in config_dimensions:
+        dim_id = dim_config.get("dim_id")
+        weight = dim_config.get("weight", 1.0)
+        dimension = dimension_map.get(dim_id)
+        if not dimension:
+            continue
+        dim_score, _ = calculate_dimension_score(app, dimension)
+        base_score += dim_score * weight
+
+    final_score = int(base_score * weight_factor)
+    return max(0, min(final_score, 1000))
+
+
     """
     计算应用在某个维度的得分和计算详情
     返回：(得分, 计算详情说明)
@@ -184,6 +241,30 @@ def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[in
         calculation_detail = "默认评分50分"
     
     return dimension_score, calculation_detail
+
+
+
+
+def calculate_three_layer_score(
+            # 根据榜单配置的维度权重计算得分（权威路径）
+
+
+
+            final_score = calculate_three_layer_score(
+                app=app,
+                config_dimensions=config_dimensions,
+                dimension_map=dimension_map,
+                weight_factor=setting.weight_factor,
+            )
+        weight = dim_config.get("weight", 1.0)
+        dimension = dimension_map.get(dim_id)
+        if not dimension:
+            continue
+        dim_score, _ = calculate_dimension_score(app, dimension)
+        base_score += dim_score * weight
+
+    final_score = int(base_score * weight_factor)
+    return max(0, min(final_score, 1000))
 
 
 def sync_rankings_service(db: Session) -> int:
@@ -242,20 +323,17 @@ def sync_rankings_service(db: Session) -> int:
             if not app or app.section != "province":
                 continue
                 
-            # 根据榜单配置的维度权重计算得分
-            base_score = 0.0
+            # 根据榜单配置的维度权重计算得分（权威路径）
             for dim_config in config_dimensions:
                 dim_id = dim_config.get("dim_id")
                 weight = dim_config.get("weight", 1.0)
-                
+
                 dimension = dimension_map.get(dim_id)
                 if not dimension:
                     continue
-                    
+
                 dim_score, calc_detail = calculate_dimension_score(app, dimension)
-                weighted_score = dim_score * weight
-                base_score += weighted_score
-                
+
                 # 保存维度评分
                 existing_score = (
                     db.query(AppDimensionScore)
@@ -286,8 +364,12 @@ def sync_rankings_service(db: Session) -> int:
                     )
             
             # 应用权重因子
-            final_score = int(base_score * setting.weight_factor)
-            final_score = max(0, min(final_score, 1000))
+            final_score = calculate_three_layer_score(
+                app=app,
+                config_dimensions=config_dimensions,
+                dimension_map=dimension_map,
+                weight_factor=setting.weight_factor,
+            )
             
             app_scores.append({
                 "app": app,
@@ -302,6 +384,8 @@ def sync_rankings_service(db: Session) -> int:
         for index, item in enumerate(app_scores, start=1):
             app = item["app"]
             setting = item["setting"]
+    ensure_runtime_directories()
+
             score = item["score"]
             
             tag = setting.custom_tags.strip() if setting.custom_tags else DEFAULT_RANKING_TAG
@@ -1111,8 +1195,6 @@ def approve_submission_and_create_app(
             contact_name=submission.contact,
             highlight="",
             access_mode="direct",
-            access_url="",
-            target_system=submission.embedded_system,
             target_users="",
             problem_statement=submission.problem_statement,
             effectiveness_type=submission.effectiveness_type,
@@ -1296,7 +1378,8 @@ async def upload_image(
             original_name=result["original_name"],
             file_size=result["file_size"],
             message="图片上传成功",
-        )
+ensure_runtime_directories()
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     except HTTPException:
         raise
     except Exception as e:

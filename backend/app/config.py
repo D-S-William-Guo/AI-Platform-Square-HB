@@ -1,5 +1,20 @@
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+    static_dir: str = "static"
+    upload_dir: str = "static/uploads"
+    image_dir: str = "static/images"
+
+
+def resolve_runtime_path(path_value: str) -> Path:
+    path = Path(path_value).expanduser()
+    if path.is_absolute():
+        return path
+    return (BACKEND_DIR / path).resolve()
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
