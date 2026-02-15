@@ -167,29 +167,6 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
 
 
 def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[int, str]:
-
-
-def calculate_three_layer_score(
-    app: App,
-    config_dimensions: list[dict],
-    dimension_map: dict[int, RankingDimension],
-    weight_factor: float = 1.0,
-) -> int:
-    """三层榜单权威评分路径（纯计算函数，用于稳定性回归锚点）。"""
-    base_score = 0.0
-    for dim_config in config_dimensions:
-        dim_id = dim_config.get("dim_id")
-        weight = dim_config.get("weight", 1.0)
-        dimension = dimension_map.get(dim_id)
-        if not dimension:
-            continue
-        dim_score, _ = calculate_dimension_score(app, dimension)
-        base_score += dim_score * weight
-
-    final_score = int(base_score * weight_factor)
-    return max(0, min(final_score, 1000))
-
-
     """
     计算应用在某个维度的得分和计算详情
     返回：(得分, 计算详情说明)
@@ -243,19 +220,16 @@ def calculate_three_layer_score(
     return dimension_score, calculation_detail
 
 
-
-
 def calculate_three_layer_score(
-            # 根据榜单配置的维度权重计算得分（权威路径）
-
-
-
-            final_score = calculate_three_layer_score(
-                app=app,
-                config_dimensions=config_dimensions,
-                dimension_map=dimension_map,
-                weight_factor=setting.weight_factor,
-            )
+    app: App,
+    config_dimensions: list[dict],
+    dimension_map: dict[int, RankingDimension],
+    weight_factor: float = 1.0,
+) -> int:
+    """三层榜单权威评分路径（纯计算函数，用于稳定性回归锚点）。"""
+    base_score = 0.0
+    for dim_config in config_dimensions:
+        dim_id = dim_config.get("dim_id")
         weight = dim_config.get("weight", 1.0)
         dimension = dimension_map.get(dim_id)
         if not dimension:
@@ -384,7 +358,6 @@ def sync_rankings_service(db: Session) -> int:
         for index, item in enumerate(app_scores, start=1):
             app = item["app"]
             setting = item["setting"]
-    ensure_runtime_directories()
 
             score = item["score"]
             
@@ -1378,8 +1351,7 @@ async def upload_image(
             original_name=result["original_name"],
             file_size=result["file_size"],
             message="图片上传成功",
-ensure_runtime_directories()
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+        )
     except HTTPException:
         raise
     except Exception as e:
