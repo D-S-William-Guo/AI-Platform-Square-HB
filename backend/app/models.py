@@ -17,7 +17,7 @@ class App(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # available | approval | beta | offline
     monthly_calls: Mapped[float] = mapped_column(Float, nullable=False)
-    release_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    release_date: Mapped[date] = mapped_column(Date, nullable=False)
     api_open: Mapped[bool] = mapped_column(Boolean, default=False)
     difficulty: Mapped[str] = mapped_column(String(20), default="Low")
     contact_name: Mapped[str] = mapped_column(String(50), default="")
@@ -62,7 +62,7 @@ class Ranking(Base):
     metric_type: Mapped[str] = mapped_column(String(20), default="composite")  # composite | growth_rate | likes
     value_dimension: Mapped[str] = mapped_column(String(40), default="cost_reduction")
     usage_30d: Mapped[int] = mapped_column(Integer, default=0)
-    declared_at: Mapped[datetime] = mapped_column(Date, nullable=False)
+    declared_at: Mapped[date] = mapped_column(Date, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # 关联关系
     app = relationship("App", back_populates="rankings")
