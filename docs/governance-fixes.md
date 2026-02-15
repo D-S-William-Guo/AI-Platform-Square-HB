@@ -93,3 +93,23 @@ PYTHONPATH=. pytest -q tests/test_ranking_consistency.py tests/test_api.py::test
 
 ### 回滚方式
 - 回滚 commit `chore(ranking): clarify single source of truth (no behavior change)`。
+
+## Batch 1 补充 - STATIC_DIR/UPLOAD_DIR 一致性防护
+
+### 背景
+- Codex review 指出：上传接口返回固定前缀 `/static/uploads/...`，若 `UPLOAD_DIR` 独立配置且不在 `STATIC_DIR/uploads`，会出现链接可返回但实际 404 的风险。
+
+### 调整
+- 增加启动期校验 `validate_static_upload_path_consistency()`：
+  - 要求 `UPLOAD_DIR` 解析后必须等于 `STATIC_DIR/uploads`；
+  - 不满足时直接抛出 `RuntimeError` 并提示期望路径，阻止服务带病启动。
+- 继续保留目录自动创建能力；但在创建前先做一致性校验。
+
+### 验证命令
+```bash
+cd /workspace/AI-Platform-Square-HB/backend
+PYTHONPATH=. pytest -q tests/test_runtime_paths.py::test_runtime_upload_dir_must_match_static_mount_path
+```
+
+### 回滚方式
+- 回滚 commit `fix(p0): enforce static-upload path consistency`。

@@ -55,7 +55,20 @@ IMAGE_DIR = resolve_runtime_path(settings.image_dir)
 logger = logging.getLogger(__name__)
 
 
+def validate_static_upload_path_consistency(static_dir: Path, upload_dir: Path) -> None:
+    """校验上传目录与 /static 挂载目录一致，避免返回的 /static/uploads/... 出现 404。"""
+    expected_upload_dir = (static_dir / "uploads").resolve()
+    resolved_upload_dir = upload_dir.resolve()
+    if resolved_upload_dir != expected_upload_dir:
+        raise RuntimeError(
+            "Invalid runtime path config: UPLOAD_DIR must resolve to STATIC_DIR/uploads "
+            f"to match '/static/uploads/...'. Got STATIC_DIR={static_dir}, "
+            f"UPLOAD_DIR={upload_dir}, expected={expected_upload_dir}."
+        )
+
+
 def ensure_runtime_directories() -> None:
+    validate_static_upload_path_consistency(STATIC_DIR, UPLOAD_DIR)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
