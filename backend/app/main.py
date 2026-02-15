@@ -1,19 +1,4 @@
 import logging
-from .config import resolve_runtime_path, settings
-STATIC_DIR = resolve_runtime_path(settings.static_dir)
-UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
-IMAGE_DIR = resolve_runtime_path(settings.image_dir)
-
-
-logger = logging.getLogger(__name__)
-
-
-def ensure_runtime_directories() -> None:
-    STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    """Deprecated: 仅保留用于审计/回溯，生产榜单以三层配置路径为准。"""
-    logger.warning("Deprecated ranking path used: calculate_app_score(). Use sync_rankings_service() as source of truth.")
 import os
 import uuid
 from datetime import date, datetime
@@ -26,7 +11,39 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
-from .config import resolve_runtime_path, settings
+from pydantic_settings import BaseSettings
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+class Settings(BaseSettings):
+    app_name: str = "AI App Square API"
+    api_prefix: str = "/api"
+    database_url: str = "sqlite:///./ai_app_square.db"
+    oa_rule_base_url: str = "https://oa.example.internal"
+    static_dir: str = "static"
+    upload_dir: str = "static/uploads"
+    image_dir: str = "static/images"
+
+
+settings = Settings()
+
+
+def resolve_runtime_path(path_value: str) -> Path:
+    path = Path(path_value).expanduser()
+    if path.is_absolute():
+        return path
+    return (BACKEND_DIR / path).resolve()
+
+import sys
+import types
+
+config_module = types.ModuleType("app.config")
+config_module.settings = settings
+config_module.resolve_runtime_path = resolve_runtime_path
+sys.modules.setdefault("app.config", config_module)
+
 from .database import Base, engine, get_db
 from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
@@ -167,29 +184,6 @@ def calculate_app_score(app: App, dimensions: list[RankingDimension]) -> int:
 
 
 def calculate_dimension_score(app: App, dimension: RankingDimension) -> tuple[int, str]:
-
-
-def calculate_three_layer_score(
-    app: App,
-    config_dimensions: list[dict],
-    dimension_map: dict[int, RankingDimension],
-    weight_factor: float = 1.0,
-) -> int:
-    """三层榜单权威评分路径（纯计算函数，用于稳定性回归锚点）。"""
-    base_score = 0.0
-    for dim_config in config_dimensions:
-        dim_id = dim_config.get("dim_id")
-        weight = dim_config.get("weight", 1.0)
-        dimension = dimension_map.get(dim_id)
-        if not dimension:
-            continue
-        dim_score, _ = calculate_dimension_score(app, dimension)
-        base_score += dim_score * weight
-
-    final_score = int(base_score * weight_factor)
-    return max(0, min(final_score, 1000))
-
-
     """
     计算应用在某个维度的得分和计算详情
     返回：(得分, 计算详情说明)
@@ -243,19 +237,16 @@ def calculate_three_layer_score(
     return dimension_score, calculation_detail
 
 
-
-
 def calculate_three_layer_score(
-            # 根据榜单配置的维度权重计算得分（权威路径）
-
-
-
-            final_score = calculate_three_layer_score(
-                app=app,
-                config_dimensions=config_dimensions,
-                dimension_map=dimension_map,
-                weight_factor=setting.weight_factor,
-            )
+    app: App,
+    config_dimensions: list[dict],
+    dimension_map: dict[int, RankingDimension],
+    weight_factor: float = 1.0,
+) -> int:
+    """三层榜单权威评分路径（纯计算函数，用于稳定性回归锚点）。"""
+    base_score = 0.0
+    for dim_config in config_dimensions:
+        dim_id = dim_config.get("dim_id")
         weight = dim_config.get("weight", 1.0)
         dimension = dimension_map.get(dim_id)
         if not dimension:
@@ -265,6 +256,8 @@ def calculate_three_layer_score(
 
     final_score = int(base_score * weight_factor)
     return max(0, min(final_score, 1000))
+
+
 
 
 def sync_rankings_service(db: Session) -> int:
@@ -384,8 +377,6 @@ def sync_rankings_service(db: Session) -> int:
         for index, item in enumerate(app_scores, start=1):
             app = item["app"]
             setting = item["setting"]
-    ensure_runtime_directories()
-
             score = item["score"]
             
             tag = setting.custom_tags.strip() if setting.custom_tags else DEFAULT_RANKING_TAG
@@ -1378,8 +1369,7 @@ async def upload_image(
             original_name=result["original_name"],
             file_size=result["file_size"],
             message="图片上传成功",
-ensure_runtime_directories()
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+        )
     except HTTPException:
         raise
     except Exception as e:
