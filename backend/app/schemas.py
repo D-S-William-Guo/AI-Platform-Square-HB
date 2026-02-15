@@ -29,9 +29,9 @@ class AppDetail(AppBase):
     effectiveness_metric: str
     cover_image_url: str
     # 排行榜相关字段
-    ranking_enabled: bool = True
-    ranking_weight: float = 1.0
-    ranking_tags: str = ""
+    ranking_enabled: bool | None = None
+    ranking_weight: float | None = None
+    ranking_tags: str | None = None
     last_ranking_update: datetime | None = None
 
     class Config:
