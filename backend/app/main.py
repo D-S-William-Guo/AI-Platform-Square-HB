@@ -1,19 +1,4 @@
 import logging
-from .config import resolve_runtime_path, settings
-STATIC_DIR = resolve_runtime_path(settings.static_dir)
-UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
-IMAGE_DIR = resolve_runtime_path(settings.image_dir)
-
-
-logger = logging.getLogger(__name__)
-
-
-def ensure_runtime_directories() -> None:
-    STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    """Deprecated: 仅保留用于审计/回溯，生产榜单以三层配置路径为准。"""
-    logger.warning("Deprecated ranking path used: calculate_app_score(). Use sync_rankings_service() as source of truth.")
 import os
 import uuid
 from datetime import date, datetime
