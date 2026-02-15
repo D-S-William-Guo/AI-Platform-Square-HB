@@ -63,6 +63,20 @@ uvicorn app.main:app --reload --port 8000
 - `UPLOAD_DIR`（默认：`static/uploads`）
 - `IMAGE_DIR`（默认：`static/images`）
 - 以上相对路径统一以 `backend/` 目录为基准解析（与启动时 cwd 无关），也可配置为绝对路径。
+
+### 后端最小验证（建议）
+
+```bash
+curl -sS http://127.0.0.1:8000/api/health
+```
+
+期望返回：`{"status":"ok"}`
+
+后端目录相关配置（可选，均有默认值）：
+- `STATIC_DIR`（默认：`static`）
+- `UPLOAD_DIR`（默认：`static/uploads`）
+- `IMAGE_DIR`（默认：`static/images`）
+- 以上相对路径统一以 `backend/` 目录为基准解析（与启动时 cwd 无关），也可配置为绝对路径。
 - 启动校验要求：`UPLOAD_DIR` 必须解析到 `STATIC_DIR/uploads`，否则服务将启动失败并提示配置错误（避免返回 `/static/uploads/...` 出现 404）。
 
 ### 后端最小验证（建议）

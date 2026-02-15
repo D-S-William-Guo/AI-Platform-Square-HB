@@ -70,46 +70,31 @@ PY
 
 期望两次输出一致，且均落在 `<repo>/backend/static`、`<repo>/backend/static/uploads`、`<repo>/backend/static/images`。
 
-## Batch 2 - P1 榜单“双真相”治理（不改业务结果）
+## Batch 2 - 榜单双真相治理（restart from PR11）
 
 ### 目标
-- 明确榜单计算的权威路径，避免配置已改但结果来源不清。
-- 保留兼容接口，不变更现有 API 路径和响应结构。
+- 明确运行时榜单计算唯一权威路径。
+- 保持现有业务结果与对外接口行为不变。
 
-### 变更说明
-1. **权威路径明确**
-   - 以 `sync_rankings_service()`（三层榜单配置 + AppRankingSetting）作为默认且唯一权威计算路径。
-   - 抽取 `calculate_three_layer_score()` 作为纯计算函数，供权威路径复用并便于回归测试。
-2. **旧逻辑降级为审计用途**
-   - `calculate_app_score()` 增加 Deprecated 标识与日志告警：保留函数仅用于审计/回顾，不作为生产榜单计算主路径。
-3. **最小一致性回归锚点**
-   - 新增测试 `test_three_layer_score_is_stable_for_same_input`，验证相同输入输出稳定。
+### 变更摘要
+- 明确 `sync_rankings_service()` 为运行时权威路径。
+- 将 `calculate_app_score()` 标注为 deprecated（仅审计/回溯），并加日志告警。
+- 提取 `calculate_three_layer_score()` 作为纯计算函数供权威路径复用。
+- 新增稳定性回归锚点测试，验证相同输入输出稳定。
 
-### 验证命令
+### 修改文件清单
+- `backend/app/main.py`
+- `backend/tests/test_ranking_consistency.py`
+- `docs/ranking-source-of-truth.md`
+- `docs/governance-fixes.md`
+
+### 验证步骤
 ```bash
 cd /workspace/AI-Platform-Square-HB/backend
 PYTHONPATH=. pytest -q tests/test_ranking_consistency.py tests/test_api.py::test_health
 ```
 
 ### 回滚方式
-- 回滚 commit `chore(ranking): clarify single source of truth (no behavior change)`。
-
-## Batch 1 补充 - STATIC_DIR/UPLOAD_DIR 一致性防护
-
-### 背景
-- Codex review 指出：上传接口返回固定前缀 `/static/uploads/...`，若 `UPLOAD_DIR` 独立配置且不在 `STATIC_DIR/uploads`，会出现链接可返回但实际 404 的风险。
-
-### 调整
-- 增加启动期校验 `validate_static_upload_path_consistency()`：
-  - 要求 `UPLOAD_DIR` 解析后必须等于 `STATIC_DIR/uploads`；
-  - 不满足时直接抛出 `RuntimeError` 并提示期望路径，阻止服务带病启动。
-- 继续保留目录自动创建能力；但在创建前先做一致性校验。
-
-### 验证命令
 ```bash
-cd /workspace/AI-Platform-Square-HB/backend
-PYTHONPATH=. pytest -q tests/test_runtime_paths.py::test_runtime_upload_dir_must_match_static_mount_path
+git revert <batch2-commit-sha>
 ```
-
-### 回滚方式
-- 回滚 commit `fix(p0): enforce static-upload path consistency`。
