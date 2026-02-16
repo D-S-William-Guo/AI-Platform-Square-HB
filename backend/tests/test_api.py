@@ -1,11 +1,13 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import AppRankingSetting, Submission
 
 
 client = TestClient(app)
+ADMIN_HEADERS = {'X-Admin-Token': settings.admin_token}
 
 
 def test_health():
@@ -85,7 +87,7 @@ def test_approve_creates_disabled_ranking_setting():
         db.commit()
         db.refresh(submission)
 
-        approve_resp = client.post(f"/api/submissions/{submission.id}/approve-and-create-app")
+        approve_resp = client.post(f"/api/submissions/{submission.id}/approve-and-create-app", headers=ADMIN_HEADERS)
         assert approve_resp.status_code == 200
         app_id = approve_resp.json()['app_id']
 
@@ -94,3 +96,14 @@ def test_approve_creates_disabled_ranking_setting():
         assert setting.is_enabled is False
     finally:
         db.close()
+
+
+def test_admin_endpoint_requires_token():
+    resp = client.post('/api/rankings/sync')
+    assert resp.status_code == 401
+
+
+def test_admin_endpoint_accepts_valid_token():
+    Base.metadata.create_all(bind=engine)
+    resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
+    assert resp.status_code == 200
