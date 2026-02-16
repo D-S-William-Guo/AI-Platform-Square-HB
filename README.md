@@ -8,6 +8,19 @@
 - 后端：Python FastAPI + SQLAlchemy
 - 数据库：MySQL（生产建议）/ SQLite（本地快速启动默认）
 
+## Governance Snapshot
+
+- 省内应用展示以 `App(section=province)` 为准，独立于是否上榜。
+- 审批通过申报时必须创建 `App` + `AppRankingSetting`，且后者默认 `is_enabled=false`。
+- 榜单参评唯一真相源为 `AppRankingSetting`（不是 `App/Submission` 的 `ranking_*` 字段）。
+- 榜单对外展示以周期快照 `HistoricalRanking` 为准，不做实时计算口径。
+- 周期口径默认按周（自然周）；双周/月仅在规则明确发布时启用。
+- 一期对外仅展示：集团应用、省内应用、双榜单、申报入口。
+- 维度管理、榜单配置、参评设置、手工调分等管理能力仅管理员可见且后端需权限保护。
+- 一期不做平台化扩展：不引入“可创建无限榜单”产品能力。
+- 保持 `main` 可 import，health test 与 import smoke test 持续通过。
+- 详细规则见 `docs/GOVERNANCE.md`。
+
 ## 目录结构
 
 ```
