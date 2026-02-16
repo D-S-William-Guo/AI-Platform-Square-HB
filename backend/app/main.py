@@ -1164,6 +1164,16 @@ def approve_submission_and_create_app(
         )
 
         db.add(app)
+        db.flush()
+
+        db.add(
+            AppRankingSetting(
+                app_id=app.id,
+                ranking_config_id=None,
+                is_enabled=False,
+            )
+        )
+
         submission.status = "approved"
         db.commit()
         db.refresh(app)
