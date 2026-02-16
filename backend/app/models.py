@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+from typing import Optional
+
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -210,8 +212,8 @@ class AppRankingSetting(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
-    ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
-    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    ranking_config_id: Mapped[Optional[str]] = mapped_column(ForeignKey("ranking_configs.id"), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     weight_factor: Mapped[float] = mapped_column(Float, default=1.0)  # 权重系数
     custom_tags: Mapped[str] = mapped_column(String(255), default="")  # 该榜单的自定义标签
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

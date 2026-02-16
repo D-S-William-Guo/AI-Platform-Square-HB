@@ -267,8 +267,8 @@ class RankingConfigOut(RankingConfigBase):
 class AppRankingSettingBase(BaseModel):
     """应用榜单设置基础模型"""
     app_id: int
-    ranking_config_id: str
-    is_enabled: bool = True
+    ranking_config_id: str | None = None
+    is_enabled: bool = False
     weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
     custom_tags: str = Field(default="", max_length=255)
 
@@ -276,7 +276,7 @@ class AppRankingSettingBase(BaseModel):
 class AppRankingSettingCreate(BaseModel):
     """创建应用榜单设置"""
     ranking_config_id: str
-    is_enabled: bool = True
+    is_enabled: bool = False
     weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
     custom_tags: str = Field(default="", max_length=255)
 
