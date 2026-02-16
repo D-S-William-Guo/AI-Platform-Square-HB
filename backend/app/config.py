@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     static_dir: str = "static"
     upload_dir: str = "static/uploads"
     image_dir: str = "static/images"
+    admin_token: str = "admin-secret-token"
 
     class Config:
         env_file = ".env"
