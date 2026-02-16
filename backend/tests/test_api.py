@@ -1,12 +1,13 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import AppRankingSetting, Submission
 
 
 client = TestClient(app)
-ADMIN_HEADERS = {'X-Admin-Token': 'admin-secret-token'}
+ADMIN_HEADERS = {'X-Admin-Token': settings.admin_token}
 
 
 def test_health():
@@ -103,5 +104,6 @@ def test_admin_endpoint_requires_token():
 
 
 def test_admin_endpoint_accepts_valid_token():
+    Base.metadata.create_all(bind=engine)
     resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
     assert resp.status_code == 200
