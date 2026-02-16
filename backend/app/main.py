@@ -5,7 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -91,6 +91,21 @@ def validate_submission_payload(payload: SubmissionCreate) -> None:
     validate_submission_ranking_fields(
         payload.ranking_weight, payload.ranking_tags, payload.ranking_dimensions
     )
+
+
+def require_admin_token(
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+    authorization: Optional[str] = Header(default=None),
+) -> None:
+    bearer_token: Optional[str] = None
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer_token = authorization[7:].strip()
+
+    provided_token = x_admin_token or bearer_token
+    if not provided_token:
+        raise HTTPException(status_code=401, detail="缺少管理员令牌")
+    if provided_token != settings.admin_token:
+        raise HTTPException(status_code=403, detail="无权限访问")
 
 
 def validate_submission_ranking_fields(
@@ -722,6 +737,7 @@ def rules():
 @app.get(f"{settings.api_prefix}/submissions", response_model=list[SubmissionOut])
 def list_submissions(
     status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected"),
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -758,6 +774,7 @@ def list_enums():
 @app.get(f"{settings.api_prefix}/ranking-dimensions", response_model=list[RankingDimensionOut])
 def get_ranking_dimensions(
     is_active: bool | None = None,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -817,6 +834,7 @@ def update_app_ranking_params(
     ranking_enabled: bool | None = None,
     ranking_weight: float | None = None,
     ranking_tags: str | None = None,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -843,6 +861,7 @@ def update_app_dimension_score_api(
     app_id: int,
     dimension_id: int,
     score: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -925,6 +944,7 @@ def list_available_ranking_dates(
 @app.get(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}", response_model=RankingDimensionOut)
 def get_ranking_dimension(
     dimension_id: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -939,6 +959,7 @@ def get_ranking_dimension(
 @app.post(f"{settings.api_prefix}/ranking-dimensions", response_model=RankingDimensionOut)
 def create_ranking_dimension(
     payload: RankingDimensionCreate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -973,6 +994,7 @@ def create_ranking_dimension(
 def update_ranking_dimension(
     dimension_id: int,
     payload: RankingDimensionUpdate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1028,6 +1050,7 @@ def update_ranking_dimension(
 @app.delete(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}")
 def delete_ranking_dimension(
     dimension_id: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1057,6 +1080,7 @@ def delete_ranking_dimension(
 @app.get(f"{settings.api_prefix}/ranking-logs", response_model=list[RankingLogOut])
 def get_ranking_logs(
     limit: int = 100,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1068,7 +1092,10 @@ def get_ranking_logs(
 # 数据联动 API
 
 @app.post(f"{settings.api_prefix}/rankings/sync")
-def sync_rankings(db: Session = Depends(get_db)):
+def sync_rankings(
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db)
+):
     """
     同步排行榜数据，确保集团应用和省内应用信息保持一致
     """
@@ -1086,6 +1113,7 @@ def batch_update_ranking_params(
     ranking_weight: float = 1.0,
     ranking_enabled: bool = True,
     ranking_tags: str = "",
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1123,6 +1151,7 @@ def batch_update_ranking_params(
 @app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/approve-and-create-app")
 def approve_submission_and_create_app(
     submission_id: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1193,17 +1222,13 @@ def approve_submission_and_create_app(
 @app.post(f"{settings.api_prefix}/admin/group-apps", response_model=AppDetail)
 def create_group_app(
     payload: GroupAppCreate,
-    admin_token: str = Query(..., description="管理员令牌"),
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
     集团应用专用录入接口
     集团应用为系统内置，通过此接口直接录入，不走申报流程
     """
-    # 简单的管理员令牌验证（生产环境应使用更安全的认证方式）
-    if admin_token != "admin-secret-token":
-        raise HTTPException(status_code=403, detail="无权限访问")
-    
     try:
         app = App(
             name=payload.name,
@@ -1432,6 +1457,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get(f"{settings.api_prefix}/ranking-configs", response_model=list[RankingConfigOut])
 def list_ranking_configs(
     is_active: bool | None = Query(default=None, description="按启用状态筛选"),
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1446,6 +1472,7 @@ def list_ranking_configs(
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
 def get_ranking_config(
     config_id: str,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1460,6 +1487,7 @@ def get_ranking_config(
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}/with-dimensions", response_model=RankingConfigWithDimensions)
 def get_ranking_config_with_dimensions(
     config_id: str,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1487,6 +1515,7 @@ def get_ranking_config_with_dimensions(
 @app.post(f"{settings.api_prefix}/ranking-configs", response_model=RankingConfigOut)
 def create_ranking_config(
     payload: RankingConfigCreate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1508,6 +1537,7 @@ def create_ranking_config(
 def update_ranking_config(
     config_id: str,
     payload: RankingConfigUpdate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1536,6 +1566,7 @@ def update_ranking_config(
 @app.delete(f"{settings.api_prefix}/ranking-configs/{{config_id}}")
 def delete_ranking_config(
     config_id: str,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1553,6 +1584,7 @@ def delete_ranking_config(
 @app.get(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=list[AppRankingSettingOut])
 def list_app_ranking_settings(
     app_id: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1571,6 +1603,7 @@ def list_app_ranking_settings(
 def create_app_ranking_setting(
     app_id: int,
     payload: AppRankingSettingCreate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1613,6 +1646,7 @@ def update_app_ranking_setting(
     app_id: int,
     setting_id: int,
     payload: AppRankingSettingUpdate,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1645,6 +1679,7 @@ def update_app_ranking_setting(
 def delete_app_ranking_setting(
     app_id: int,
     setting_id: int,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1669,6 +1704,7 @@ def delete_app_ranking_setting(
 @app.get(f"{settings.api_prefix}/app-ranking-settings", response_model=list[AppRankingSettingOut])
 def list_all_app_ranking_settings(
     ranking_config_id: Optional[str] = None,
+    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
