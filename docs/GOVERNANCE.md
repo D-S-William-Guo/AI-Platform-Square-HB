@@ -59,3 +59,15 @@
 - 榜单读取接口返回的数据应能追溯到 `HistoricalRanking.period_date`。
 - 任何直接修改 `App.ranking_*` / `Submission.ranking_*` 的接口不得宣称“控制参评”，且应在文档中标记为兼容字段。
 
+
+## 5. Truth Source Guardrails
+
+- 榜单参与判定、应用权重、参评标签的控制输入仅允许来自 `AppRankingSetting`（`is_enabled` / `weight_factor` / `custom_tags`）。
+- 禁止 `App.ranking_*`、`Submission.ranking_*` 直接参与榜单候选过滤、得分计算、排序判定。
+- `App.ranking_*`、`Submission.ranking_*` 仅可作为兼容材料字段或历史展示字段，不得作为“参评开关”对外承诺。
+- 对外榜单展示必须来源于 `HistoricalRanking` 周期快照，不得以实时计算结果直接替代。
+- 如需展示“参与状态/标签/权重”，应从 `AppRankingSetting` 或 `HistoricalRanking` 投影，不得从 `App/Submission.ranking_*` 反推。
+- 任何新增或修改排行榜相关接口，必须在评审中显式回答：
+  1) 该变更是否引入第二真相源；
+  2) 是否保持 `require_admin_token` 管理鉴权；
+  3) 是否保持快照读取语义。
