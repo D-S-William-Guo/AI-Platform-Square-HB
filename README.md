@@ -116,6 +116,15 @@ npm run dev
 
 访问：`http://localhost:5173`
 
+管理员接口鉴权 token（前端）最小配置示例：
+
+```bash
+cd frontend
+echo "VITE_ADMIN_TOKEN=your-admin-token" > .env.local
+```
+
+> 前端管理接口会从 `VITE_ADMIN_TOKEN`（优先）或浏览器 `localStorage` 的 `ADMIN_TOKEN` / `admin_token` 读取，并通过 `X-Admin-Token` 请求头发送。
+
 ## ⚠️ 前端开发规范（重要）
 
 ### CSS 命名空间规范（必读）

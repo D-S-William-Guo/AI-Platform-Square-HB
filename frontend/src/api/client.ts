@@ -3,6 +3,25 @@ import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionP
 
 const client = axios.create({ baseURL: '/' })
 
+// Admin API token source (priority):
+// 1) Vite env: VITE_ADMIN_TOKEN
+// 2) localStorage: ADMIN_TOKEN / admin_token
+function getAdminToken() {
+  const envToken = (import.meta as ImportMeta & { env?: { VITE_ADMIN_TOKEN?: string } }).env?.VITE_ADMIN_TOKEN || ''
+  if (envToken) return envToken
+
+  if (typeof window !== 'undefined') {
+    return window.localStorage.getItem('ADMIN_TOKEN') || window.localStorage.getItem('admin_token') || ''
+  }
+
+  return ''
+}
+
+function getAdminAuthHeaders() {
+  const adminToken = getAdminToken().trim()
+  return adminToken ? { 'X-Admin-Token': adminToken } : {}
+}
+
 export async function fetchApps(params?: Record<string, string>) {
   const { data } = await client.get<AppItem[]>('/api/apps', { params })
   return data
@@ -67,7 +86,9 @@ export async function getSubmissionImages(submissionId: number) {
 
 // 排行维度管理 API
 export async function fetchRankingDimensions() {
-  const { data } = await client.get<RankingDimension[]>('/api/ranking-dimensions')
+  const { data } = await client.get<RankingDimension[]>('/api/ranking-dimensions', {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -78,7 +99,9 @@ export async function createRankingDimension(payload: {
   weight: number
   is_active: boolean
 }) {
-  const { data } = await client.post<RankingDimension>('/api/ranking-dimensions', payload)
+  const { data } = await client.post<RankingDimension>('/api/ranking-dimensions', payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -92,23 +115,31 @@ export async function updateRankingDimension(
     is_active?: boolean
   }
 ) {
-  const { data } = await client.put<RankingDimension>(`/api/ranking-dimensions/${dimensionId}`, payload)
+  const { data } = await client.put<RankingDimension>(`/api/ranking-dimensions/${dimensionId}`, payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function deleteRankingDimension(dimensionId: number) {
-  const { data } = await client.delete(`/api/ranking-dimensions/${dimensionId}`)
+  const { data } = await client.delete(`/api/ranking-dimensions/${dimensionId}`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function fetchRankingLogs() {
-  const { data } = await client.get<any[]>('/api/ranking-logs')
+  const { data } = await client.get<any[]>('/api/ranking-logs', {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 // 数据联动 API
 export async function syncRankings() {
-  const { data } = await client.post('/api/rankings/sync')
+  const { data } = await client.post('/api/rankings/sync', undefined, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -123,17 +154,23 @@ export async function batchUpdateRankingParams(
   const { data } = await client.post('/api/apps/batch-update-ranking-params', {
     apps,
     ...params
+  }, {
+    headers: getAdminAuthHeaders()
   })
   return data
 }
 
 export async function fetchSubmissions() {
-  const { data } = await client.get<Submission[]>('/api/submissions')
+  const { data } = await client.get<Submission[]>('/api/submissions', {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function approveSubmissionAndCreateApp(submissionId: number) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`)
+  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, undefined, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -185,7 +222,9 @@ export async function updateAppRankingParams(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-params`, params)
+  const { data } = await client.put(`/api/apps/${appId}/ranking-params`, params, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -195,7 +234,9 @@ export async function updateAppDimensionScore(
   dimensionId: number,
   score: number
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/dimension-scores/${dimensionId}`, { score })
+  const { data } = await client.put(`/api/apps/${appId}/dimension-scores/${dimensionId}`, { score }, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -223,11 +264,10 @@ export async function createGroupApp(
     ranking_enabled?: boolean
     ranking_weight?: number
     ranking_tags?: string
-  },
-  adminToken: string
+  }
 ) {
   const { data } = await client.post('/api/admin/group-apps', payload, {
-    params: { admin_token: adminToken }
+    headers: getAdminAuthHeaders()
   })
   return data
 }
@@ -237,18 +277,23 @@ export async function createGroupApp(
 // 榜单配置 API
 export async function fetchRankingConfigs(is_active?: boolean) {
   const { data } = await client.get<any[]>('/api/ranking-configs', {
-    params: is_active !== undefined ? { is_active } : {}
+    params: is_active !== undefined ? { is_active } : {},
+    headers: getAdminAuthHeaders()
   })
   return data
 }
 
 export async function fetchRankingConfig(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`)
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function fetchRankingConfigWithDimensions(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`)
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -260,7 +305,9 @@ export async function createRankingConfig(payload: {
   calculation_method?: string
   is_active?: boolean
 }) {
-  const { data } = await client.post('/api/ranking-configs', payload)
+  const { data } = await client.post('/api/ranking-configs', payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -274,25 +321,32 @@ export async function updateRankingConfig(
     is_active?: boolean
   }
 ) {
-  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload)
+  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function deleteRankingConfig(configId: string) {
-  const { data } = await client.delete(`/api/ranking-configs/${configId}`)
+  const { data } = await client.delete(`/api/ranking-configs/${configId}`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 // 应用榜单设置 API
 export async function fetchAppRankingSettings(appId: number) {
-  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`)
+  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 // 获取所有应用榜单设置（支持按榜单配置筛选）
 export async function fetchAllAppRankingSettings(rankingConfigId?: string) {
   const { data } = await client.get<any[]>('/api/app-ranking-settings', {
-    params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {}
+    params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {},
+    headers: getAdminAuthHeaders()
   })
   return data
 }
@@ -306,7 +360,9 @@ export async function createAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload)
+  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
@@ -319,12 +375,16 @@ export async function updateAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload)
+  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
 export async function deleteAppRankingSetting(appId: number, settingId: number) {
-  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`)
+  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`, {
+    headers: getAdminAuthHeaders()
+  })
   return data
 }
 
