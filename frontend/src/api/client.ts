@@ -5,13 +5,13 @@ const client = axios.create({ baseURL: '/' })
 
 // Admin API token source (priority):
 // 1) Vite env: VITE_ADMIN_TOKEN
-// 2) localStorage: ADMIN_TOKEN / admin_token
+// 2) localStorage: ADMIN_TOKEN
 function getAdminToken() {
   const envToken = (import.meta as ImportMeta & { env?: { VITE_ADMIN_TOKEN?: string } }).env?.VITE_ADMIN_TOKEN || ''
   if (envToken) return envToken
 
   if (typeof window !== 'undefined') {
-    return window.localStorage.getItem('ADMIN_TOKEN') || window.localStorage.getItem('admin_token') || ''
+    return window.localStorage.getItem('ADMIN_TOKEN') || ''
   }
 
   return ''
