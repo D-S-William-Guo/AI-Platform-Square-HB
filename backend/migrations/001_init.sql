@@ -25,11 +25,17 @@ CREATE TABLE IF NOT EXISTS apps (
   ranking_enabled TINYINT(1) DEFAULT 1,
   ranking_weight FLOAT DEFAULT 1.0,
   ranking_tags VARCHAR(255) DEFAULT '',
-  last_ranking_update DATETIME DEFAULT NULL
+  last_ranking_update DATETIME DEFAULT NULL,
+  last_month_calls FLOAT DEFAULT 0.0,
+  new_users_count INT DEFAULT 0,
+  search_count INT DEFAULT 0,
+  share_count INT DEFAULT 0,
+  favorite_count INT DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS rankings (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  ranking_config_id VARCHAR(50) NOT NULL,
   ranking_type VARCHAR(20) NOT NULL,
   position INT NOT NULL,
   app_id INT NOT NULL,
@@ -41,7 +47,8 @@ CREATE TABLE IF NOT EXISTS rankings (
   usage_30d INT DEFAULT 0,
   declared_at DATE NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id)
+  CONSTRAINT fk_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id),
+  CONSTRAINT fk_rankings_config FOREIGN KEY (ranking_config_id) REFERENCES ranking_configs(id)
 );
 
 CREATE TABLE IF NOT EXISTS submissions (
@@ -104,6 +111,18 @@ CREATE TABLE IF NOT EXISTS ranking_logs (
   CONSTRAINT fk_ranking_logs_dimension FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
 );
 
+-- 榜单配置表
+CREATE TABLE IF NOT EXISTS ranking_configs (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT DEFAULT '',
+  dimensions_config TEXT DEFAULT '[]',
+  calculation_method VARCHAR(50) DEFAULT 'composite',
+  is_active TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- 应用维度评分表
 CREATE TABLE IF NOT EXISTS app_dimension_scores (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -123,6 +142,7 @@ CREATE TABLE IF NOT EXISTS app_dimension_scores (
 -- 历史榜单表
 CREATE TABLE IF NOT EXISTS historical_rankings (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  ranking_config_id VARCHAR(50) NOT NULL,
   ranking_type VARCHAR(20) NOT NULL,
   period_date DATE NOT NULL,
   position INT NOT NULL,
@@ -135,7 +155,22 @@ CREATE TABLE IF NOT EXISTS historical_rankings (
   value_dimension VARCHAR(40) DEFAULT 'cost_reduction',
   usage_30d INT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_historical_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id)
+  CONSTRAINT fk_historical_rankings_app FOREIGN KEY (app_id) REFERENCES apps(id),
+  CONSTRAINT fk_historical_rankings_config FOREIGN KEY (ranking_config_id) REFERENCES ranking_configs(id)
+);
+
+-- 应用榜单设置表
+CREATE TABLE IF NOT EXISTS app_ranking_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  app_id INT NOT NULL,
+  ranking_config_id VARCHAR(50) DEFAULT NULL,
+  is_enabled TINYINT(1) DEFAULT 0,
+  weight_factor FLOAT DEFAULT 1.0,
+  custom_tags VARCHAR(255) DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_ranking_settings_app FOREIGN KEY (app_id) REFERENCES apps(id),
+  CONSTRAINT fk_app_ranking_settings_config FOREIGN KEY (ranking_config_id) REFERENCES ranking_configs(id)
 );
 
 -- 添加索引优化查询性能
