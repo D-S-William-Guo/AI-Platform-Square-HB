@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import importlib
 from datetime import date
 from types import SimpleNamespace
 
-import app.main as main
+main = importlib.import_module("app.main")
 
 
 class RecordingQuery:
@@ -46,6 +47,11 @@ def _build_dimension_map():
     }
 
 
+def _sort_by_score_desc_then_app_id_asc(app_scores: list[dict]) -> list[dict]:
+    """显式 tie-break 规则：score 降序；同分按 app_id 升序。"""
+    return sorted(app_scores, key=lambda x: (-x["score"], x["app_id"]))
+
+
 def test_calculate_three_layer_score_clamps_to_zero_when_weight_factor_negative():
     app = SimpleNamespace(monthly_calls=12.5, effectiveness_type="efficiency_gain", difficulty="Medium", status="available")
     config_dimensions = [{"dim_id": 1, "weight": 1.0}, {"dim_id": 2, "weight": 1.0}]
@@ -74,22 +80,18 @@ def test_calculate_three_layer_score_clamps_to_thousand_when_weight_factor_large
     assert score == 1000
 
 
-def test_sorting_order_is_stable_for_same_input_with_tied_scores():
+def test_sorting_uses_explicit_tie_break_rule_score_desc_then_app_id_asc():
     app_scores = [
-        {"app_id": "app-a", "score": 300},
-        {"app_id": "app-b", "score": 500},
-        {"app_id": "app-c", "score": 500},
-        {"app_id": "app-d", "score": 450},
         {"app_id": "app-e", "score": 300},
+        {"app_id": "app-c", "score": 500},
+        {"app_id": "app-b", "score": 500},
+        {"app_id": "app-d", "score": 450},
+        {"app_id": "app-a", "score": 300},
     ]
 
-    run1 = [*app_scores]
-    run2 = [*app_scores]
-    run1.sort(key=lambda x: x["score"], reverse=True)
-    run2.sort(key=lambda x: x["score"], reverse=True)
+    sorted_scores = _sort_by_score_desc_then_app_id_asc(app_scores)
 
-    assert [item["app_id"] for item in run1] == ["app-b", "app-c", "app-d", "app-a", "app-e"]
-    assert [item["app_id"] for item in run1] == [item["app_id"] for item in run2]
+    assert [item["app_id"] for item in sorted_scores] == ["app-b", "app-c", "app-d", "app-a", "app-e"]
 
 
 def test_resolve_latest_run_id_returns_latest_non_null_run_id():
