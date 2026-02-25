@@ -28,6 +28,12 @@
 - `ranking_config_id`：来源于榜单快照记录 `HistoricalRanking.ranking_config_id`。
 - `updated_at`：来源于榜单快照记录 `HistoricalRanking.updated_at`。
 
+## Phase-4 run_id 发布机制（PR-B）
+
+- `HistoricalRanking` 新增可空字段 `run_id`（UUID 字符串），用于区分同一天内的多次发布。
+- `/api/rankings/sync` 支持可选参数 `run_id`；不传时后端自动生成并随响应返回。
+- 榜单读取默认取“该日期最新 run_id”的快照；旧数据 `run_id=NULL` 仍可正常读取（向后兼容）。
+
 ## 目录结构
 
 ```

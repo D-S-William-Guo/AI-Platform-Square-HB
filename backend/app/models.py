@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -162,6 +162,16 @@ class AppDimensionScore(Base):
 class HistoricalRanking(Base):
     """历史榜单数据"""
     __tablename__ = "historical_rankings"
+    __table_args__ = (
+        UniqueConstraint(
+            "ranking_config_id",
+            "app_id",
+            "period_date",
+            "run_id",
+            name="uq_historical_rankings_period_run_app",
+        ),
+        Index("idx_historical_rankings_type_period_run", "ranking_type", "period_date", "run_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # 外键关联榜单配置
@@ -169,6 +179,7 @@ class HistoricalRanking(Base):
     # 保留 ranking_type 用于快速识别
     ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
     period_date: Mapped[date] = mapped_column(Date, nullable=False)  # 榜单周期日期
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
     app_name: Mapped[str] = mapped_column(String(120), nullable=False)
