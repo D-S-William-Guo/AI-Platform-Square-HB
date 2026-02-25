@@ -5,3 +5,6 @@
 ## Phase-4 PR-D 回归测试（口径锁定）
 
 在仓库根目录执行：`PYTHONPATH=backend pytest -q backend/tests/test_ranking_consistency.py backend/tests/test_phase4_regression_lock.py`。
+## Phase-4 结项
+
+- 结项说明：`docs/phase4-closure.md`（Scope / Artifacts / Verification）。
