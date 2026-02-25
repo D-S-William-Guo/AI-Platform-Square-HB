@@ -39,7 +39,7 @@ class AppDetail(AppBase):
 
 
 class RankingItem(BaseModel):
-    ranking_config_id: str
+    ranking_config_id: str | None = None
     position: int
     tag: str
     score: int
