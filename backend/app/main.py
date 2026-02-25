@@ -241,7 +241,7 @@ def calculate_three_layer_score(
     return max(0, min(final_score, 1000))
 
 
-def sync_rankings_service(db: Session) -> int:
+def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, str]:
     """
     同步排行榜数据（支持三层架构）
     - 遍历每个榜单配置
@@ -271,6 +271,9 @@ def sync_rankings_service(db: Session) -> int:
     
     updated_count = 0
     today = datetime.now().date()
+    current_run_id = (run_id or str(uuid.uuid4())).strip()
+    if not current_run_id:
+        current_run_id = str(uuid.uuid4())
     
     for config in ranking_configs:
         # 解析榜单配置的维度权重
@@ -401,7 +404,8 @@ def sync_rankings_service(db: Session) -> int:
                 .filter(
                     HistoricalRanking.ranking_config_id == config.id,
                     HistoricalRanking.app_id == app.id,
-                    HistoricalRanking.period_date == today
+                    HistoricalRanking.period_date == today,
+                    HistoricalRanking.run_id == current_run_id
                 )
                 .first()
             )
@@ -416,6 +420,7 @@ def sync_rankings_service(db: Session) -> int:
                         ranking_config_id=config.id,
                         ranking_type=config.id,  # 保持兼容性
                         period_date=today,
+                        run_id=current_run_id,
                         position=index,
                         app_id=app.id,
                         app_name=app.name,
@@ -431,7 +436,7 @@ def sync_rankings_service(db: Session) -> int:
             updated_count += 1
     
     db.commit()
-    return updated_count
+    return updated_count, current_run_id
 
 
 @app.on_event("startup")
@@ -615,6 +620,19 @@ def get_app_detail(app_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="App not found")
 
 
+def resolve_latest_run_id(db: Session, ranking_type: str, period_date: date) -> str | None:
+    """返回某榜单在指定日期最新发布的 run_id（旧数据可能为空）。"""
+    latest_with_run = (
+        db.query(HistoricalRanking.run_id)
+        .filter(HistoricalRanking.ranking_type == ranking_type)
+        .filter(HistoricalRanking.period_date == period_date)
+        .filter(HistoricalRanking.run_id.is_not(None))
+        .order_by(HistoricalRanking.created_at.desc())
+        .first()
+    )
+    return latest_with_run[0] if latest_with_run else None
+
+
 @app.get(f"{settings.api_prefix}/rankings", response_model=list[RankingItem])
 def list_rankings(
     ranking_type: str = "excellent",
@@ -630,13 +648,18 @@ def list_rankings(
     try:
         if period_date:
             # 查询指定日期的历史榜单
-            historical_rankings = (
+            selected_run_id = resolve_latest_run_id(db, ranking_type, period_date)
+            historical_query = (
                 db.query(HistoricalRanking)
                 .filter(HistoricalRanking.ranking_type == ranking_type)
                 .filter(HistoricalRanking.period_date == period_date)
-                .order_by(HistoricalRanking.position)
-                .all()
             )
+            if selected_run_id is not None:
+                historical_query = historical_query.filter(HistoricalRanking.run_id == selected_run_id)
+            else:
+                historical_query = historical_query.filter(HistoricalRanking.run_id.is_(None))
+
+            historical_rankings = historical_query.order_by(HistoricalRanking.position).all()
             
             # 转换为 RankingItem 格式
             result = []
@@ -668,13 +691,18 @@ def list_rankings(
             
             if latest_date:
                 # 使用最新日期查询
-                historical_rankings = (
+                selected_run_id = resolve_latest_run_id(db, ranking_type, latest_date[0])
+                historical_query = (
                     db.query(HistoricalRanking)
                     .filter(HistoricalRanking.ranking_type == ranking_type)
                     .filter(HistoricalRanking.period_date == latest_date[0])
-                    .order_by(HistoricalRanking.position)
-                    .all()
                 )
+                if selected_run_id is not None:
+                    historical_query = historical_query.filter(HistoricalRanking.run_id == selected_run_id)
+                else:
+                    historical_query = historical_query.filter(HistoricalRanking.run_id.is_(None))
+
+                historical_rankings = historical_query.order_by(HistoricalRanking.position).all()
                 
                 # 转换为 RankingItem 格式
                 result = []
@@ -910,6 +938,7 @@ def update_app_dimension_score_api(
 def list_historical_rankings(
     ranking_type: str = "excellent",
     period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    run_id: str | None = Query(default=None, description="可选发布批次ID；不传则日期模式返回最新 run_id"),
     db: Session = Depends(get_db)
 ):
     """
@@ -919,6 +948,11 @@ def list_historical_rankings(
         query = db.query(HistoricalRanking).filter(HistoricalRanking.ranking_type == ranking_type)
         if period_date:
             query = query.filter(HistoricalRanking.period_date == period_date)
+            selected_run_id = run_id if run_id is not None else resolve_latest_run_id(db, ranking_type, period_date)
+            if selected_run_id is not None:
+                query = query.filter(HistoricalRanking.run_id == selected_run_id)
+            else:
+                query = query.filter(HistoricalRanking.run_id.is_(None))
         return query.order_by(HistoricalRanking.position).all()
     except Exception as e:
         return []
@@ -1097,6 +1131,7 @@ def get_ranking_logs(
 
 @app.post(f"{settings.api_prefix}/rankings/sync")
 def sync_rankings(
+    run_id: str | None = Query(default=None, description="可选发布批次ID；不传则自动生成 UUID"),
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
@@ -1104,8 +1139,8 @@ def sync_rankings(
     同步排行榜数据，确保集团应用和省内应用信息保持一致
     """
     try:
-        updated_count = sync_rankings_service(db)
-        return {"message": "排行榜数据同步成功", "updated_count": updated_count}
+        updated_count, generated_run_id = sync_rankings_service(db, run_id=run_id)
+        return {"message": "排行榜数据同步成功", "updated_count": updated_count, "run_id": generated_run_id}
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"同步失败: {str(exc)}") from exc
