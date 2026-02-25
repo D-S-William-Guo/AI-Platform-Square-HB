@@ -140,6 +140,21 @@ class RankingLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RankingAuditLog(Base):
+    """排行榜审计日志（面向 HistoricalRanking 真相源链路）"""
+    __tablename__ = "ranking_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    ranking_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ranking_config_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    period_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    actor: Mapped[str] = mapped_column(String(100), default="system")
+    payload_summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AppDimensionScore(Base):
     """应用在各维度的评分数据"""
     __tablename__ = "app_dimension_scores"

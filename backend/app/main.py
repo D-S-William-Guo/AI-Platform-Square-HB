@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import resolve_runtime_path, settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
+from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, RankingAuditLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
@@ -27,6 +27,7 @@ from .schemas import (
     RankingDimensionUpdate,
     RankingDimensionOut,
     RankingLogOut,
+    RankingAuditLogOut,
     AppDimensionScoreOut,
     HistoricalRankingOut,
     GroupAppCreate,
@@ -107,6 +108,31 @@ def require_admin_token(
     if provided_token != settings.admin_token:
         raise HTTPException(status_code=403, detail="无权限访问")
 
+
+
+
+def write_ranking_audit_log(
+    db: Session,
+    *,
+    action: str,
+    ranking_type: str | None = None,
+    ranking_config_id: str | None = None,
+    period_date: date | None = None,
+    run_id: str | None = None,
+    actor: str = "system",
+    payload_summary: str = "",
+) -> None:
+    db.add(
+        RankingAuditLog(
+            action=action,
+            ranking_type=ranking_type,
+            ranking_config_id=ranking_config_id,
+            period_date=period_date,
+            run_id=run_id,
+            actor=actor,
+            payload_summary=payload_summary,
+        )
+    )
 
 def validate_submission_ranking_fields(
     ranking_weight: float,
@@ -276,6 +302,10 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
         current_run_id = str(uuid.uuid4())
     
     for config in ranking_configs:
+        config_dimension_updates = 0
+        config_ranking_updates = 0
+        config_historical_updates = 0
+
         # 解析榜单配置的维度权重
         try:
             config_dimensions = json.loads(config.dimensions_config) if config.dimensions_config else []
@@ -339,6 +369,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                             period_date=today
                         )
                     )
+                config_dimension_updates += 1
             
             # 应用权重因子
             final_score = calculate_three_layer_score(
@@ -397,6 +428,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                         declared_at=today,
                     )
                 )
+            config_ranking_updates += 1
             
             # 保存历史榜单数据
             historical = (
@@ -432,9 +464,25 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                         usage_30d=usage_30d
                     )
                 )
-            
+            config_historical_updates += 1
+
             updated_count += 1
-    
+
+        write_ranking_audit_log(
+            db,
+            action="rankings_sync_config_published",
+            ranking_type=config.id,
+            ranking_config_id=config.id,
+            period_date=today,
+            run_id=current_run_id,
+            actor="system",
+            payload_summary=(
+                f"dimension_score_updates={config_dimension_updates},"
+                f"ranking_updates={config_ranking_updates},"
+                f"historical_ranking_updates={config_historical_updates}"
+            ),
+        )
+
     db.commit()
     return updated_count, current_run_id
 
@@ -1023,8 +1071,16 @@ def create_ranking_dimension(
         operator="system"
     )
     db.add(log)
+    write_ranking_audit_log(
+        db,
+        action="ranking_dimension_created",
+        ranking_type="all",
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=f"dimension_id={dimension.id},name={dimension.name}",
+    )
     db.commit()
-    
+
     return dimension
 
 
@@ -1080,8 +1136,16 @@ def update_ranking_dimension(
             operator="system"
         )
         db.add(log)
+        write_ranking_audit_log(
+            db,
+            action="ranking_dimension_updated",
+            ranking_type="all",
+            period_date=datetime.utcnow().date(),
+            actor="system",
+            payload_summary=f"dimension_id={dimension.id},changes={' | '.join(changes)}",
+        )
         db.commit()
-    
+
     return dimension
 
 
@@ -1107,11 +1171,19 @@ def delete_ranking_dimension(
         operator="system"
     )
     db.add(log)
-    
+    write_ranking_audit_log(
+        db,
+        action="ranking_dimension_deleted",
+        ranking_type="all",
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=f"dimension_id={dimension.id},name={dimension.name}",
+    )
+
     # 删除排行维度
     db.delete(dimension)
     db.commit()
-    
+
     return {"message": "排行维度已删除"}
 
 
@@ -1125,6 +1197,16 @@ def get_ranking_logs(
     获取排行维度变更日志
     """
     return db.query(RankingLog).order_by(RankingLog.created_at.desc()).limit(limit).all()
+
+
+@app.get(f"{settings.api_prefix}/ranking-audit-logs", response_model=list[RankingAuditLogOut])
+def get_ranking_audit_logs(
+    limit: int = 100,
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db)
+):
+    """获取排行榜审计日志。"""
+    return db.query(RankingAuditLog).order_by(RankingAuditLog.created_at.desc()).limit(limit).all()
 
 
 # 数据联动 API
@@ -1567,6 +1649,15 @@ def create_ranking_config(
     
     config = RankingConfig(**payload.model_dump())
     db.add(config)
+    write_ranking_audit_log(
+        db,
+        action="ranking_config_created",
+        ranking_type=config.id,
+        ranking_config_id=config.id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=f"name={config.name},is_active={config.is_active}",
+    )
     db.commit()
     db.refresh(config)
     return config
@@ -1596,7 +1687,16 @@ def update_ranking_config(
         config.calculation_method = payload.calculation_method
     if payload.is_active is not None:
         config.is_active = payload.is_active
-    
+
+    write_ranking_audit_log(
+        db,
+        action="ranking_config_updated",
+        ranking_type=config.id,
+        ranking_config_id=config.id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary="fields=name/description/dimensions_config/calculation_method/is_active",
+    )
     db.commit()
     db.refresh(config)
     return config
@@ -1615,6 +1715,15 @@ def delete_ranking_config(
     if not config:
         raise HTTPException(status_code=404, detail="榜单配置不存在")
     
+    write_ranking_audit_log(
+        db,
+        action="ranking_config_deleted",
+        ranking_type=config.id,
+        ranking_config_id=config.id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=f"name={config.name}",
+    )
     db.delete(config)
     db.commit()
     return {"message": "榜单配置已删除"}
@@ -1675,6 +1784,18 @@ def create_app_ranking_setting(
         **payload.model_dump()
     )
     db.add(setting)
+    write_ranking_audit_log(
+        db,
+        action="app_ranking_setting_created",
+        ranking_type=payload.ranking_config_id,
+        ranking_config_id=payload.ranking_config_id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=(
+            f"app_id={app_id},is_enabled={payload.is_enabled},"
+            f"weight_factor={payload.weight_factor}"
+        ),
+    )
     db.commit()
     db.refresh(setting)
     return setting
@@ -1708,7 +1829,19 @@ def update_app_ranking_setting(
         setting.weight_factor = payload.weight_factor
     if payload.custom_tags is not None:
         setting.custom_tags = payload.custom_tags
-    
+
+    write_ranking_audit_log(
+        db,
+        action="app_ranking_setting_updated",
+        ranking_type=setting.ranking_config_id,
+        ranking_config_id=setting.ranking_config_id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=(
+            f"app_id={app_id},is_enabled={setting.is_enabled},"
+            f"weight_factor={setting.weight_factor},custom_tags={setting.custom_tags}"
+        ),
+    )
     db.commit()
     db.refresh(setting)
     return setting
@@ -1735,6 +1868,15 @@ def delete_app_ranking_setting(
     if not setting:
         raise HTTPException(status_code=404, detail="榜单设置不存在")
     
+    write_ranking_audit_log(
+        db,
+        action="app_ranking_setting_deleted",
+        ranking_type=setting.ranking_config_id,
+        ranking_config_id=setting.ranking_config_id,
+        period_date=datetime.utcnow().date(),
+        actor="system",
+        payload_summary=f"app_id={app_id},setting_id={setting_id}",
+    )
     db.delete(setting)
     db.commit()
     return {"message": "榜单设置已删除"}

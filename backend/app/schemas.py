@@ -169,6 +169,21 @@ class RankingLogOut(BaseModel):
         from_attributes = True
 
 
+class RankingAuditLogOut(BaseModel):
+    id: int
+    action: str
+    ranking_type: str | None
+    ranking_config_id: str | None
+    period_date: date | None
+    run_id: str | None
+    actor: str
+    payload_summary: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class AppDimensionScoreOut(BaseModel):
     """应用维度评分输出"""
     id: int
