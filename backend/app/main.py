@@ -644,6 +644,7 @@ def list_rankings(
                 app = db.query(App).filter(App.id == hr.app_id).first()
                 if app and app.section == "province":
                     result.append({
+                        "ranking_config_id": hr.ranking_config_id,
                         "position": hr.position,
                         "tag": hr.tag,
                         "score": hr.score,
@@ -652,6 +653,7 @@ def list_rankings(
                         "value_dimension": hr.value_dimension,
                         "usage_30d": hr.usage_30d,
                         "declared_at": hr.period_date,
+                        "updated_at": getattr(hr, "updated_at", None),
                         "app": app
                     })
             return result
@@ -680,6 +682,7 @@ def list_rankings(
                     app = db.query(App).filter(App.id == hr.app_id).first()
                     if app and app.section == "province":
                         result.append({
+                            "ranking_config_id": hr.ranking_config_id,
                             "position": hr.position,
                             "tag": hr.tag,
                             "score": hr.score,
@@ -688,6 +691,7 @@ def list_rankings(
                             "value_dimension": hr.value_dimension,
                             "usage_30d": hr.usage_30d,
                             "declared_at": hr.period_date,
+                            "updated_at": getattr(hr, "updated_at", None),
                             "app": app
                         })
                 return result
