@@ -67,6 +67,7 @@
 - `App.ranking_*`、`Submission.ranking_*` 仅可作为兼容材料字段或历史展示字段，不得作为“参评开关”对外承诺。
 - 对外榜单展示必须来源于 `HistoricalRanking` 周期快照，不得以实时计算结果直接替代。
 - 如需展示“参与状态/标签/权重”，应从 `AppRankingSetting` 或 `HistoricalRanking` 投影，不得从 `App/Submission.ranking_*` 反推。
+- Phase-3：`/api/rankings` 对外展示字段补充 `ranking_config_id`、`updated_at`，两者均来自 `HistoricalRanking` 记录。
 - 任何新增或修改排行榜相关接口，必须在评审中显式回答：
   1) 该变更是否引入第二真相源；
   2) 是否保持 `require_admin_token` 管理鉴权；

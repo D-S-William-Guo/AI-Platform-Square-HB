@@ -139,3 +139,10 @@
    范围：`approve-and-create-app` 初始化策略（单独变更，含迁移脚本评估）。
 4. **PR: 下线或隔离 deprecated 评分函数与 seed 内重复同步逻辑**  
    范围：代码注释/模块边界整理，避免误调用。
+
+
+## 8) Phase-3 展示层增强说明
+
+- `/api/rankings` 展示字段新增 `ranking_config_id` 与 `updated_at`。
+- 两个字段均来自 `HistoricalRanking` 对应记录（分别为 `ranking_config_id`、`updated_at`）。
+- 本次仅为展示字段补充，不涉及计算口径或真相源调整。
