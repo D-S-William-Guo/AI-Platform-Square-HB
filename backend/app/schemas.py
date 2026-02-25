@@ -39,6 +39,7 @@ class AppDetail(AppBase):
 
 
 class RankingItem(BaseModel):
+    ranking_config_id: str | None = None
     position: int
     tag: str
     score: int
@@ -47,6 +48,7 @@ class RankingItem(BaseModel):
     value_dimension: str
     usage_30d: int
     declared_at: date
+    updated_at: datetime | None = None
     app: AppBase
 
 

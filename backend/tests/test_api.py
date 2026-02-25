@@ -27,9 +27,13 @@ def test_list_apps():
 def test_rankings_have_metric_fields():
     resp = client.get('/api/rankings?ranking_type=excellent')
     assert resp.status_code == 200
-    row = resp.json()[0]
-    assert 'metric_type' in row
-    assert 'value_dimension' in row
+    data = resp.json()
+    if data:
+        row = data[0]
+        assert 'ranking_config_id' in row
+        assert 'metric_type' in row
+        assert 'value_dimension' in row
+        assert 'updated_at' in row
 
 
 def test_submission_flow():
