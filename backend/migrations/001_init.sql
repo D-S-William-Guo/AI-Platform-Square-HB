@@ -33,6 +33,18 @@ CREATE TABLE IF NOT EXISTS apps (
   favorite_count INT DEFAULT 0
 );
 
+-- 榜单配置表
+CREATE TABLE IF NOT EXISTS ranking_configs (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT DEFAULT '',
+  dimensions_config TEXT DEFAULT '[]',
+  calculation_method VARCHAR(50) DEFAULT 'composite',
+  is_active TINYINT(1) DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS rankings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   ranking_config_id VARCHAR(50) NOT NULL,
@@ -109,18 +121,6 @@ CREATE TABLE IF NOT EXISTS ranking_logs (
   operator VARCHAR(100) DEFAULT 'system',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_ranking_logs_dimension FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
-);
-
--- 榜单配置表
-CREATE TABLE IF NOT EXISTS ranking_configs (
-  id VARCHAR(50) PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  description TEXT DEFAULT '',
-  dimensions_config TEXT DEFAULT '[]',
-  calculation_method VARCHAR(50) DEFAULT 'composite',
-  is_active TINYINT(1) DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 应用维度评分表
