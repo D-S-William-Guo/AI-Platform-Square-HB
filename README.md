@@ -119,7 +119,7 @@ curl -sS http://127.0.0.1:8000/api/health
 docker compose up -d mysql
 ```
 
-开发期初始化数据库请依次执行 `backend/migrations/001_init.sql` 与 `backend/migrations/002_add_run_id_to_historical_rankings.sql`（示例：`mysql -u <user> -p <db> < backend/migrations/001_init.sql && mysql -u <user> -p <db> < backend/migrations/002_add_run_id_to_historical_rankings.sql`）。
+开发期初始化数据库请依次执行 `backend/migrations/001_init.sql`、`backend/migrations/002_add_run_id_to_historical_rankings.sql`、`backend/migrations/003_add_ranking_audit_logs.sql`（示例：`mysql -u <user> -p <db> < backend/migrations/001_init.sql && mysql -u <user> -p <db> < backend/migrations/002_add_run_id_to_historical_rankings.sql && mysql -u <user> -p <db> < backend/migrations/003_add_ranking_audit_logs.sql`）。
 
 ### 2) 前端
 
