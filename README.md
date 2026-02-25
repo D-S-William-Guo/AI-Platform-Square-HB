@@ -21,6 +21,13 @@
 - 保持 `main` 可 import，health test 与 import smoke test 持续通过。
 - 详细规则见 `docs/GOVERNANCE.md`。
 
+## Phase-3 API 字段增强说明
+
+`/api/rankings` 展示字段已补充以下两个返回项：
+
+- `ranking_config_id`：来源于榜单快照记录 `HistoricalRanking.ranking_config_id`。
+- `updated_at`：来源于榜单快照记录 `HistoricalRanking.updated_at`。
+
 ## 目录结构
 
 ```
