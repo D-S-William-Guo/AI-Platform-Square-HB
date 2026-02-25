@@ -191,6 +191,7 @@ class HistoricalRankingOut(BaseModel):
     id: int
     ranking_type: str
     period_date: date
+    run_id: str | None = None
     position: int
     app_id: int
     app_name: str
