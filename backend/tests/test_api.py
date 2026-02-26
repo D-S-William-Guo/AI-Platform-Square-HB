@@ -35,6 +35,9 @@ def test_list_apps():
         'ranking_dimensions': ''
     }
     seed_resp = client.post('/api/submissions', json=seed_payload)
+    if seed_resp.status_code != 200:
+        print("seed_status:", seed_resp.status_code)
+        print("seed_body:", seed_resp.text)
     assert seed_resp.status_code == 200
 
     resp = client.get('/api/apps?section=group&status=available')
