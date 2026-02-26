@@ -9,3 +9,4 @@ pytest==8.3.3
 httpx==0.27.2
 python-dotenv
 Pillow
+requests==2.32.3

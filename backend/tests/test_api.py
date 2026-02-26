@@ -17,6 +17,29 @@ def test_health():
 
 
 def test_list_apps():
+    seed_payload = {
+        'category': 'group',
+        'app_name': '种子应用',
+        'unit_name': '种子单位',
+        'contact': '张三',
+        'scenario': '用于验证列表接口的种子场景描述（长度足够）',
+        'embedded_system': 'seed',
+        'problem_statement': '用于验证问题描述字段长度约束，确保通过',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '10',
+        'data_level': 'L2',
+        'expected_benefit': '用于验证预期收益描述',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    seed_resp = client.post('/api/submissions', json=seed_payload)
+    if seed_resp.status_code != 200:
+        print("seed_status:", seed_resp.status_code)
+        print("seed_body:", seed_resp.text)
+    assert seed_resp.status_code == 200
+
     resp = client.get('/api/apps?section=group&status=available')
     assert resp.status_code == 200
     data = resp.json()
@@ -38,6 +61,7 @@ def test_rankings_have_metric_fields():
 
 def test_submission_flow():
     payload = {
+            'category': 'group',
         'app_name': '测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
