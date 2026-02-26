@@ -54,6 +54,8 @@ def test_submission_flow():
         'ranking_dimensions': ''
     }
     resp = client.post('/api/submissions', json=payload)
+    print("status:", resp.status_code)
+    print("body:", resp.text)
     assert resp.status_code == 200
     assert resp.json()['status'] == 'pending'
 
