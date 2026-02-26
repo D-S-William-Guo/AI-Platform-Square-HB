@@ -4,15 +4,23 @@ import pytest
 @pytest.fixture(scope="session", autouse=True)
 def _init_test_db():
     """
-    Ensure DB tables exist for tests.
+    Ensure DB tables exist AND seed initial data for API tests.
 
-    In CI we usually run against SQLite (default in settings or via env).
-    Creating tables here keeps tests self-contained and reproducible.
+    CI uses a fresh environment; without seeding, /api/apps will return [].
     """
-    # If the app supports DATABASE_URL override, keep it deterministic for tests.
-    # Only set when not already provided by environment.
     os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 
-    from app.database import Base, engine
+    from app.database import Base, engine, SessionLocal
+
+    # create tables
     Base.metadata.create_all(bind=engine)
+
+    # seed data (idempotent: seed_data returns if App/Submission already exist)
+    db = SessionLocal()
+    try:
+        from app.seed import seed_data
+        seed_data(db)
+    finally:
+        db.close()
+
     yield
