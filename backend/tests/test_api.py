@@ -24,7 +24,7 @@ def test_list_apps():
         'contact': '张三',
         'scenario': '用于验证列表接口的种子场景描述（长度足够）',
         'embedded_system': 'seed',
-        'problem_statement': '用于验证问题描述',
+        'problem_statement': '用于验证问题描述字段长度约束，确保通过',
         'effectiveness_type': 'efficiency_gain',
         'effectiveness_metric': '10',
         'data_level': 'L2',
