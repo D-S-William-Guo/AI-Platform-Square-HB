@@ -17,6 +17,26 @@ def test_health():
 
 
 def test_list_apps():
+    seed_payload = {
+        'category': 'group',
+        'app_name': '种子应用',
+        'unit_name': '种子单位',
+        'contact': '张三',
+        'scenario': 'seed',
+        'embedded_system': 'seed',
+        'problem_statement': 'seed',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '1',
+        'data_level': 'L2',
+        'expected_benefit': '1',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    seed_resp = client.post('/api/submissions', json=seed_payload)
+    assert seed_resp.status_code == 200
+
     resp = client.get('/api/apps?section=group&status=available')
     assert resp.status_code == 200
     data = resp.json()
@@ -38,6 +58,7 @@ def test_rankings_have_metric_fields():
 
 def test_submission_flow():
     payload = {
+            'category': 'group',
         'app_name': '测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -54,8 +75,6 @@ def test_submission_flow():
         'ranking_dimensions': ''
     }
     resp = client.post('/api/submissions', json=payload)
-    print("status:", resp.status_code)
-    print("body:", resp.text)
     assert resp.status_code == 200
     assert resp.json()['status'] == 'pending'
 
