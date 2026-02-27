@@ -467,3 +467,6 @@ npm run verify:styles
 
 - 项目邮箱：aiapps@hebei.cn
 - 最近更新时间：2026-02-10
+
+## 开发文档
+- Backend 环境与自检：docs/dev-setup.md
