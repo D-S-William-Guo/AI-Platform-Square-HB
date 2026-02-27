@@ -17,3 +17,4 @@
 - [ ] 不引入无关重构/大范围格式化
 - [ ] 与 main 同步，无冲突（必要时 rebase）
 - [ ] CI 全绿（Required checks 全通过）
+- [ ]环境自检已通过（docs/dev-setup.md：editable install + pytest）
