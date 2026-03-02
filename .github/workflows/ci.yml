@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest -q tests
+          python -m pytest -q tests
 
   frontend:
     name: frontend (build)
