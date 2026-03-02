@@ -88,7 +88,7 @@ python -m pip install -e .
 
 ```bash
 cd backend
-PYTHONPATH="$(pwd)" pytest -q tests
+PYTHONPATH="$(pwd)" python -m pytest -q tests
 ```
 
 ---
