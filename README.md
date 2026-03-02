@@ -33,7 +33,7 @@
 - `HistoricalRanking` 新增可空字段 `run_id`（UUID 字符串），用于区分同一天内的多次发布。
 - `/api/rankings/sync` 支持可选参数 `run_id`；不传时后端自动生成并随响应返回。
 - 榜单读取默认取“该日期最新 run_id”的快照；旧数据 `run_id=NULL` 仍可正常读取（向后兼容）。
-- 当前数据库初始化顺序已确认：`001_init.sql` + `002_add_run_id_to_historical_rankings.sql` + `003_add_ranking_audit_logs.sql`。
+- 数据库迁移执行顺序与验证方式见 `docs/db-migration-sop.md`。
 - 回放口径：可按 `date + run_id` 精确回放同日任意一次发布快照。
 - 审计口径：发布行为具备最小审计落库，可追溯关键上下文。
 - 回归锁口径：核心行为由 Phase-4 回归用例锁定，防止口径漂移。
@@ -123,7 +123,7 @@ curl -sS http://127.0.0.1:8000/api/health
 docker compose up -d mysql
 ```
 
-开发期初始化数据库请依次执行 `backend/migrations/001_init.sql`、`backend/migrations/002_add_run_id_to_historical_rankings.sql`、`backend/migrations/003_add_ranking_audit_logs.sql`（示例：`mysql -u <user> -p <db> < backend/migrations/001_init.sql && mysql -u <user> -p <db> < backend/migrations/002_add_run_id_to_historical_rankings.sql && mysql -u <user> -p <db> < backend/migrations/003_add_ranking_audit_logs.sql`）。
+迁移执行顺序、不可跳步原则、SQLite/MySQL 验证步骤统一维护在：`docs/db-migration-sop.md`。
 
 ### 2) 前端
 

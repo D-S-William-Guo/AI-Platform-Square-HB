@@ -64,34 +64,11 @@ git push origin fix/<topic>
 
 ## 3. 数据库切换方式（SQLite / MySQL）
 
-### 3.1 配置开关位置
+迁移执行顺序、不可跳步原则、SQLite/MySQL 最小验证步骤统一维护在：`docs/db-migration-sop.md`。
 
-- 后端读取 `backend/.env` 的 `DATABASE_URL`。
+本文件仅保留入口：
+- 后端读取 `backend/.env` 的 `DATABASE_URL`；
 - 默认值在 `backend/app/config.py` 中为 SQLite。
-
-### 3.2 SQLite（本地快速验证）
-
-```bash
-# backend/.env
-DATABASE_URL=sqlite:///./ai_app_square.db
-```
-
-启动后端时，`Base.metadata.create_all` 会自动创建表结构。
-
-### 3.3 MySQL（Docker / 生产）
-
-```bash
-# backend/.env
-DATABASE_URL=mysql+pymysql://ai_app_user:ai_app_password@127.0.0.1:3306/ai_app_square
-```
-
-启动后端前先创建数据库，然后执行 `backend/migrations/001_init.sql` 初始化结构：
-
-```bash
-mysql -u ai_app_user -p ai_app_square < backend/migrations/001_init.sql
-```
-
-> SQLite 与 MySQL **共享同一套模型定义**（`backend/app/models.py`），SQL 文件仅作为初始化快照，避免出现双套结构。
 
 ## 4. 业务数据演示规则
 
