@@ -16,5 +16,5 @@ python -m pip check
 
 Section "4) Pytest"
 Set-Location "$PSScriptRoot\..\..\"   # -> backend/
-pytest -q tests
+python -m pytest -q tests
 Write-Host "✅ DONE"

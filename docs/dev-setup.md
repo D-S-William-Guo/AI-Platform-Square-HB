@@ -36,11 +36,7 @@ bash backend/scripts/dev/bootstrap_venv.sh
 powershell -ExecutionPolicy Bypass -File backend\scripts\dev\bootstrap_venv.ps1
 ```
 
-> 若你项目里没有 `bootstrap_venv.ps1`，则使用手工方式：
->
-> - 创建 venv
-> - `pip install -r backend/requirements.txt`
-> - `pip install -e backend`
+> 该脚本会创建/复用 venv，并安装依赖与 editable 包。
 
 ---
 
@@ -69,7 +65,7 @@ powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1
 - `import app` 是否成功（核心）
 - 依赖健康度（`pip check`）
 - 测试数据库初始化（SQLite）
-- `pytest -q tests` 是否通过
+- `python -m pytest -q tests` 是否通过
 
 ---
 
@@ -108,7 +104,7 @@ PYTHONPATH="$(pwd)" pytest -q tests
 提交 PR 前建议顺序：
 
 1. `bash backend/scripts/dev/doctor.sh`（或 Windows `doctor.ps1`）
-2. `pytest -q tests`（doctor 已包含，可略）
+2. `python -m pytest -q tests`（doctor 已包含，可略）
 3. push 分支 → 开 PR → 等 CI 绿 → squash merge
 
 ---
