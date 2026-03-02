@@ -19,7 +19,7 @@ if (-not (Test-Path ".venv")) {
   Write-Host "[bootstrap] reusing existing .venv"
 }
 
-$VenvPython = Join-Path $backendDir ".venv\Scripts\python.exe"
+$VenvPython = Join-Path $backendDir.Path ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) { throw "venv python not found: $VenvPython" }
 
 Write-Host "[bootstrap] installing requirements"

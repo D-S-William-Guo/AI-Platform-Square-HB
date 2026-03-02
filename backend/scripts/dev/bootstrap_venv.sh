@@ -13,8 +13,8 @@ cd "${BACKEND_DIR}"
 echo "[bootstrap] backend dir: ${BACKEND_DIR}"
 
 if [[ ! -d ".venv" ]]; then
-  echo "[bootstrap] creating .venv"
-  python -m venv .venv
+  echo "[bootstrap] creating .venv (ensure python venv support is installed, e.g. python3-venv/ensurepip)"
+  python -m venv .venv || { echo "[bootstrap] ERROR: failed to create .venv (missing python3-venv/ensurepip?)" >&2; exit 1; }
 else
   echo "[bootstrap] reusing existing .venv"
 fi
