@@ -19,15 +19,15 @@ if (-not (Test-Path ".venv")) {
   Write-Host "[bootstrap] reusing existing .venv"
 }
 
-Write-Host "[bootstrap] activating .venv"
-. .\.venv\Scripts\Activate.ps1
+$VenvPython = Join-Path $backendDir ".venv\Scripts\python.exe"
+if (-not (Test-Path $VenvPython)) { throw "venv python not found: $VenvPython" }
 
 Write-Host "[bootstrap] installing requirements"
-python -m pip install -r requirements.txt
+& $VenvPython -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed" }
 
 Write-Host "[bootstrap] installing editable package"
-python -m pip install -e .
+& $VenvPython -m pip install -e .
 if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
 
 Write-Host "[bootstrap] done"

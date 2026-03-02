@@ -19,13 +19,16 @@ else
   echo "[bootstrap] reusing existing .venv"
 fi
 
-echo "[bootstrap] activating .venv"
-source .venv/bin/activate
+VENV_PY="${BACKEND_DIR}/.venv/bin/python"
+if [[ ! -x "${VENV_PY}" ]]; then
+  echo "[bootstrap] ERROR: venv python not executable: ${VENV_PY}" >&2
+  exit 1
+fi
 
 echo "[bootstrap] installing requirements"
-python -m pip install -r requirements.txt
+"${VENV_PY}" -m pip install -r requirements.txt
 
 echo "[bootstrap] installing editable package"
-python -m pip install -e .
+"${VENV_PY}" -m pip install -e .
 
 echo "[bootstrap] done"
