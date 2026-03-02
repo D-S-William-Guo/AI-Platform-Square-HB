@@ -470,3 +470,5 @@ npm run verify:styles
 
 ## 开发文档
 - Backend 环境与自检：docs/dev-setup.md
+  - Linux：`bash backend/scripts/dev/doctor.sh`
+  - Windows：`powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1`

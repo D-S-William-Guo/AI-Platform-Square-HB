@@ -1,56 +1,121 @@
-# 开发环境快速启动（Backend）
+# Backend 开发环境与自检（Linux / Windows / Codex 通用）
 
-目标：不依赖 `PYTHONPATH`，统一使用 `pip install -e backend`（editable install），保证 Linux / Windows / Codex 一致。
+本文档解决三个问题：
+
+1. 如何在本地/云电脑把后端 Python 环境标准化（可复现）
+2. 如何一键做"环境自检"（避免 `ModuleNotFoundError: app` 等问题反复出现）
+3. 如何在 PR/CI 里保证同一套规则持续生效
 
 ---
 
-## Linux（云电脑/服务器）
+## 1. 约定与原则（必须读一遍）
 
-一键初始化 venv（默认落到 BigData）并跑测试：
+- 后端目录为 `backend/`，Python 包为 `app/`
+- 后端以 **editable install（`pip install -e .`）** 的方式安装，避免依赖 `PYTHONPATH`
+- CI 与本地开发使用同一条导入路径规则：`import app` 必须稳定可用
+
+---
+
+## 2. 快速开始（Linux / Ubuntu）
+
+在仓库根目录执行：
+
 ```bash
 bash backend/scripts/dev/bootstrap_venv.sh
 ```
 
-默认路径：
-
-- venv：`/home/ctyun/BigData/.venvs/ai-platform-square-hb`
-- pip cache：`/home/ctyun/BigData/.pip-cache`
-
-自定义路径（可选）：
-```bash
-VENV_DIR=/path/to/venv PIP_CACHE_DIR=/path/to/pip-cache bash backend/scripts/dev/bootstrap_venv.sh
-```
-
-环境自检（建议每次改依赖/换机器后跑一次）：
-```bash
-cd backend
-python -m pip install -e .
-python -c "import app; import app.main; print('editable ok')"
-pytest -q tests
-```
+> 该脚本会创建/复用 venv，并安装依赖与 editable 包。
 
 ---
 
-## Windows（PowerShell）
+## 3. 快速开始（Windows / PowerShell）
 
-建议：在 `backend` 目录创建项目 venv，并做 editable install。
+在仓库根目录执行：
+
 ```powershell
-cd <your-repo>\backend
-py -m venv .venv
-.\.venv\Scripts\python -m pip install -U pip
-.\.venv\Scripts\pip install -r requirements.txt
-.\.venv\Scripts\pip install -e .
-.\.venv\Scripts\pytest -q tests
+powershell -ExecutionPolicy Bypass -File backend\scripts\dev\bootstrap_venv.ps1
+```
+
+> 若你项目里没有 `bootstrap_venv.ps1`，则使用手工方式：
+>
+> - 创建 venv
+> - `pip install -r backend/requirements.txt`
+> - `pip install -e backend`
+
+---
+
+## 4. 环境自检（强烈建议：每次提交前跑一次）
+
+### 4.1 Linux / Ubuntu
+
+在仓库根目录执行：
+
+```bash
+bash backend/scripts/dev/doctor.sh
+```
+
+### 4.2 Windows / PowerShell
+
+在仓库根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1
+```
+
+### 4.3 自检会检查什么？
+
+- Python / pip 是否可用
+- 是否在 venv 中（提示项）
+- `import app` 是否成功（核心）
+- 依赖健康度（`pip check`）
+- 测试数据库初始化（SQLite）
+- `pytest -q tests` 是否通过
+
+---
+
+## 5. 常见问题
+
+### Q1：本地跑 pytest 报 `ModuleNotFoundError: No module named 'app'`
+
+**原因**：当前环境没有把 `backend/app` 作为可导入包安装。
+
+**解决**（二选一，推荐 A）：
+
+**A. 推荐：在 `backend/` 里执行 editable install**
+
+```bash
+cd backend
+python -m pip install -e .
+```
+
+**B. 临时：用 PYTHONPATH**（仅用于救急，不建议长期依赖）
+
+```bash
+cd backend
+PYTHONPATH="$(pwd)" pytest -q tests
 ```
 
 ---
 
-## Codex（网页版/远程环境）
+### Q2：CI 里为什么不再用 PYTHONPATH？
 
-原则同上：进入 `backend`，安装依赖并 editable install，再跑 tests。
-```bash
-cd backend
-python -m pip install -r requirements.txt
-python -m pip install -e .
-pytest -q tests
-```
+`PYTHONPATH` 属于"运行时补丁"，容易被不同 shell/IDE/工作目录影响。editable install 属于"工程级解决方案"，本地、CI、Codex 执行一致，减少漂移。
+
+---
+
+## 6. PR 提交流程（与 CI 对齐）
+
+提交 PR 前建议顺序：
+
+1. `bash backend/scripts/dev/doctor.sh`（或 Windows `doctor.ps1`）
+2. `pytest -q tests`（doctor 已包含，可略）
+3. push 分支 → 开 PR → 等 CI 绿 → squash merge
+
+---
+
+## 7. 索引
+
+- 开发流程说明：`docs/dev-workflow.md`
+- 治理规则：`docs/GOVERNANCE.md`
+
+---
