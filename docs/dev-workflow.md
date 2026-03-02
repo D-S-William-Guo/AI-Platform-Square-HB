@@ -64,7 +64,7 @@ git push origin fix/<topic>
 
 ## 3. 数据库切换方式（SQLite / MySQL）
 
-迁移执行顺序、不可跳步原则、SQLite/MySQL 最小验证步骤统一维护在：`docs/db-migration-sop.md`。
+迁移执行顺序、不可跳步原则、SQLite/MySQL 最小验证步骤统一维护在：[docs/db-migration-sop.md](db-migration-sop.md)。
 
 本文件仅保留入口：
 - 后端读取 `backend/.env` 的 `DATABASE_URL`；
