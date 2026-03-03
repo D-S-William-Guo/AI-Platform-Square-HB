@@ -472,3 +472,16 @@ npm run verify:styles
 - Backend 环境与自检：docs/dev-setup.md
   - Linux：`bash backend/scripts/dev/doctor.sh`
   - Windows：`powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1`
+
+## 推荐使用 make 命令进行本地开发与验证
+
+```bash
+make doctor
+make db-up
+make backend-install
+make backend-dev
+make frontend-install
+make frontend-dev
+make test
+```
+
