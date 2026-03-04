@@ -16,7 +16,9 @@ import {
   fetchAllAppRankingSettings,
   createAppRankingSetting,
   updateAppRankingSetting,
-  deleteAppRankingSetting
+  deleteAppRankingSetting,
+  isMissingAdminTokenError,
+  getAdminTokenSetupHint
 } from '../api/client'
 
 // 榜单配置类型
@@ -47,6 +49,22 @@ interface AppRankingSettingItem {
 interface DimensionConfig {
   dim_id: number
   weight: number
+}
+
+function resolveAdminError(err: unknown, fallback: string): string {
+  if (isMissingAdminTokenError(err)) {
+    return `缺少管理员令牌。${getAdminTokenSetupHint()}`
+  }
+
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 401) {
+    return `管理员令牌无效或未生效。${getAdminTokenSetupHint()}`
+  }
+  if (status === 403) {
+    return '管理员令牌已识别，但无权限访问该页面。'
+  }
+
+  return fallback
 }
 
 const RankingManagementPage = () => {
@@ -127,7 +145,7 @@ const RankingManagementPage = () => {
       }
       setAppSettings(settingsMap)
     } catch (err) {
-      setError('加载数据失败')
+      setError(resolveAdminError(err, '加载数据失败'))
       console.error('Failed to load data:', err)
     } finally {
       setLoading(false)
@@ -157,7 +175,7 @@ const RankingManagementPage = () => {
       resetConfigForm()
       loadData()
     } catch (err) {
-      setError('保存榜单配置失败')
+      setError(resolveAdminError(err, '保存榜单配置失败'))
       console.error('Failed to save config:', err)
     }
   }
@@ -169,7 +187,7 @@ const RankingManagementPage = () => {
       await deleteRankingConfig(id)
       loadData()
     } catch (err) {
-      setError('删除榜单配置失败')
+      setError(resolveAdminError(err, '删除榜单配置失败'))
       console.error('Failed to delete config:', err)
     }
   }
@@ -257,7 +275,7 @@ const RankingManagementPage = () => {
       setShowAppSettingModal(false)
       loadData()
     } catch (err) {
-      setError('保存应用榜单设置失败')
+      setError(resolveAdminError(err, '保存应用榜单设置失败'))
       console.error('Failed to save app setting:', err)
     }
   }
@@ -269,7 +287,7 @@ const RankingManagementPage = () => {
       await deleteAppRankingSetting(appId, settingId)
       loadData()
     } catch (err) {
-      setError('删除应用榜单设置失败')
+      setError(resolveAdminError(err, '删除应用榜单设置失败'))
       console.error('Failed to delete app setting:', err)
     }
   }
@@ -307,7 +325,7 @@ const RankingManagementPage = () => {
       resetDimensionForm()
       loadData()
     } catch (err) {
-      setError('保存维度失败')
+      setError(resolveAdminError(err, '保存维度失败'))
       console.error('Failed to save dimension:', err)
     }
   }
@@ -319,7 +337,7 @@ const RankingManagementPage = () => {
       await deleteRankingDimension(id)
       loadData()
     } catch (err) {
-      setError('删除维度失败')
+      setError(resolveAdminError(err, '删除维度失败'))
       console.error('Failed to delete dimension:', err)
     }
   }
@@ -358,7 +376,7 @@ const RankingManagementPage = () => {
       loadData()
     } catch (err) {
       console.error('同步失败:', err)
-      setSyncMessage('同步失败，请重试')
+      setSyncMessage(resolveAdminError(err, '同步失败，请重试'))
     } finally {
       setSyncing(false)
     }
