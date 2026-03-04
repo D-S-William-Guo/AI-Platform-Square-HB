@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     static_dir: str = "static"
     upload_dir: str = "static/uploads"
     image_dir: str = "static/images"
+    environment: str = "development"
     admin_token: str = "admin-secret-token"
 
     class Config:
@@ -21,7 +22,13 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
+def validate_settings(settings_obj: Settings) -> None:
+    if settings_obj.environment.lower() in {"prod", "production"} and settings_obj.admin_token == "admin-secret-token":
+        raise ValueError("ADMIN_TOKEN must be set to a non-default value in production")
+
+
 settings = Settings()
+validate_settings(settings)
 
 
 def resolve_runtime_path(path_value: str) -> Path:

@@ -46,6 +46,22 @@ for path in backend/app/main.py backend/tests frontend/package.json docker-compo
   fi
 done
 
+if [ -f "$ROOT_DIR/.env.local" ]; then
+  echo "[OK] .env.local"
+  if grep -q '^ADMIN_TOKEN=' "$ROOT_DIR/.env.local"; then
+    echo "[OK] .env.local has ADMIN_TOKEN"
+  else
+    echo "[WARN] .env.local missing ADMIN_TOKEN"
+  fi
+  if grep -q '^VITE_ADMIN_TOKEN=' "$ROOT_DIR/.env.local"; then
+    echo "[OK] .env.local has VITE_ADMIN_TOKEN"
+  else
+    echo "[WARN] .env.local missing VITE_ADMIN_TOKEN"
+  fi
+else
+  echo "[WARN] .env.local not found (local admin pages may return 401)"
+fi
+
 if [ "$status" -ne 0 ]; then
   exit 1
 fi
