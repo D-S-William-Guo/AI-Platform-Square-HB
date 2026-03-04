@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -17,9 +17,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     admin_token: str = "admin-secret-token"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 def validate_settings(settings_obj: Settings) -> None:

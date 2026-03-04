@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AppBase(BaseModel):
@@ -34,8 +34,7 @@ class AppDetail(AppBase):
     ranking_tags: str | None = None
     last_ranking_update: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RankingItem(BaseModel):
@@ -114,8 +113,7 @@ class SubmissionOut(BaseModel):
     ranking_tags: str
     ranking_dimensions: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ImageUploadResponse(BaseModel):
@@ -152,8 +150,7 @@ class RankingDimensionOut(RankingDimensionBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RankingLogOut(BaseModel):
@@ -165,8 +162,7 @@ class RankingLogOut(BaseModel):
     operator: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RankingAuditLogOut(BaseModel):
@@ -180,8 +176,7 @@ class RankingAuditLogOut(BaseModel):
     payload_summary: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AppDimensionScoreOut(BaseModel):
@@ -197,8 +192,7 @@ class AppDimensionScoreOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class HistoricalRankingOut(BaseModel):
@@ -218,8 +212,7 @@ class HistoricalRankingOut(BaseModel):
     usage_30d: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GroupAppCreate(BaseModel):
@@ -278,8 +271,7 @@ class RankingConfigOut(RankingConfigBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AppRankingSettingBase(BaseModel):
@@ -313,8 +305,7 @@ class AppRankingSettingOut(AppRankingSettingBase):
     updated_at: datetime
     ranking_config: RankingConfigOut | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DimensionConfigItem(BaseModel):

@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -74,7 +75,20 @@ def ensure_runtime_directories() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    ensure_runtime_directories()
+    Base.metadata.create_all(bind=engine)
+    db = next(get_db())
+    try:
+        seed_data(db)
+    finally:
+        db.close()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -485,18 +499,6 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
 
     db.commit()
     return updated_count, current_run_id
-
-
-@app.on_event("startup")
-def on_startup():
-    ensure_runtime_directories()
-
-    Base.metadata.create_all(bind=engine)
-    db = next(get_db())
-    try:
-        seed_data(db)
-    finally:
-        db.close()
 
 
 @app.get(f"{settings.api_prefix}/health")

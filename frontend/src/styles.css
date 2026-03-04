@@ -11,6 +11,9 @@
 
 /* 2. 页面特定样式（后导入，优先级更高） */
 @import './styles/home-page.css';
+@import './styles/guide-page.css';
+@import './styles/submission-review-page.css';
+@import './styles/historical-ranking-page.css';
 @import './styles/ranking-detail.css';
 @import './styles/ranking-management.css';
 
