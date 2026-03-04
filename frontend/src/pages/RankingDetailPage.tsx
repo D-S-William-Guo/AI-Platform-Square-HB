@@ -311,16 +311,32 @@ export default function RankingDetailPage() {
             </div>
 
             <div className="modal-footer">
-              <button className="modal-btn secondary" onClick={() => setSelectedApp(null)}>
-                关闭
-              </button>
-              <Link 
-                to="/" 
-                className="modal-btn primary"
+              <button
+                type="button"
+                className="modal-btn secondary"
                 onClick={() => setSelectedApp(null)}
               >
-                查看应用详情
-              </Link>
+                关闭
+              </button>
+              {selectedApp.app.access_url ? (
+                <a
+                  href={selectedApp.app.access_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="modal-btn primary"
+                >
+                  前往应用入口
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="modal-btn primary disabled"
+                  disabled
+                  title="该应用暂未配置访问地址"
+                >
+                  暂无访问地址
+                </button>
+              )}
             </div>
           </div>
         </div>

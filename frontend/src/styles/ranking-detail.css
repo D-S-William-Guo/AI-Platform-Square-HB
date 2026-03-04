@@ -504,6 +504,56 @@
   line-height: 1.6;
 }
 
+.ranking-detail-page .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.ranking-detail-page .modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.ranking-detail-page .modal-btn.secondary {
+  background: #fff;
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+
+.ranking-detail-page .modal-btn.secondary:hover {
+  color: #1f2937;
+  border-color: #9ca3af;
+}
+
+.ranking-detail-page .modal-btn.primary {
+  background: #1890ff;
+  color: #fff;
+}
+
+.ranking-detail-page .modal-btn.primary:hover {
+  background: #1677d6;
+}
+
+.ranking-detail-page .modal-btn.disabled,
+.ranking-detail-page .modal-btn:disabled {
+  background: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
 /* 底部 */
 .ranking-detail-page .detail-footer {
   max-width: 1200px;
