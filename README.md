@@ -135,14 +135,17 @@ npm run dev
 
 访问：`http://localhost:5173`
 
-管理员接口鉴权 token（前端）最小配置示例：
+本地 0 门槛调试（推荐）：
 
 ```bash
-cd frontend
-echo "VITE_ADMIN_TOKEN=your-admin-token" > .env.local
+cp .env.local.example .env.local
 ```
 
+> `make backend-dev` / `make frontend-dev` / `make test` 会自动加载仓库根目录 `.env.local`。  
+> 该文件已在 `.gitignore` 中忽略，不会提交到 GitHub。  
 > 前端管理接口会从 `VITE_ADMIN_TOKEN`（优先）或浏览器 `localStorage` 的 `ADMIN_TOKEN` / `admin_token` 读取，并通过 `X-Admin-Token` 请求头发送。
+>
+> 生产环境请勿使用 `VITE_ADMIN_TOKEN` 存放真实管理员密钥（前端变量会暴露）。后端在 `ENVIRONMENT=production` 且 `ADMIN_TOKEN` 仍为默认值时会拒绝启动。
 
 ## ⚠️ 前端开发规范（重要）
 
@@ -484,4 +487,3 @@ make frontend-install
 make frontend-dev
 make test
 ```
-
