@@ -8,6 +8,16 @@ from .models import App, Ranking, RankingConfig, RankingDimension, Submission, A
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
 DEFAULT_RANKING_TAG = "推荐"
+LEGACY_DIMENSION_ID_TO_NAME = {
+    1: "用户满意度",
+    2: "业务价值",
+    3: "技术创新性",
+    4: "使用活跃度",
+    5: "稳定性和安全性",
+    6: "增长趋势",
+    7: "用户增长",
+    8: "市场热度",
+}
 
 
 GROUP_APPS = [
@@ -408,6 +418,7 @@ def create_submission_direct(db: Session, payload: dict) -> Submission:
         data_level=payload["data_level"],
         expected_benefit=payload["expected_benefit"],
         status="pending",
+        cover_image_url=payload.get("cover_image_url", ""),
         ranking_enabled=payload.get("ranking_enabled", True),
         ranking_weight=payload.get("ranking_weight", 1.0),
         ranking_tags=payload.get("ranking_tags", ""),
@@ -443,7 +454,7 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
         problem_statement=submission.problem_statement,
         effectiveness_type=submission.effectiveness_type,
         effectiveness_metric=submission.effectiveness_metric,
-        cover_image_url="",
+        cover_image_url=submission.cover_image_url,
         ranking_enabled=submission.ranking_enabled,
         ranking_weight=submission.ranking_weight,
         ranking_tags=submission.ranking_tags,
@@ -460,6 +471,38 @@ def approve_submission_and_create_app(db: Session, submission: Submission) -> Ap
     db.commit()
     db.refresh(app)
     return app
+
+
+def remap_legacy_dimension_ids(raw_dimensions: str, dimension_name_to_id: dict[str, int]) -> str:
+    """
+    将种子里历史写死的维度ID（1..8）转换为当前数据库真实ID，避免依赖自增主键顺序。
+    """
+    if not raw_dimensions:
+        return ""
+
+    mapped_ids: list[str] = []
+    for token in raw_dimensions.split(","):
+        value = token.strip()
+        if not value:
+            continue
+
+        if not value.isdigit():
+            continue
+
+        legacy_id = int(value)
+        dimension_name = LEGACY_DIMENSION_ID_TO_NAME.get(legacy_id)
+        if not dimension_name:
+            continue
+
+        current_id = dimension_name_to_id.get(dimension_name)
+        if current_id is None:
+            continue
+
+        current_id_str = str(current_id)
+        if current_id_str not in mapped_ids:
+            mapped_ids.append(current_id_str)
+
+    return ",".join(mapped_ids)
 
 
 def calculate_app_score(
@@ -665,8 +708,8 @@ def seed_data(db: Session) -> None:
     - 初始化排行榜维度和榜单配置
     """
     try:
-        if db.query(App).count() > 0 or db.query(Submission).count() > 0:
-            return
+        has_apps = db.query(App).count() > 0
+        has_submissions = db.query(Submission).count() > 0
     except Exception as exc:
         print(f"Database error during seed: {exc}")
         return
@@ -693,45 +736,57 @@ def seed_data(db: Session) -> None:
         print(f"Error seeding ranking configs: {exc}")
         db.rollback()
 
-    # 1. 录入集团应用（直接录入，不走申报流程）
-    try:
-        for app in GROUP_APPS:
-            app.setdefault("ranking_enabled", False)  # 集团应用不参与排行榜
-            app.setdefault("ranking_weight", 1.0)
-            app.setdefault("ranking_tags", "")
-            app.setdefault("last_ranking_update", None)
-            db.add(App(**app))
-        db.commit()
-        print(f"Seeded {len(GROUP_APPS)} group apps")
-    except Exception as exc:
-        print(f"Error seeding group apps: {exc}")
-        db.rollback()
+    # 3. 录入集团应用（直接录入，不走申报流程）
+    if not has_apps:
+        try:
+            for app in GROUP_APPS:
+                app.setdefault("ranking_enabled", False)  # 集团应用不参与排行榜
+                app.setdefault("ranking_weight", 1.0)
+                app.setdefault("ranking_tags", "")
+                app.setdefault("last_ranking_update", None)
+                db.add(App(**app))
+            db.commit()
+            print(f"Seeded {len(GROUP_APPS)} group apps")
+        except Exception as exc:
+            print(f"Error seeding group apps: {exc}")
+            db.rollback()
+    else:
+        print("Skip seeding group apps: apps table already has data")
 
-    # 2. 省内应用通过申报流程录入
-    try:
-        approved_ids = []
-        approved_apps = []
-        for index, payload in enumerate(PROVINCE_SUBMISSIONS):
-            # 创建申报
-            submission = create_submission_direct(db, payload)
-            # 前7个申报自动审批通过（模拟审核流程）
-            if index < 7:
-                approved = approve_submission_and_create_app(db, submission)
-                approved_ids.append(approved.id)
-                approved_apps.append(approved)
-                print(f"Approved submission {submission.id} -> app {approved.id}")
+    # 4. 省内应用通过申报流程录入
+    if not has_submissions:
+        try:
+            approved_ids = []
+            approved_apps = []
+            dimension_name_to_id = {
+                item.name: item.id
+                for item in db.query(RankingDimension).all()
+            }
 
-        # 3. 初始化应用榜单设置（在同步排行榜之前）
-        if approved_apps:
-            configs = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True)).all()
-            for app in approved_apps:
-                for config in configs:
-                    # 检查是否已存在
+            for index, payload in enumerate(PROVINCE_SUBMISSIONS):
+                resolved_payload = dict(payload)
+                resolved_payload["ranking_dimensions"] = remap_legacy_dimension_ids(
+                    payload.get("ranking_dimensions", ""),
+                    dimension_name_to_id,
+                )
+
+                # 创建申报
+                submission = create_submission_direct(db, resolved_payload)
+                # 前7个申报自动审批通过（模拟审核流程）
+                if index < 7:
+                    approved = approve_submission_and_create_app(db, submission)
+                    approved_ids.append(approved.id)
+                    approved_apps.append(approved)
+                    print(f"Approved submission {submission.id} -> app {approved.id}")
+
+            # 5. 初始化应用榜单设置（与正式审批口径对齐：默认不参评）
+            if approved_apps:
+                for app in approved_apps:
                     existing = (
                         db.query(AppRankingSetting)
                         .filter(
                             AppRankingSetting.app_id == app.id,
-                            AppRankingSetting.ranking_config_id == config.id
+                            AppRankingSetting.ranking_config_id.is_(None),
                         )
                         .first()
                     )
@@ -739,19 +794,28 @@ def seed_data(db: Session) -> None:
                         db.add(
                             AppRankingSetting(
                                 app_id=app.id,
-                                ranking_config_id=config.id,
-                                is_enabled=True,
+                                ranking_config_id=None,
+                                is_enabled=False,
                                 weight_factor=1.0,
-                                custom_tags=app.ranking_tags or DEFAULT_RANKING_TAG,
+                                custom_tags=app.ranking_tags or "",
                             )
                         )
-            db.commit()
-            print(f"Initialized ranking settings for {len(approved_apps)} apps")
+                db.commit()
+                print(f"Initialized disabled ranking settings for {len(approved_apps)} apps")
 
-        # 4. 同步排行榜数据
-        if approved_ids:
-            sync_rankings(db)
-            print(f"Synced rankings for {len(approved_ids)} apps")
-    except Exception as exc:
-        print(f"Error seeding province submissions: {exc}")
-        db.rollback()
+            # 6. 只有显式启用参评后才同步榜单
+            enabled_settings_count = (
+                db.query(AppRankingSetting)
+                .filter(AppRankingSetting.is_enabled.is_(True))
+                .count()
+            )
+            if approved_ids and enabled_settings_count > 0:
+                sync_rankings(db)
+                print(f"Synced rankings for {len(approved_ids)} apps")
+            else:
+                print("Skip initial ranking sync: no enabled AppRankingSetting")
+        except Exception as exc:
+            print(f"Error seeding province submissions: {exc}")
+            db.rollback()
+    else:
+        print("Skip seeding province submissions: submissions table already has data")
