@@ -1,6 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchSubmissions, approveSubmissionAndCreateApp, syncRankings } from '../api/client'
+import {
+  fetchSubmissions,
+  approveSubmissionAndCreateApp,
+  syncRankings,
+  isMissingAdminTokenError,
+  getAdminTokenSetupHint
+} from '../api/client'
 import type { Submission } from '../types'
 
 const statusMap: Record<string, { label: string; color: string }> = {
@@ -14,6 +20,22 @@ const valueDimensionLabel: Record<string, string> = {
   efficiency_gain: '增效',
   perception_uplift: '感知提升',
   revenue_growth: '拉动收入'
+}
+
+function resolveAdminError(err: unknown, fallback: string): string {
+  if (isMissingAdminTokenError(err)) {
+    return `缺少管理员令牌。${getAdminTokenSetupHint()}`
+  }
+
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 401) {
+    return `管理员令牌无效或未生效。${getAdminTokenSetupHint()}`
+  }
+  if (status === 403) {
+    return '管理员令牌已识别，但无权限执行该操作。'
+  }
+
+  return fallback
 }
 
 export default function SubmissionReviewPage() {
@@ -31,7 +53,7 @@ export default function SubmissionReviewPage() {
       const data = await fetchSubmissions()
       setSubmissions(data)
     } catch (err) {
-      setError('获取申报列表失败')
+      setError(resolveAdminError(err, '获取申报列表失败'))
       console.error('Failed to fetch submissions:', err)
     } finally {
       setLoading(false)
@@ -54,7 +76,7 @@ export default function SubmissionReviewPage() {
       alert('审核通过！应用已创建并同步到排行榜。')
       loadSubmissions() // 刷新列表
     } catch (err) {
-      alert('审核失败，请重试')
+      alert(resolveAdminError(err, '审核失败，请重试'))
       console.error('Failed to approve submission:', err)
     } finally {
       setProcessing(false)
