@@ -96,7 +96,7 @@ export default function SubmissionReviewPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page submission-review-page">
       <header className="header">
         <div className="brand">
           <div className="brand-icon">河</div>
