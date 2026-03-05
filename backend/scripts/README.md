@@ -19,6 +19,7 @@
 - `fix_rankings.py` - 修复排行榜数据重复问题
 - `fix_declared_at.py` - 修复 declared_at 日期格式
 - `fix_and_sync.py` - 修复趋势榜并同步到历史榜单
+- `dedupe_data.py` - 去重 submissions/apps/rankings（默认 dry-run，`--apply` 执行）
 
 ### 调试测试脚本
 - `debug_sync.py` - 调试同步问题

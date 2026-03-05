@@ -10,6 +10,8 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from .config import resolve_runtime_path, settings
@@ -74,6 +76,10 @@ def ensure_runtime_directories() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def normalize_dedupe_text(value: str) -> str:
+    return " ".join(value.strip().lower().split())
 
 
 @asynccontextmanager
@@ -834,9 +840,27 @@ def list_submissions(
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
 def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
     validate_submission_payload(payload)
+    normalized_name = normalize_dedupe_text(payload.app_name)
+    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    existing = (
+        db.query(Submission)
+        .filter(
+            func.lower(func.trim(Submission.app_name)) == normalized_name,
+            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
+            Submission.status.in_(("pending", "approved")),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
+
     submission = Submission(**payload.model_dump())
     db.add(submission)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="检测到重复申报，请勿重复提交")
     db.refresh(submission)
     return submission
 
@@ -1291,6 +1315,20 @@ def approve_submission_and_create_app(
 
         validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
 
+        normalized_name = normalize_dedupe_text(submission.app_name)
+        normalized_unit = normalize_dedupe_text(submission.unit_name)
+        existing_app = (
+            db.query(App)
+            .filter(
+                App.section == "province",
+                func.lower(func.trim(App.name)) == normalized_name,
+                func.lower(func.trim(App.org)) == normalized_unit,
+            )
+            .first()
+        )
+        if existing_app:
+            raise HTTPException(status_code=409, detail="已存在同名同单位省内应用，不能重复创建")
+
         app = App(
             name=submission.app_name,
             org=submission.unit_name,
@@ -1327,7 +1365,11 @@ def approve_submission_and_create_app(
         )
 
         submission.status = "approved"
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="检测到重复应用创建请求，已拒绝")
         db.refresh(app)
         
         # 自动同步排行榜数据

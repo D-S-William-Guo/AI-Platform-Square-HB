@@ -10,6 +10,9 @@ from .database import Base
 
 class App(Base):
     __tablename__ = "apps"
+    __table_args__ = (
+        UniqueConstraint("section", "name", "org", name="uq_apps_section_name_org"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -50,6 +53,9 @@ class App(Base):
 
 class Ranking(Base):
     __tablename__ = "rankings"
+    __table_args__ = (
+        UniqueConstraint("ranking_config_id", "app_id", name="uq_rankings_config_app"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # 外键关联榜单配置
@@ -73,6 +79,9 @@ class Ranking(Base):
 
 class Submission(Base):
     __tablename__ = "submissions"
+    __table_args__ = (
+        UniqueConstraint("app_name", "unit_name", "status", name="uq_submissions_name_unit_status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_name: Mapped[str] = mapped_column(String(120), nullable=False)
