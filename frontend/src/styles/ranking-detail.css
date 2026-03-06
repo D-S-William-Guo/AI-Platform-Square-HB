@@ -6,7 +6,7 @@
 }
 
 /* 头部 */
-.detail-header {
+.ranking-detail-page .detail-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -16,7 +16,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.back-btn {
+.ranking-detail-page .back-btn {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -31,13 +31,13 @@
   text-decoration: none;
 }
 
-.back-btn:hover {
+.ranking-detail-page .back-btn:hover {
   background: #e8e8e8;
   color: #333;
 }
 
 /* 榜单信息 */
-.config-info {
+.ranking-detail-page .config-info {
   max-width: 1200px;
   margin: 24px auto;
   padding: 24px;
@@ -46,14 +46,14 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.config-header {
+.ranking-detail-page .config-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
 
-.config-title {
+.ranking-detail-page .config-title {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -63,111 +63,111 @@
   margin: 0;
 }
 
-.config-icon {
+.ranking-detail-page .config-icon {
   font-size: 32px;
 }
 
-.config-status {
+.ranking-detail-page .config-status {
   padding: 6px 16px;
   border-radius: 20px;
   font-size: 14px;
   font-weight: 500;
 }
 
-.config-status.active {
+.ranking-detail-page .config-status.active {
   background: #e6f7e6;
   color: #52c41a;
 }
 
-.config-status.inactive {
+.ranking-detail-page .config-status.inactive {
   background: #f5f5f5;
   color: #999;
 }
 
-.config-description {
+.ranking-detail-page .config-description {
   font-size: 16px;
   color: #666;
   line-height: 1.6;
   margin-bottom: 16px;
 }
 
-.config-meta {
+.ranking-detail-page .config-meta {
   display: flex;
   gap: 24px;
   margin-bottom: 24px;
 }
 
-.meta-item {
+.ranking-detail-page .meta-item {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.meta-label {
+.ranking-detail-page .meta-label {
   font-size: 14px;
   color: #999;
 }
 
-.meta-value {
+.ranking-detail-page .meta-value {
   font-size: 14px;
   color: #333;
   font-weight: 500;
 }
 
 /* 维度配置 */
-.dimensions-section {
+.ranking-detail-page .dimensions-section {
   margin-top: 24px;
   padding-top: 24px;
   border-top: 1px solid #f0f0f0;
 }
 
-.dimensions-section .section-title {
+.ranking-detail-page .dimensions-section .section-title {
   font-size: 18px;
   font-weight: 600;
   color: #1a1a1a;
   margin-bottom: 16px;
 }
 
-.dimensions-list {
+.ranking-detail-page .dimensions-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
-.dimension-item {
+.ranking-detail-page .dimension-item {
   padding: 16px;
   background: #f8f9fa;
   border-radius: 8px;
   border-left: 4px solid #1890ff;
 }
 
-.dimension-info {
+.ranking-detail-page .dimension-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
 }
 
-.dimension-name {
+.ranking-detail-page .dimension-name {
   font-size: 15px;
   font-weight: 500;
   color: #333;
 }
 
-.dimension-weight {
+.ranking-detail-page .dimension-weight {
   font-size: 14px;
   color: #1890ff;
   font-weight: 600;
 }
 
-.dimension-bar {
+.ranking-detail-page .dimension-bar {
   height: 6px;
   background: #e8e8e8;
   border-radius: 3px;
   overflow: hidden;
 }
 
-.dimension-bar-fill {
+.ranking-detail-page .dimension-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #1890ff, #36cfc9);
   border-radius: 3px;
@@ -175,7 +175,7 @@
 }
 
 /* 排名列表 */
-.rankings-section {
+.ranking-detail-page .rankings-section {
   max-width: 1200px;
   margin: 0 auto 24px;
   padding: 24px;
@@ -184,32 +184,32 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.rankings-header {
+.ranking-detail-page .rankings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
 
-.rankings-header .section-title {
+.ranking-detail-page .rankings-header .section-title {
   font-size: 20px;
   font-weight: 600;
   color: #1a1a1a;
   margin: 0;
 }
 
-.update-time {
+.ranking-detail-page .update-time {
   font-size: 14px;
   color: #999;
 }
 
-.rankings-list {
+.ranking-detail-page .rankings-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.ranking-item {
+.ranking-detail-page .ranking-item {
   display: flex;
   align-items: center;
   padding: 16px 20px;
@@ -220,40 +220,40 @@
   transition: all 0.3s;
 }
 
-.ranking-item:hover {
+.ranking-detail-page .ranking-item:hover {
   background: #f0f7ff;
   border-color: #1890ff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
 }
 
-.ranking-item.top3 {
+.ranking-detail-page .ranking-item.top3 {
   background: linear-gradient(135deg, #fff9e6 0%, #fff5d6 100%);
   border-color: #ffd666;
 }
 
-.rank-position {
+.ranking-detail-page .rank-position {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 80px;
 }
 
-.rank-number {
+.ranking-detail-page .rank-number {
   font-size: 20px;
   font-weight: 700;
   color: #666;
 }
 
-.rank-medal {
+.ranking-detail-page .rank-medal {
   font-size: 24px;
 }
 
-.ranking-item.top3 .rank-number {
+.ranking-detail-page .ranking-item.top3 .rank-number {
   color: #fa8c16;
 }
 
-.rank-app {
+.ranking-detail-page .rank-app {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -261,7 +261,7 @@
   min-width: 0;
 }
 
-.app-avatar {
+.ranking-detail-page .app-avatar {
   width: 48px;
   height: 48px;
   border-radius: 10px;
@@ -274,13 +274,13 @@
   flex-shrink: 0;
 }
 
-.app-info {
+.ranking-detail-page .app-info {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.app-name {
+.ranking-detail-page .app-name {
   font-size: 16px;
   font-weight: 600;
   color: #1a1a1a;
@@ -289,7 +289,7 @@
   text-overflow: ellipsis;
 }
 
-.app-org {
+.ranking-detail-page .app-org {
   font-size: 13px;
   color: #999;
   white-space: nowrap;
@@ -297,7 +297,7 @@
   text-overflow: ellipsis;
 }
 
-.rank-dimension {
+.ranking-detail-page .rank-dimension {
   padding: 4px 12px;
   background: #f0f0f0;
   border-radius: 4px;
@@ -306,7 +306,7 @@
   margin: 0 16px;
 }
 
-.rank-tag {
+.ranking-detail-page .rank-tag {
   padding: 4px 12px;
   border-radius: 4px;
   font-size: 13px;
@@ -314,41 +314,41 @@
   margin-right: 16px;
 }
 
-.rank-tag.recommended {
+.ranking-detail-page .rank-tag.recommended {
   background: #e6f7ff;
   color: #1890ff;
 }
 
-.rank-tag.excellent {
+.ranking-detail-page .rank-tag.excellent {
   background: #f6ffed;
   color: #52c41a;
 }
 
-.rank-tag.new {
+.ranking-detail-page .rank-tag.new {
   background: #fff7e6;
   color: #fa8c16;
 }
 
-.rank-score {
+.ranking-detail-page .rank-score {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   min-width: 70px;
 }
 
-.score-value {
+.ranking-detail-page .score-value {
   font-size: 22px;
   font-weight: 700;
   color: #1890ff;
 }
 
-.score-label {
+.ranking-detail-page .score-label {
   font-size: 12px;
   color: #999;
 }
 
 /* 空状态 */
-.empty-state {
+.ranking-detail-page .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -357,14 +357,14 @@
   color: #999;
 }
 
-.empty-icon {
+.ranking-detail-page .empty-icon {
   font-size: 48px;
   margin-bottom: 16px;
 }
 
 /* 加载和错误状态 */
-.loading-container,
-.error-container {
+.ranking-detail-page .loading-container,
+.ranking-detail-page .error-container {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -373,7 +373,7 @@
   gap: 16px;
 }
 
-.loading-spinner {
+.ranking-detail-page .loading-spinner {
   width: 40px;
   height: 40px;
   border: 3px solid #f0f0f0;
@@ -388,11 +388,11 @@
   }
 }
 
-.error-icon {
+.ranking-detail-page .error-icon {
   font-size: 48px;
 }
 
-.back-link {
+.ranking-detail-page .back-link {
   padding: 8px 20px;
   background: #1890ff;
   color: #fff;
@@ -402,22 +402,22 @@
   transition: background 0.3s;
 }
 
-.back-link:hover {
+.ranking-detail-page .back-link:hover {
   background: #40a9ff;
 }
 
 /* 应用详情弹窗 */
-.ranking-app-modal {
+.ranking-detail-page .ranking-app-modal {
   max-width: 600px;
 }
 
-.ranking-app-modal .modal-subtitle {
+.ranking-detail-page .ranking-app-modal .modal-subtitle {
   display: flex;
   gap: 16px;
   margin-top: 8px;
 }
 
-.modal-rank {
+.ranking-detail-page .modal-rank {
   padding: 4px 12px;
   background: #e6f7ff;
   color: #1890ff;
@@ -426,7 +426,7 @@
   font-weight: 500;
 }
 
-.modal-score {
+.ranking-detail-page .modal-score {
   padding: 4px 12px;
   background: #f6ffed;
   color: #52c41a;
@@ -435,11 +435,11 @@
   font-weight: 500;
 }
 
-.app-detail-section {
+.ranking-detail-page .app-detail-section {
   margin-bottom: 24px;
 }
 
-.app-detail-section .section-title {
+.ranking-detail-page .app-detail-section .section-title {
   font-size: 16px;
   font-weight: 600;
   color: #1a1a1a;
@@ -448,35 +448,35 @@
   border-bottom: 1px solid #f0f0f0;
 }
 
-.detail-grid {
+.ranking-detail-page .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.detail-item {
+.ranking-detail-page .detail-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.detail-label {
+.ranking-detail-page .detail-label {
   font-size: 13px;
   color: #999;
 }
 
-.detail-value {
+.ranking-detail-page .detail-value {
   font-size: 15px;
   color: #333;
   font-weight: 500;
 }
 
-.performance-stats {
+.ranking-detail-page .performance-stats {
   display: flex;
   gap: 16px;
 }
 
-.stat-box {
+.ranking-detail-page .stat-box {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -486,26 +486,76 @@
   border-radius: 8px;
 }
 
-.stat-box .stat-value {
+.ranking-detail-page .stat-box .stat-value {
   font-size: 24px;
   font-weight: 700;
   color: #1890ff;
   margin-bottom: 4px;
 }
 
-.stat-box .stat-label {
+.ranking-detail-page .stat-box .stat-label {
   font-size: 13px;
   color: #999;
 }
 
-.app-description {
+.ranking-detail-page .app-description {
   font-size: 14px;
   color: #666;
   line-height: 1.6;
 }
 
+.ranking-detail-page .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.ranking-detail-page .modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.ranking-detail-page .modal-btn.secondary {
+  background: #fff;
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+
+.ranking-detail-page .modal-btn.secondary:hover {
+  color: #1f2937;
+  border-color: #9ca3af;
+}
+
+.ranking-detail-page .modal-btn.primary {
+  background: #1890ff;
+  color: #fff;
+}
+
+.ranking-detail-page .modal-btn.primary:hover {
+  background: #1677d6;
+}
+
+.ranking-detail-page .modal-btn.disabled,
+.ranking-detail-page .modal-btn:disabled {
+  background: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
 /* 底部 */
-.detail-footer {
+.ranking-detail-page .detail-footer {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
@@ -516,43 +566,43 @@
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .config-header {
+  .ranking-detail-page .config-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
 
-  .config-title {
+  .ranking-detail-page .config-title {
     font-size: 22px;
   }
 
-  .config-meta {
+  .ranking-detail-page .config-meta {
     flex-direction: column;
     gap: 8px;
   }
 
-  .dimensions-list {
+  .ranking-detail-page .dimensions-list {
     grid-template-columns: 1fr;
   }
 
-  .ranking-item {
+  .ranking-detail-page .ranking-item {
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  .rank-dimension {
+  .ranking-detail-page .rank-dimension {
     margin: 0;
   }
 
-  .rank-score {
+  .ranking-detail-page .rank-score {
     margin-left: auto;
   }
 
-  .detail-grid {
+  .ranking-detail-page .detail-grid {
     grid-template-columns: 1fr;
   }
 
-  .performance-stats {
+  .ranking-detail-page .performance-stats {
     flex-direction: column;
   }
 }

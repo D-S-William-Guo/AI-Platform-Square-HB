@@ -582,16 +582,6 @@
   font-size: 16px;
 }
 
-/* 页脚 */
-.home-page .footer {
-  text-align: center;
-  padding: 24px;
-  color: var(--text-muted);
-  font-size: 13px;
-  border-top: 1px solid var(--border-color);
-  margin-top: auto;
-}
-
 /* 搜索框 */
 .home-page .search-wrapper {
   position: relative;

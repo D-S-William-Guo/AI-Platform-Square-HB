@@ -1,5 +1,10 @@
 import os
+from pathlib import Path
+
 import pytest
+
+# Ensure DATABASE_URL is set before any test module imports `app.main`.
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_test_db():
@@ -8,7 +13,9 @@ def _init_test_db():
 
     CI uses a fresh environment; without seeding, /api/apps will return [].
     """
-    os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+    test_db_path = Path("test.db")
+    if test_db_path.exists():
+        test_db_path.unlink()
 
     from app.database import Base, engine, SessionLocal
 

@@ -99,6 +99,14 @@ const RulePage = () => {
                 <h3>榜单展示</h3>
                 <p>榜单将在 AI 应用广场首页展示，用户可以点击查看详细排名和评估数据。</p>
               </div>
+
+              <div className="guide-card">
+                <h3>维度管理</h3>
+                <p>排行维度和计算方法已整合到统一的排行榜管理系统中，您可以通过以下链接访问：</p>
+                <Link to="/ranking-management" className="btn-primary">
+                  前往排行榜管理
+                </Link>
+              </div>
             </section>
           )}
 
@@ -137,47 +145,6 @@ const RulePage = () => {
                   <li>结果审核：由专家团队对评估结果进行审核</li>
                   <li>榜单发布：在平台上发布最终的排行榜</li>
                 </ol>
-              </div>
-            </section>
-          )}
-
-          {/* 排行维度和计算方法已整合到排行榜管理页面 */}
-          {activeSection === 'ranking' && (
-            <section className="guide-section">
-              <h2>排行榜规则</h2>
-              <p>AI 应用广场设有多个排行榜，每个排行榜有其特定的评估标准和规则。</p>
-              
-              <div className="guide-card">
-                <h3>排行榜类型</h3>
-                <ul>
-                  <li><strong>优秀应用榜</strong>：综合评估应用的质量、用户满意度、技术创新性等因素</li>
-                  <li><strong>趋势榜</strong>：评估应用的增长速度、近期活跃度等因素</li>
-                  <li><strong>分类榜单</strong>：按应用分类进行排名，如办公类、业务前台类等</li>
-                  <li><strong>月度之星</strong>：每月评选出的表现最突出的应用</li>
-                </ul>
-              </div>
-
-              <div className="guide-card">
-                <h3>上榜条件</h3>
-                <ul>
-                  <li>应用必须已正式上线</li>
-                  <li>应用必须通过安全性和合规性审核</li>
-                  <li>应用必须有一定的用户基础和使用数据</li>
-                  <li>应用必须符合相关法律法规和公司政策</li>
-                </ul>
-              </div>
-
-              <div className="guide-card">
-                <h3>榜单展示</h3>
-                <p>榜单将在 AI 应用广场首页展示，用户可以点击查看详细排名和评估数据。</p>
-              </div>
-
-              <div className="guide-card">
-                <h3>维度管理</h3>
-                <p>排行维度和计算方法已整合到统一的排行榜管理系统中，您可以通过以下链接访问：</p>
-                <Link to="/ranking-management" className="btn-primary">
-                  前往排行榜管理
-                </Link>
               </div>
             </section>
           )}
