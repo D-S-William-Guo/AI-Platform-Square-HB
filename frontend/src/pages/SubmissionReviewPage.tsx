@@ -45,7 +45,7 @@ export default function SubmissionReviewPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [approvalForm, setApprovalForm] = useState({
-    status: 'approval' as 'available' | 'approval' | 'beta' | 'offline',
+    status: 'available' as 'available' | 'approval' | 'beta' | 'offline',
     monthly_calls: 0,
     difficulty: 'Medium',
     target_users: '',
@@ -77,7 +77,7 @@ export default function SubmissionReviewPage() {
   const openSubmissionDetail = (submission: Submission) => {
     setSelectedSubmission(submission)
     setApprovalForm({
-      status: 'approval',
+      status: 'available',
       monthly_calls: 0,
       difficulty: 'Medium',
       target_users: '',

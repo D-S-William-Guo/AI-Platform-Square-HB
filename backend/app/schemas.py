@@ -135,6 +135,14 @@ class ImageUploadResponse(BaseModel):
     message: str
 
 
+class DocumentUploadResponse(BaseModel):
+    success: bool
+    file_url: str
+    original_name: str
+    file_size: int
+    message: str
+
+
 class RankingDimensionBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str = Field(..., min_length=1)
@@ -203,6 +211,10 @@ class AppDimensionScoreOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DimensionScoreUpdate(BaseModel):
+    score: int = Field(..., ge=0, le=100)
 
 
 class HistoricalRankingOut(BaseModel):

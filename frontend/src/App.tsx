@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Link } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores, fetchRankingConfigs } from './api/client'
+import {
+  fetchApps,
+  fetchRankings,
+  fetchRecommendations,
+  fetchRules,
+  fetchStats,
+  submitApp,
+  uploadImage,
+  uploadDocument,
+  associateImageWithSubmission,
+  fetchRankingDimensions,
+  fetchDimensionScores,
+  fetchRankingConfigs
+} from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
@@ -127,6 +140,13 @@ function HomePage() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [documentUploading, setDocumentUploading] = useState(false)
+  const [documentMeta, setDocumentMeta] = useState<{
+    url: string
+    name: string
+    size: number
+    mimeType: string
+  } | null>(null)
 
   useEffect(() => {
     fetchRecommendations().then(setRecommendations)
@@ -377,6 +397,41 @@ function HomePage() {
     setSubmission(prev => ({ ...prev, cover_image_url: '' }))
   }, [])
 
+  const handleDocumentUpload = useCallback(async (file: File) => {
+    const allowedExt = ['pdf', 'doc', 'docx', 'txt', 'md']
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    if (!allowedExt.includes(ext)) {
+      alert('详细文档仅支持 PDF/DOC/DOCX/TXT/MD')
+      return
+    }
+
+    setDocumentUploading(true)
+    try {
+      const result = await uploadDocument(file)
+      if (!result.success) {
+        alert(result.message || '文档上传失败')
+        return
+      }
+      setDocumentMeta({
+        url: result.file_url,
+        name: result.original_name,
+        size: result.file_size,
+        mimeType: file.type || ''
+      })
+    } catch (_error) {
+      alert('文档上传失败，请重试')
+    } finally {
+      setDocumentUploading(false)
+    }
+  }, [])
+
+  const handleDocumentSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleDocumentUpload(file)
+    }
+  }, [handleDocumentUpload])
+
   async function onSubmit() {
     if (!validateForm()) {
       alert('请检查表单填写是否正确')
@@ -384,10 +439,21 @@ function HomePage() {
     }
 
     try {
-      await submitApp(submission)
+      const createdSubmission = await submitApp(submission)
+      if (documentMeta?.url && createdSubmission?.id) {
+        await associateImageWithSubmission(createdSubmission.id, {
+          image_url: documentMeta.url,
+          thumbnail_url: '',
+          original_name: documentMeta.name,
+          file_size: documentMeta.size,
+          mime_type: documentMeta.mimeType,
+          is_cover: false
+        })
+      }
       setShowSubmission(false)
       setSubmission(defaultSubmission)
       setImagePreview(null)
+      setDocumentMeta(null)
       setErrors({})
       alert('申报已提交，等待审核。')
     } catch (error) {
@@ -399,6 +465,7 @@ function HomePage() {
     setShowSubmission(false)
     setSubmission(defaultSubmission)
     setImagePreview(null)
+    setDocumentMeta(null)
     setErrors({})
   }
 
@@ -825,10 +892,12 @@ function HomePage() {
                   <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
                 </button>
               )}
-              <Link to="/guide" className="modal-btn secondary">
-                <span>📄</span>
-                <span>详细文档</span>
-              </Link>
+              {selectedApp.section === 'province' && selectedApp.access_url && (
+                <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn secondary">
+                  <span>📄</span>
+                  <span>详细文档</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -857,7 +926,17 @@ function HomePage() {
                   {imagePreview ? (
                     <div className="image-preview">
                       <img src={imagePreview} alt="预览" />
-                      <button className="remove-image" onClick={removeImage}>×</button>
+                      <button
+                        type="button"
+                        className="remove-image"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          removeImage()
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ) : (
                     <div className="upload-placeholder">
@@ -877,6 +956,31 @@ function HomePage() {
                       <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
                       <span className="progress-text">{uploadProgress}%</span>
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 详细文档上传 */}
+              <div className="form-group">
+                <label className="form-label">详细文档（可选）</label>
+                <div className="doc-upload-area">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    onChange={handleDocumentSelect}
+                    className="doc-file-input"
+                  />
+                  {documentUploading ? (
+                    <span className="doc-upload-status">文档上传中...</span>
+                  ) : documentMeta ? (
+                    <div className="doc-uploaded">
+                      <span className="doc-name">{documentMeta.name}</span>
+                      <button type="button" className="doc-remove-btn" onClick={() => setDocumentMeta(null)}>
+                        移除
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="doc-upload-status">点击上传文档，支持 PDF/DOC/DOCX/TXT/MD</span>
                   )}
                 </div>
               </div>

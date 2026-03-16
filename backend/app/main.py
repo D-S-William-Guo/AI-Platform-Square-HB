@@ -20,6 +20,7 @@ from .models import App, Ranking, Submission, SubmissionImage, RankingDimension,
 from .schemas import (
     AppDetail,
     ImageUploadResponse,
+    DocumentUploadResponse,
     RankingItem,
     Recommendation,
     RuleLink,
@@ -33,6 +34,7 @@ from .schemas import (
     RankingLogOut,
     RankingAuditLogOut,
     AppDimensionScoreOut,
+    DimensionScoreUpdate,
     HistoricalRankingOut,
     GroupAppCreate,
     RankingConfigCreate,
@@ -899,7 +901,6 @@ def list_enums():
 @app.get(f"{settings.api_prefix}/ranking-dimensions", response_model=list[RankingDimensionOut])
 def get_ranking_dimensions(
     is_active: bool | None = None,
-    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -985,7 +986,8 @@ def update_app_ranking_params(
 def update_app_dimension_score_api(
     app_id: int,
     dimension_id: int,
-    score: int,
+    payload: DimensionScoreUpdate | None = None,
+    score: int | None = Query(default=None, ge=0, le=100),
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
@@ -999,6 +1001,10 @@ def update_app_dimension_score_api(
     dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
     if not dimension:
         raise HTTPException(status_code=404, detail="维度不存在")
+
+    resolved_score = payload.score if payload is not None else score
+    if resolved_score is None:
+        raise HTTPException(status_code=422, detail="score is required")
     
     today = datetime.now().date()
     
@@ -1010,21 +1016,21 @@ def update_app_dimension_score_api(
     ).first()
     
     if score_record:
-        score_record.score = score
-        score_record.calculation_detail = f"手动调整评分: {score}分"
+        score_record.score = resolved_score
+        score_record.calculation_detail = f"手动调整评分: {resolved_score}分"
     else:
         score_record = AppDimensionScore(
             app_id=app_id,
             dimension_id=dimension_id,
             period_date=today,
-            score=score,
-            calculation_detail=f"手动调整评分: {score}分"
+            score=resolved_score,
+            calculation_detail=f"手动调整评分: {resolved_score}分"
         )
         db.add(score_record)
     
     db.commit()
     db.refresh(score_record)
-    return {"message": "维度评分更新成功", "app_id": app_id, "dimension_id": dimension_id, "score": score}
+    return {"message": "维度评分更新成功", "app_id": app_id, "dimension_id": dimension_id, "score": resolved_score}
 
 
 @app.get(f"{settings.api_prefix}/rankings/historical", response_model=list[HistoricalRankingOut])
@@ -1335,7 +1341,7 @@ def approve_submission_and_create_app(
 
         validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
 
-        resolved_status = (payload.status if payload and payload.status else "approval")
+        resolved_status = (payload.status if payload and payload.status else "available")
         if resolved_status not in APP_STATUS_VALUES:
             raise HTTPException(status_code=422, detail="Invalid status")
 
@@ -1357,6 +1363,17 @@ def approve_submission_and_create_app(
         if existing_app:
             raise HTTPException(status_code=409, detail="已存在同名同单位省内应用，不能重复创建")
 
+        submission_document = (
+            db.query(SubmissionImage)
+            .filter(
+                SubmissionImage.submission_id == submission_id,
+                SubmissionImage.is_cover.is_(False),
+            )
+            .order_by(SubmissionImage.created_at.desc())
+            .first()
+        )
+        document_url = submission_document.image_url if submission_document else ""
+
         app = App(
             name=submission.app_name,
             org=submission.unit_name,
@@ -1373,8 +1390,8 @@ def approve_submission_and_create_app(
             access_mode=resolved_access_mode,
             access_url=(
                 payload.access_url.strip()
-                if payload and payload.access_url and resolved_access_mode == "direct"
-                else ""
+                if payload and payload.access_url
+                else document_url
             ),
             target_system=(
                 payload.target_system.strip()
@@ -1487,6 +1504,8 @@ def create_group_app(
 # Image upload configuration
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+MAX_DOC_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+ALLOWED_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".md"}
 
 
 def validate_image(file: UploadFile) -> tuple[bool, str]:
@@ -1500,6 +1519,14 @@ def validate_image(file: UploadFile) -> tuple[bool, str]:
     if not file.content_type.startswith("image/"):
         return False, "上传的文件不是有效的图片"
     
+    return True, ""
+
+
+def validate_document(file: UploadFile) -> tuple[bool, str]:
+    """Validate uploaded document file"""
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_DOC_EXTENSIONS:
+        return False, f"仅支持 {', '.join(sorted(ALLOWED_DOC_EXTENSIONS))} 格式的文档"
     return True, ""
 
 
@@ -1562,6 +1589,32 @@ def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
     }
 
 
+def save_document(file: UploadFile) -> dict:
+    """Save document file"""
+    ext = Path(file.filename).suffix.lower()
+    unique_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{unique_id}{ext}"
+
+    save_dir = UPLOAD_DIR / "docs"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    file_path = save_dir / filename
+
+    with open(file_path, "wb") as f:
+        content = file.file.read()
+        if len(content) > MAX_DOC_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="文档大小不能超过 20MB")
+        f.write(content)
+
+    file_url = f"{settings.api_prefix}/static/uploads/docs/{filename}"
+    return {
+        "file_url": file_url,
+        "original_name": file.filename,
+        "file_size": len(content),
+        "mime_type": file.content_type or "",
+    }
+
+
 @app.post(f"{settings.api_prefix}/upload/image", response_model=ImageUploadResponse)
 async def upload_image(
     file: UploadFile = File(...),
@@ -1605,6 +1658,40 @@ async def upload_image(
         )
 
 
+@app.post(f"{settings.api_prefix}/upload/document", response_model=DocumentUploadResponse)
+async def upload_document(file: UploadFile = File(...)):
+    """Upload document file"""
+    is_valid, error_msg = validate_document(file)
+    if not is_valid:
+        return DocumentUploadResponse(
+            success=False,
+            file_url="",
+            original_name=file.filename,
+            file_size=0,
+            message=error_msg,
+        )
+
+    try:
+        result = save_document(file)
+        return DocumentUploadResponse(
+            success=True,
+            file_url=result["file_url"],
+            original_name=result["original_name"],
+            file_size=result["file_size"],
+            message="文档上传成功",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        return DocumentUploadResponse(
+            success=False,
+            file_url="",
+            original_name=file.filename,
+            file_size=0,
+            message=f"上传失败: {str(e)}",
+        )
+
+
 @app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/images")
 def associate_image(
     submission_id: int,
@@ -1612,6 +1699,7 @@ def associate_image(
     thumbnail_url: str,
     original_name: str,
     file_size: int,
+    mime_type: str = "",
     is_cover: bool = False,
     db: Session = Depends(get_db),
 ):
@@ -1628,6 +1716,7 @@ def associate_image(
         thumbnail_url=thumbnail_url,
         original_name=original_name,
         file_size=file_size,
+        mime_type=mime_type,
         is_cover=is_cover,
     )
     db.add(image)
@@ -1660,6 +1749,7 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
             "thumbnail_url": img.thumbnail_url,
             "original_name": img.original_name,
             "file_size": img.file_size,
+            "mime_type": img.mime_type,
             "is_cover": img.is_cover,
             "created_at": img.created_at,
         }
@@ -1678,7 +1768,6 @@ app.mount(f"{settings.api_prefix}/static", StaticFiles(directory=str(STATIC_DIR)
 @app.get(f"{settings.api_prefix}/ranking-configs", response_model=list[RankingConfigOut])
 def list_ranking_configs(
     is_active: bool | None = Query(default=None, description="按启用状态筛选"),
-    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1693,7 +1782,6 @@ def list_ranking_configs(
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)
 def get_ranking_config(
     config_id: str,
-    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1708,7 +1796,6 @@ def get_ranking_config(
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}/with-dimensions", response_model=RankingConfigWithDimensions)
 def get_ranking_config_with_dimensions(
     config_id: str,
-    _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """

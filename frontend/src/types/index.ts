@@ -118,6 +118,14 @@ export type ImageUploadResponse = {
   message: string
 }
 
+export type DocumentUploadResponse = {
+  success: boolean
+  file_url: string
+  original_name: string
+  file_size: number
+  message: string
+}
+
 export type FormErrors = {
   [key: string]: string
 }

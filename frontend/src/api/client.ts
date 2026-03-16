@@ -1,5 +1,17 @@
 import axios from 'axios'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ImageUploadResponse, RankingDimension, Submission, HistoricalRanking } from '../types'
+import type {
+  AppItem,
+  RankingItem,
+  Recommendation,
+  RuleLink,
+  Stats,
+  SubmissionPayload,
+  ImageUploadResponse,
+  DocumentUploadResponse,
+  RankingDimension,
+  Submission,
+  HistoricalRanking
+} from '../types'
 
 const client = axios.create({ baseURL: '/' })
 const MISSING_ADMIN_TOKEN_ERROR_CODE = 'MISSING_ADMIN_TOKEN'
@@ -92,6 +104,18 @@ export async function uploadImage(file: File): Promise<ImageUploadResponse> {
   return data
 }
 
+export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const { data } = await client.post<DocumentUploadResponse>('/api/upload/document', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return data
+}
+
 export async function associateImageWithSubmission(
   submissionId: number,
   imageData: {
@@ -99,6 +123,7 @@ export async function associateImageWithSubmission(
     thumbnail_url: string
     original_name: string
     file_size: number
+    mime_type?: string
     is_cover?: boolean
   }
 ) {
@@ -113,9 +138,7 @@ export async function getSubmissionImages(submissionId: number) {
 
 // 排行维度管理 API
 export async function fetchRankingDimensions() {
-  const { data } = await client.get<RankingDimension[]>('/api/ranking-dimensions', {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<RankingDimension[]>('/api/ranking-dimensions')
   return data
 }
 
@@ -334,22 +357,17 @@ export async function createGroupApp(
 export async function fetchRankingConfigs(is_active?: boolean) {
   const { data } = await client.get<any[]>('/api/ranking-configs', {
     params: is_active !== undefined ? { is_active } : {},
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
 
 export async function fetchRankingConfig(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`)
   return data
 }
 
 export async function fetchRankingConfigWithDimensions(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`)
   return data
 }
 

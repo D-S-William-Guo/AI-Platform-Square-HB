@@ -154,7 +154,7 @@ def test_approve_creates_app_without_placeholder_ranking_setting():
 
         app = db.query(App).filter(App.id == app_id).first()
         assert app is not None
-        assert app.status == 'approval'
+        assert app.status == 'available'
         assert app.target_system == submission.embedded_system
 
         setting = db.query(AppRankingSetting).filter(AppRankingSetting.app_id == app_id).first()

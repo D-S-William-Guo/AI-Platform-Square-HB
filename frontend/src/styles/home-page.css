@@ -1134,6 +1134,7 @@
 
 .home-page .image-preview {
   position: relative;
+  z-index: 2;
 }
 
 .home-page .image-preview img {
@@ -1158,6 +1159,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 3;
 }
 
 .home-page .file-input {
@@ -1168,6 +1170,11 @@
   height: 100%;
   opacity: 0;
   cursor: pointer;
+  z-index: 1;
+}
+
+.home-page .image-upload-area.has-image .file-input {
+  pointer-events: none;
 }
 
 .home-page .upload-progress {
@@ -1183,6 +1190,57 @@
   height: 100%;
   background: var(--primary-color);
   transition: width 0.3s;
+}
+
+.home-page .doc-upload-area {
+  position: relative;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  background: var(--bg-color);
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+}
+
+.home-page .doc-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.home-page .doc-upload-status {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.home-page .doc-uploaded {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-page .doc-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-page .doc-remove-btn {
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
 }
 
 .home-page .progress-text {
