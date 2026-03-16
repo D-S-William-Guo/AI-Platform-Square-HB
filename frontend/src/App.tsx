@@ -1122,6 +1122,7 @@ function HomePage() {
                       <button
                         type="button"
                         className="remove-image"
+                        aria-label="移除封面图"
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()

@@ -346,6 +346,30 @@ class AppRankingSettingOut(AppRankingSettingBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AppDimensionScoreInput(BaseModel):
+    """应用维度评分输入"""
+    dimension_id: int = Field(..., ge=1)
+    score: int = Field(..., ge=0, le=100)
+
+
+class AppRankingSettingSaveRequest(BaseModel):
+    """原子保存应用榜单参与与维度评分"""
+    setting_id: int | None = None
+    ranking_config_id: str = Field(..., min_length=1, max_length=50)
+    is_enabled: bool = True
+    weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
+    custom_tags: str = Field(default="", max_length=255)
+    dimension_scores: list[AppDimensionScoreInput] = Field(default_factory=list)
+
+
+class AppRankingSettingSaveResponse(BaseModel):
+    """原子保存结果"""
+    setting: AppRankingSettingOut
+    updated_dimensions: int
+    synced: int
+    run_id: str
+
+
 class DimensionConfigItem(BaseModel):
     """维度配置项"""
     dim_id: int

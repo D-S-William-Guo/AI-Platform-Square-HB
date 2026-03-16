@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, Submission
+from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission
 
 
 client = TestClient(app)
@@ -479,3 +479,193 @@ def test_admin_endpoint_accepts_valid_token():
     Base.metadata.create_all(bind=engine)
     resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
     assert resp.status_code == 200
+
+
+def test_submission_ranking_dimensions_write_is_deprecated():
+    payload = {
+        'category': 'group',
+        'app_name': f'停写维度字段测试-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': 'legacy-dim-1,legacy-dim-2'
+    }
+    resp = client.post('/api/submissions', json=payload)
+    assert resp.status_code == 200
+    assert resp.json()['ranking_dimensions'] == ''
+
+
+def test_save_app_ranking_setting_atomic_success():
+    unique = uuid.uuid4().hex[:8]
+    app_name = f"原子保存测试应用-{unique}"
+    payload = {
+        'category': 'group',
+        'app_name': app_name,
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    db = SessionLocal()
+    try:
+        dimension = db.query(RankingDimension).filter(RankingDimension.is_active.is_(True)).first()
+        assert dimension is not None
+        dimension_id = dimension.id
+        config_id = f"atomic-{unique}"
+        db.add(RankingConfig(
+            id=config_id,
+            name=f"原子榜单-{unique}",
+            description="原子保存测试",
+            dimensions_config=json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
+            calculation_method="composite",
+            is_active=True,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    save_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings/save',
+        headers=ADMIN_HEADERS,
+        json={
+            "ranking_config_id": config_id,
+            "is_enabled": True,
+            "weight_factor": 1.2,
+            "custom_tags": "测试",
+            "dimension_scores": [{"dimension_id": dimension_id, "score": 91}]
+        },
+    )
+    assert save_resp.status_code == 200
+    data = save_resp.json()
+    assert data["updated_dimensions"] == 1
+    assert data["setting"]["ranking_config_id"] == config_id
+    assert data["run_id"]
+
+
+def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
+    unique = uuid.uuid4().hex[:8]
+    payload = {
+        'category': 'group',
+        'app_name': f'原子回滚测试应用-{unique}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    db = SessionLocal()
+    try:
+        dimension = db.query(RankingDimension).filter(RankingDimension.is_active.is_(True)).first()
+        assert dimension is not None
+        config_id = f"atomic-rb-{unique}"
+        db.add(RankingConfig(
+            id=config_id,
+            name=f"原子回滚榜单-{unique}",
+            description="原子回滚测试",
+            dimensions_config=json.dumps([{"dim_id": dimension.id, "weight": 1.0}], ensure_ascii=False),
+            calculation_method="composite",
+            is_active=True,
+        ))
+        db.commit()
+        invalid_dimension_id = dimension.id + 99999
+    finally:
+        db.close()
+
+    save_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings/save',
+        headers=ADMIN_HEADERS,
+        json={
+            "ranking_config_id": config_id,
+            "is_enabled": True,
+            "weight_factor": 1.1,
+            "custom_tags": "测试",
+            "dimension_scores": [{"dimension_id": invalid_dimension_id, "score": 80}]
+        },
+    )
+    assert save_resp.status_code == 422
+    detail = save_resp.json()["detail"]
+    assert detail["code"] == "validation_error"
+
+    db = SessionLocal()
+    try:
+        setting = db.query(AppRankingSetting).filter(
+            AppRankingSetting.app_id == app_id,
+            AppRankingSetting.ranking_config_id == config_id
+        ).first()
+        assert setting is None
+        assert db.query(AppDimensionScore).filter(AppDimensionScore.app_id == app_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_publish_rankings_precheck_requires_enabled_participant():
+    unique = uuid.uuid4().hex[:8]
+    config_id = f"publish-pre-{unique}"
+    db = SessionLocal()
+    try:
+        dimension = db.query(RankingDimension).filter(RankingDimension.is_active.is_(True)).first()
+        assert dimension is not None
+        dimension_id = dimension.id
+        db.query(AppRankingSetting).update({"is_enabled": False})
+        db.commit()
+    finally:
+        db.close()
+
+    create_resp = client.post(
+        '/api/ranking-configs',
+        headers=ADMIN_HEADERS,
+        json={
+            "id": config_id,
+            "name": f"发布预检榜单-{unique}",
+            "description": "发布预检测试",
+            "dimensions_config": json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
+            "calculation_method": "composite",
+            "is_active": True,
+        },
+    )
+    assert create_resp.status_code == 200
+
+    publish_resp = client.post('/api/rankings/publish', headers=ADMIN_HEADERS)
+    assert publish_resp.status_code == 409
+    detail = publish_resp.json()["detail"]
+    assert detail["code"] == "publish_precheck_failed"

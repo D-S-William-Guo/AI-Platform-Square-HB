@@ -16,7 +16,7 @@
 3. 省内应用详情中的“详细文档”按钮，仅由 `detail_doc_url` 控制展示。
 4. 榜单标识以 `ranking_config_id` 为主键语义；`ranking_type` 仅保留兼容查询。
 5. 维度评分落表 `app_dimension_scores`，手动评分优先于自动评分。
-6. `submissions.ranking_dimensions` 仅保留历史兼容，不再作为榜单计算输入；榜单维度来源只看 `ranking_configs.dimensions_config`。
+6. `submissions.ranking_dimensions` 仅保留历史读兼容，新增写入已停用；榜单维度来源只看 `ranking_configs.dimensions_config`。
 
 ## 3. 数据流图
 ```mermaid
@@ -27,8 +27,9 @@ flowchart LR
   B --> C[应用主数据<br/>apps]
   C --> D[应用参与配置<br/>app_ranking_settings]
   D --> E[维度分值表<br/>app_dimension_scores]
-  E --> F[实时榜单<br/>rankings]
-  F --> G[历史发布榜单<br/>historical_rankings + run_id]
+  E --> P[发布前校验<br/>/api/rankings/publish]
+  P --> F[实时榜单<br/>rankings]
+  F --> G[历史发布榜单快照<br/>historical_rankings + run_id]
   G --> H[展示层<br/>首页/榜单详情/管理页]
 ```
 
@@ -55,6 +56,7 @@ stateDiagram-v2
 | `submissions` | 审核通过 | 生成 `apps` 记录 | 同事务触发同步，返回 `run_id` |
 | `apps` 排行参数 | 修改权重/开关/标签 | 影响实时分值与排序 | 自动触发榜单同步 |
 | `app_ranking_settings` | 新增/修改/删除参与榜单 | 影响参与范围与排序 | 自动触发榜单同步 |
+| `app_ranking_settings + app_dimension_scores` | 原子保存（单请求） | 避免“部分成功” | 失败整单回滚，成功后触发统一同步 |
 | `ranking_dimensions` | 新增/修改 | 影响分值规则 | 自动触发榜单同步 |
 | `ranking_dimensions` | 删除 | 清理 `app_dimension_scores`，并从所有 `ranking_configs.dimensions_config` 剔除 | 同事务触发榜单同步 |
 | `ranking_configs` | 新增/修改 | 影响榜单结构 | 自动触发榜单同步 |
@@ -80,5 +82,4 @@ stateDiagram-v2
 
 ## 8. 后续可选强化
 1. 将“手动评分”从 `calculation_detail` 标记升级为独立布尔字段（如 `is_manual`）。
-2. 增加申报人侧“撤回/修改”能力，并引入提交人鉴权。
-3. 对同步任务引入异步队列，避免高频管理操作阻塞请求。
+2. 对同步任务引入异步队列，避免高频管理操作阻塞请求。

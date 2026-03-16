@@ -222,6 +222,13 @@ export async function syncRankings() {
   return data
 }
 
+export async function publishRankings() {
+  const { data } = await client.post('/api/rankings/publish', undefined, {
+    headers: getRequiredAdminAuthHeaders()
+  })
+  return data
+}
+
 export async function batchUpdateRankingParams(
   apps: number[],
   params: {
@@ -480,6 +487,23 @@ export async function updateAppRankingSetting(
 
 export async function deleteAppRankingSetting(appId: number, settingId: number) {
   const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`, {
+    headers: getRequiredAdminAuthHeaders()
+  })
+  return data
+}
+
+export async function saveAppRankingSetting(
+  appId: number,
+  payload: {
+    setting_id?: number
+    ranking_config_id: string
+    is_enabled: boolean
+    weight_factor: number
+    custom_tags: string
+    dimension_scores: Array<{ dimension_id: number; score: number }>
+  }
+) {
+  const { data } = await client.post(`/api/apps/${appId}/ranking-settings/save`, payload, {
     headers: getRequiredAdminAuthHeaders()
   })
   return data

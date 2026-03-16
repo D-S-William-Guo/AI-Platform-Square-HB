@@ -6,7 +6,7 @@ import {
   updateRankingDimension,
   deleteRankingDimension,
   fetchRankingAuditLogs,
-  syncRankings,
+  publishRankings,
   fetchApps,
   fetchRankingConfigs,
   createRankingConfig,
@@ -14,10 +14,8 @@ import {
   deleteRankingConfig,
   fetchAllAppRankingSettings,
   fetchAppDimensionScores,
-  createAppRankingSetting,
-  updateAppRankingSetting,
-  updateAppDimensionScore,
   deleteAppRankingSetting,
+  saveAppRankingSetting,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
@@ -64,7 +62,21 @@ function resolveAdminError(err: unknown, fallback: string): string {
   if (status === 403) {
     return '管理员令牌已识别，但无权限访问该页面。'
   }
-
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (detail && typeof detail === 'object') {
+    const message = (detail as { message?: string }).message || fallback
+    const fieldErrors = (detail as { field_errors?: Array<{ field?: string; message?: string }> }).field_errors || []
+    if (fieldErrors.length > 0) {
+      const rendered = fieldErrors
+        .map((item) => `${item.field || '字段'}: ${item.message || '参数无效'}`)
+        .join('；')
+      return `${message}（${rendered}）`
+    }
+    return message
+  }
   return fallback
 }
 
@@ -275,34 +287,19 @@ const RankingManagementPage = () => {
         return
       }
 
-      if (editingAppSetting) {
-        await updateAppRankingSetting(selectedAppForConfig.id, editingAppSetting.id, {
-          ranking_config_id: appSettingForm.ranking_config_id,
-          is_enabled: appSettingForm.is_enabled,
-          weight_factor: appSettingForm.weight_factor,
-          custom_tags: appSettingForm.custom_tags
-        })
-      } else {
-        await createAppRankingSetting(selectedAppForConfig.id, {
-          ranking_config_id: appSettingForm.ranking_config_id,
-          is_enabled: appSettingForm.is_enabled,
-          weight_factor: appSettingForm.weight_factor,
-          custom_tags: appSettingForm.custom_tags
-        })
-      }
+      const scoreUpdates = Object.entries(dimensionScores).map(([dimensionId, score]) => ({
+        dimension_id: Number(dimensionId),
+        score: Math.max(0, Math.min(100, Number(score)))
+      }))
 
-      const scoreUpdates = Object.entries(dimensionScores)
-      if (scoreUpdates.length > 0) {
-        await Promise.all(
-          scoreUpdates.map(([dimensionId, score]) => (
-            updateAppDimensionScore(
-              selectedAppForConfig.id,
-              Number(dimensionId),
-              Math.max(0, Math.min(100, Number(score)))
-            )
-          ))
-        )
-      }
+      await saveAppRankingSetting(selectedAppForConfig.id, {
+        setting_id: editingAppSetting?.id,
+        ranking_config_id: appSettingForm.ranking_config_id,
+        is_enabled: appSettingForm.is_enabled,
+        weight_factor: appSettingForm.weight_factor,
+        custom_tags: appSettingForm.custom_tags,
+        dimension_scores: scoreUpdates
+      })
 
       setShowAppSettingModal(false)
       setEditingAppSetting(null)
@@ -423,12 +420,12 @@ const RankingManagementPage = () => {
     setSyncing(true)
     setSyncMessage(null)
     try {
-      const result = await syncRankings()
-      setSyncMessage(`同步成功！更新了 ${result.updated_count} 条排名数据`)
+      const result = await publishRankings()
+      setSyncMessage(`发布成功！更新了 ${result.updated_count} 条榜单数据（run_id: ${result.run_id}）`)
       loadData()
     } catch (err) {
       console.error('同步失败:', err)
-      setSyncMessage(resolveAdminError(err, '同步失败，请重试'))
+      setSyncMessage(resolveAdminError(err, '发布失败，请重试'))
     } finally {
       setSyncing(false)
     }
@@ -619,7 +616,7 @@ const RankingManagementPage = () => {
                   onClick={() => handleSyncRankings()}
                   disabled={syncing}
                 >
-                  {syncing ? '🔄 同步中...' : '🔄 同步所有榜单'}
+                  {syncing ? '🔄 发布中...' : '🚀 发布榜单'}
                 </button>
               </div>
               <p className="section-note">

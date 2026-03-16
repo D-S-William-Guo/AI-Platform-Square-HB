@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
@@ -11,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy import func, inspect, or_, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .config import resolve_runtime_path, settings
@@ -43,6 +44,8 @@ from .schemas import (
     RankingConfigUpdate,
     RankingConfigOut,
     AppRankingSettingCreate,
+    AppRankingSettingSaveRequest,
+    AppRankingSettingSaveResponse,
     AppRankingSettingUpdate,
     AppRankingSettingOut,
     DimensionConfigItem,
@@ -201,7 +204,7 @@ def write_ranking_audit_log(
     run_id: str | None = None,
     actor: str = "system",
     payload_summary: str = "",
-) -> None:
+    ) -> None:
     db.add(
         RankingAuditLog(
             action=action,
@@ -213,6 +216,19 @@ def write_ranking_audit_log(
             payload_summary=payload_summary,
         )
     )
+
+
+def structured_error_detail(
+    *,
+    code: str,
+    message: str,
+    field_errors: list[dict[str, str]] | None = None,
+) -> dict:
+    return {
+        "code": code,
+        "message": message,
+        "field_errors": field_errors or [],
+    }
 
 def validate_submission_ranking_fields(
     ranking_weight: float,
@@ -663,40 +679,35 @@ def list_apps(
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    query = db.query(App)
+    if section:
+        query = query.filter(App.section == section)
+    if status:
+        if status not in APP_STATUS_VALUES:
+            raise HTTPException(status_code=422, detail="Invalid status")
+        query = query.filter(App.status == status)
+    if category and category != "全部":
+        query = query.filter(App.category == category)
+    if q:
+        query = query.filter(App.name.contains(q) | App.description.contains(q))
+
     try:
-        query = db.query(App)
-        if section:
-            query = query.filter(App.section == section)
-        if status:
-            if status not in APP_STATUS_VALUES:
-                raise HTTPException(status_code=422, detail="Invalid status")
-            query = query.filter(App.status == status)
-        if category and category != "全部":
-            query = query.filter(App.category == category)
-        if q:
-            query = query.filter(App.name.contains(q) | App.description.contains(q))
-        
-        apps = query.order_by(App.id).all()
-        return apps
-    except Exception as e:
-        # 数据库表结构可能不完整，返回简化的应用列表
-        # 这里可以从数据库直接执行SQL查询，只获取存在的字段
+        return query.order_by(App.id).all()
+    except SQLAlchemyError:
+        # 数据库表结构可能不完整，回退到 SQL 查询并补齐兼容字段。
         try:
-            import sqlalchemy
-            # 直接执行SQL查询，只选择基本字段
-            result = db.execute(sqlalchemy.text("""
+            result = db.execute(text("""
                 SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
                        api_open, difficulty, contact_name, highlight, access_mode, access_url,
+                       detail_doc_url, detail_doc_name,
                        target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
                        cover_image_url
                 FROM apps
                 ORDER BY id
             """))
-            
-            # 构造应用列表
             apps = []
             for row in result:
-                app_dict = {
+                apps.append({
                     "id": row.id,
                     "name": row.name,
                     "org": row.org,
@@ -712,24 +723,21 @@ def list_apps(
                     "highlight": row.highlight,
                     "access_mode": row.access_mode,
                     "access_url": row.access_url,
-                    "detail_doc_url": "",
-                    "detail_doc_name": "",
+                    "detail_doc_url": row.detail_doc_url or "",
+                    "detail_doc_name": row.detail_doc_name or "",
                     "target_system": row.target_system,
                     "target_users": row.target_users,
                     "problem_statement": row.problem_statement,
                     "effectiveness_type": row.effectiveness_type,
                     "effectiveness_metric": row.effectiveness_metric,
                     "cover_image_url": row.cover_image_url,
-                    # 添加默认值
                     "ranking_enabled": True,
                     "ranking_weight": 1.0,
                     "ranking_tags": "",
-                    "last_ranking_update": None
-                }
-                apps.append(app_dict)
+                    "last_ranking_update": None,
+                })
             return apps
-        except Exception:
-            # 如果还是失败，返回空列表
+        except SQLAlchemyError:
             return []
 
 
@@ -740,13 +748,15 @@ def get_app_detail(app_id: int, db: Session = Depends(get_db)):
         if not item:
             raise HTTPException(status_code=404, detail="App not found")
         return item
-    except Exception as e:
-        # 数据库表结构可能不完整，使用SQL查询获取基本信息
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        # 数据库表结构可能不完整，使用 SQL 查询获取兼容字段
         try:
-            import sqlalchemy
-            result = db.execute(sqlalchemy.text("""
+            result = db.execute(text("""
                 SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
                        api_open, difficulty, contact_name, highlight, access_mode, access_url,
+                       detail_doc_url, detail_doc_name,
                        target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
                        cover_image_url
                 FROM apps
@@ -774,8 +784,8 @@ def get_app_detail(app_id: int, db: Session = Depends(get_db)):
                 "highlight": row.highlight,
                 "access_mode": row.access_mode,
                 "access_url": row.access_url,
-                "detail_doc_url": "",
-                "detail_doc_name": "",
+                "detail_doc_url": row.detail_doc_url or "",
+                "detail_doc_name": row.detail_doc_name or "",
                 "target_system": row.target_system,
                 "target_users": row.target_users,
                 "problem_statement": row.problem_statement,
@@ -789,7 +799,7 @@ def get_app_detail(app_id: int, db: Session = Depends(get_db)):
                 "last_ranking_update": None
             }
             return app_dict
-        except Exception:
+        except SQLAlchemyError:
             raise HTTPException(status_code=404, detail="App not found")
 
 
@@ -996,7 +1006,10 @@ def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
 
-    submission = Submission(**payload.model_dump(), manage_token=uuid.uuid4().hex)
+    submission_data = payload.model_dump()
+    # 收敛：ranking_dimensions 仅保留历史读兼容，不再作为可写输入。
+    submission_data["ranking_dimensions"] = ""
+    submission = Submission(**submission_data, manage_token=uuid.uuid4().hex)
     db.add(submission)
     try:
         db.commit()
@@ -1057,6 +1070,8 @@ def update_submission_self(
     validate_submission_payload(create_payload)
 
     update_fields = create_payload.model_dump()
+    # 收敛：ranking_dimensions 停写。
+    update_fields["ranking_dimensions"] = ""
     for key, value in update_fields.items():
         setattr(submission, key, value)
 
@@ -1221,7 +1236,8 @@ def update_app_dimension_score_api(
         AppDimensionScore.dimension_id == dimension_id,
         AppDimensionScore.period_date == today
     ).first()
-    
+    before_score = score_record.score if score_record else None
+
     if score_record:
         score_record.score = resolved_score
         score_record.dimension_name = dimension.name
@@ -1238,7 +1254,18 @@ def update_app_dimension_score_api(
             calculation_detail=f"手动调整评分: {resolved_score}分"
         )
         db.add(score_record)
-    
+    write_ranking_audit_log(
+        db,
+        action="dimension_score_manual_saved",
+        ranking_type=None,
+        ranking_config_id=None,
+        period_date=today,
+        actor="system",
+        payload_summary=(
+            f"app_id={app_id},dimension_id={dimension_id},"
+            f"before={before_score},after={resolved_score}"
+        ),
+    )
     updated_count, run_id = sync_after_chain_mutation(db, "dimension_score_updated")
     db.refresh(score_record)
     return {
@@ -1259,7 +1286,7 @@ def list_historical_rankings(
     db: Session = Depends(get_db)
 ):
     """
-    获取历史榜单数据
+    获取历史榜单数据（默认返回最新发布批次的只读快照）
     """
     try:
         scope_id = resolve_ranking_scope_id(ranking_type=ranking_type)
@@ -1269,13 +1296,29 @@ def list_historical_rankings(
                 HistoricalRanking.ranking_type == scope_id,
             )
         )
-        if period_date:
-            query = query.filter(HistoricalRanking.period_date == period_date)
-            selected_run_id = run_id if run_id is not None else resolve_latest_run_id(db, scope_id, period_date)
-            if selected_run_id is not None:
-                query = query.filter(HistoricalRanking.run_id == selected_run_id)
-            else:
-                query = query.filter(HistoricalRanking.run_id.is_(None))
+        target_date = period_date
+        if target_date is None:
+            latest_date_row = (
+                db.query(HistoricalRanking.period_date)
+                .filter(
+                    or_(
+                        HistoricalRanking.ranking_config_id == scope_id,
+                        HistoricalRanking.ranking_type == scope_id,
+                    )
+                )
+                .order_by(HistoricalRanking.period_date.desc())
+                .first()
+            )
+            if latest_date_row is None:
+                return []
+            target_date = latest_date_row[0]
+
+        query = query.filter(HistoricalRanking.period_date == target_date)
+        selected_run_id = run_id if run_id is not None else resolve_latest_run_id(db, scope_id, target_date)
+        if selected_run_id is not None:
+            query = query.filter(HistoricalRanking.run_id == selected_run_id)
+        else:
+            query = query.filter(HistoricalRanking.run_id.is_(None))
         return query.order_by(HistoricalRanking.position).all()
     except Exception as e:
         return []
@@ -1544,6 +1587,96 @@ def sync_rankings(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"同步失败: {str(exc)}") from exc
+
+
+def validate_publish_preconditions(db: Session) -> dict[str, int]:
+    active_configs = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True)).all()
+    if not active_configs:
+        raise HTTPException(
+            status_code=409,
+            detail=structured_error_detail(
+                code="publish_precheck_failed",
+                message="无可发布榜单：请先启用至少一个榜单配置",
+            ),
+        )
+
+    config_ids = [cfg.id for cfg in active_configs]
+    enabled_settings = (
+        db.query(AppRankingSetting)
+        .filter(
+            AppRankingSetting.ranking_config_id.in_(config_ids),
+            AppRankingSetting.is_enabled.is_(True),
+        )
+        .count()
+    )
+    if enabled_settings == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=structured_error_detail(
+                code="publish_precheck_failed",
+                message="无可发布应用：请先在“应用参与”中启用至少一个应用",
+            ),
+        )
+
+    invalid_configs = []
+    for config in active_configs:
+        configured_dims = _collect_config_dimension_ids(config)
+        if not configured_dims:
+            invalid_configs.append(config.id)
+    if invalid_configs:
+        raise HTTPException(
+            status_code=409,
+            detail=structured_error_detail(
+                code="publish_precheck_failed",
+                message="存在未配置维度的启用榜单，请先完善榜单配置",
+                field_errors=[{"field": "ranking_config_id", "message": cid} for cid in invalid_configs],
+            ),
+        )
+
+    return {
+        "active_configs": len(active_configs),
+        "enabled_settings": enabled_settings,
+    }
+
+
+@app.post(f"{settings.api_prefix}/rankings/publish")
+def publish_rankings(
+    run_id: str | None = Query(default=None, description="可选发布批次ID；不传则自动生成 UUID"),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    """榜单发布入口：预校验 + 同步 + 发布审计。"""
+    try:
+        checked = validate_publish_preconditions(db)
+        updated_count, generated_run_id = sync_rankings_service(db, run_id=run_id)
+        write_ranking_audit_log(
+            db,
+            action="ranking_publish_completed",
+            ranking_type="all",
+            ranking_config_id=None,
+            period_date=datetime.utcnow().date(),
+            run_id=generated_run_id,
+            actor="system",
+            payload_summary=(
+                f"active_configs={checked['active_configs']},"
+                f"enabled_settings={checked['enabled_settings']},"
+                f"updated_count={updated_count}"
+            ),
+        )
+        db.commit()
+        return {
+            "message": "榜单发布成功",
+            "updated_count": updated_count,
+            "run_id": generated_run_id,
+            "published_date": datetime.utcnow().date().isoformat(),
+            "checked": checked,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"发布失败: {str(exc)}") from exc
 
 
 @app.post(f"{settings.api_prefix}/apps/batch-update-ranking-params")
@@ -2236,6 +2369,214 @@ def list_app_ranking_settings(
     return settings_list
 
 
+def _serialize_setting_snapshot(setting: AppRankingSetting | None) -> dict[str, object]:
+    if setting is None:
+        return {}
+    return {
+        "id": setting.id,
+        "app_id": setting.app_id,
+        "ranking_config_id": setting.ranking_config_id,
+        "is_enabled": setting.is_enabled,
+        "weight_factor": setting.weight_factor,
+        "custom_tags": setting.custom_tags,
+    }
+
+
+def _collect_config_dimension_ids(config: RankingConfig) -> set[int]:
+    config_dim_ids: set[int] = set()
+    if not config.dimensions_config:
+        return config_dim_ids
+    try:
+        dimensions_config = json.loads(config.dimensions_config)
+    except json.JSONDecodeError:
+        return config_dim_ids
+    if not isinstance(dimensions_config, list):
+        return config_dim_ids
+    for item in dimensions_config:
+        if isinstance(item, dict) and isinstance(item.get("dim_id"), int):
+            config_dim_ids.add(item["dim_id"])
+    return config_dim_ids
+
+
+@app.post(
+    f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings/save",
+    response_model=AppRankingSettingSaveResponse,
+)
+def save_app_ranking_setting_atomically(
+    app_id: int,
+    payload: AppRankingSettingSaveRequest,
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    """原子保存应用榜单参与设置与维度评分，失败则整单回滚。"""
+    try:
+        app = db.query(App).filter(App.id == app_id).first()
+        if not app:
+            raise HTTPException(status_code=404, detail="应用不存在")
+
+        config_id = payload.ranking_config_id.strip()
+        if not config_id:
+            raise HTTPException(
+                status_code=422,
+                detail=structured_error_detail(
+                    code="validation_error",
+                    message="参数校验失败",
+                    field_errors=[{"field": "ranking_config_id", "message": "请选择榜单"}],
+                ),
+            )
+
+        config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+        if not config:
+            raise HTTPException(status_code=404, detail="榜单配置不存在")
+
+        target_setting: AppRankingSetting | None = None
+        if payload.setting_id is not None:
+            target_setting = (
+                db.query(AppRankingSetting)
+                .filter(
+                    AppRankingSetting.id == payload.setting_id,
+                    AppRankingSetting.app_id == app_id,
+                )
+                .first()
+            )
+            if not target_setting:
+                raise HTTPException(status_code=404, detail="榜单设置不存在")
+        else:
+            target_setting = (
+                db.query(AppRankingSetting)
+                .filter(
+                    AppRankingSetting.app_id == app_id,
+                    AppRankingSetting.ranking_config_id == config_id,
+                )
+                .first()
+            )
+
+        duplicate_setting = (
+            db.query(AppRankingSetting)
+            .filter(
+                AppRankingSetting.app_id == app_id,
+                AppRankingSetting.ranking_config_id == config_id,
+                AppRankingSetting.id != (target_setting.id if target_setting else -1),
+            )
+            .first()
+        )
+        if duplicate_setting:
+            raise HTTPException(status_code=409, detail="该应用已参与所选榜单，请直接编辑已有配置")
+
+        config_dim_ids = _collect_config_dimension_ids(config)
+        active_dims = {
+            dim.id: dim
+            for dim in db.query(RankingDimension)
+            .filter(RankingDimension.id.in_(config_dim_ids))
+            .filter(RankingDimension.is_active.is_(True))
+            .all()
+        } if config_dim_ids else {}
+
+        field_errors: list[dict[str, str]] = []
+        seen_dimension_ids: set[int] = set()
+        for index, item in enumerate(payload.dimension_scores):
+            field_prefix = f"dimension_scores[{index}]"
+            if item.dimension_id in seen_dimension_ids:
+                field_errors.append({"field": f"{field_prefix}.dimension_id", "message": "维度重复提交"})
+                continue
+            seen_dimension_ids.add(item.dimension_id)
+            if item.dimension_id not in config_dim_ids:
+                field_errors.append({"field": f"{field_prefix}.dimension_id", "message": "该维度不属于当前榜单配置"})
+                continue
+            if item.dimension_id not in active_dims:
+                field_errors.append({"field": f"{field_prefix}.dimension_id", "message": "维度不存在或未启用"})
+
+        if field_errors:
+            raise HTTPException(
+                status_code=422,
+                detail=structured_error_detail(
+                    code="validation_error",
+                    message="参数校验失败",
+                    field_errors=field_errors,
+                ),
+            )
+
+        before_snapshot = _serialize_setting_snapshot(target_setting)
+        if target_setting is None:
+            target_setting = AppRankingSetting(
+                app_id=app_id,
+                ranking_config_id=config_id,
+                is_enabled=payload.is_enabled,
+                weight_factor=payload.weight_factor,
+                custom_tags=payload.custom_tags,
+            )
+            db.add(target_setting)
+            action = "app_ranking_setting_saved_created"
+        else:
+            target_setting.ranking_config_id = config_id
+            target_setting.is_enabled = payload.is_enabled
+            target_setting.weight_factor = payload.weight_factor
+            target_setting.custom_tags = payload.custom_tags
+            action = "app_ranking_setting_saved_updated"
+
+        db.flush()
+        today = datetime.now().date()
+        updated_dimensions = 0
+        for item in payload.dimension_scores:
+            score_record = (
+                db.query(AppDimensionScore)
+                .filter(
+                    AppDimensionScore.app_id == app_id,
+                    AppDimensionScore.dimension_id == item.dimension_id,
+                    AppDimensionScore.period_date == today,
+                )
+                .first()
+            )
+            dimension = active_dims[item.dimension_id]
+            if score_record:
+                score_record.score = item.score
+                score_record.dimension_name = dimension.name
+                score_record.weight = dimension.weight
+                score_record.calculation_detail = f"手动调整评分: {item.score}分"
+            else:
+                db.add(
+                    AppDimensionScore(
+                        app_id=app_id,
+                        dimension_id=item.dimension_id,
+                        dimension_name=dimension.name,
+                        score=item.score,
+                        weight=dimension.weight,
+                        calculation_detail=f"手动调整评分: {item.score}分",
+                        period_date=today,
+                    )
+                )
+            updated_dimensions += 1
+
+        after_snapshot = _serialize_setting_snapshot(target_setting)
+        write_ranking_audit_log(
+            db,
+            action=action,
+            ranking_type=config_id,
+            ranking_config_id=config_id,
+            period_date=datetime.utcnow().date(),
+            actor="system",
+            payload_summary=(
+                f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
+                f"after={json.dumps(after_snapshot, ensure_ascii=False)},"
+                f"updated_dimensions={updated_dimensions}"
+            ),
+        )
+        synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_saved_atomic")
+        db.refresh(target_setting)
+        return {
+            "setting": target_setting,
+            "updated_dimensions": updated_dimensions,
+            "synced": synced,
+            "run_id": run_id,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(exc)}") from exc
+
+
 @app.post(f"{settings.api_prefix}/apps/{{app_id}}/ranking-settings", response_model=AppRankingSettingOut)
 def create_app_ranking_setting(
     app_id: int,
@@ -2285,8 +2626,8 @@ def create_app_ranking_setting(
         period_date=datetime.utcnow().date(),
         actor="system",
         payload_summary=(
-            f"app_id={app_id},is_enabled={payload.is_enabled},"
-            f"weight_factor={payload.weight_factor}"
+            f"app_id={app_id},before={{}},"
+            f"after={json.dumps(_serialize_setting_snapshot(setting), ensure_ascii=False)}"
         ),
     )
     sync_after_chain_mutation(db, "app_ranking_setting_created")
@@ -2316,6 +2657,7 @@ def update_app_ranking_setting(
     if not setting:
         raise HTTPException(status_code=404, detail="榜单设置不存在")
 
+    before_snapshot = _serialize_setting_snapshot(setting)
     if payload.ranking_config_id is not None and payload.ranking_config_id != setting.ranking_config_id:
         new_config_id = payload.ranking_config_id.strip()
         if not new_config_id:
@@ -2346,6 +2688,7 @@ def update_app_ranking_setting(
     if payload.custom_tags is not None:
         setting.custom_tags = payload.custom_tags
 
+    after_snapshot = _serialize_setting_snapshot(setting)
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_updated",
@@ -2354,8 +2697,8 @@ def update_app_ranking_setting(
         period_date=datetime.utcnow().date(),
         actor="system",
         payload_summary=(
-            f"app_id={app_id},is_enabled={setting.is_enabled},"
-            f"weight_factor={setting.weight_factor},custom_tags={setting.custom_tags}"
+            f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
+            f"after={json.dumps(after_snapshot, ensure_ascii=False)}"
         ),
     )
     sync_after_chain_mutation(db, "app_ranking_setting_updated")
@@ -2383,7 +2726,8 @@ def delete_app_ranking_setting(
     )
     if not setting:
         raise HTTPException(status_code=404, detail="榜单设置不存在")
-    
+
+    before_snapshot = _serialize_setting_snapshot(setting)
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_deleted",
@@ -2391,7 +2735,10 @@ def delete_app_ranking_setting(
         ranking_config_id=setting.ranking_config_id,
         period_date=datetime.utcnow().date(),
         actor="system",
-        payload_summary=f"app_id={app_id},setting_id={setting_id}",
+        payload_summary=(
+            f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
+            "after={}"
+        ),
     )
     db.delete(setting)
     synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_deleted")
