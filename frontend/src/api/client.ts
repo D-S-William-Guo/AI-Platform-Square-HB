@@ -162,6 +162,13 @@ export async function fetchRankingLogs() {
   return data
 }
 
+export async function fetchRankingAuditLogs() {
+  const { data } = await client.get<any[]>('/api/ranking-audit-logs', {
+    headers: getRequiredAdminAuthHeaders()
+  })
+  return data
+}
+
 // 数据联动 API
 export async function syncRankings() {
   const { data } = await client.post('/api/rankings/sync', undefined, {
@@ -194,10 +201,32 @@ export async function fetchSubmissions() {
   return data
 }
 
-export async function approveSubmissionAndCreateApp(submissionId: number) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, undefined, {
+export async function approveSubmissionAndCreateApp(
+  submissionId: number,
+  payload?: {
+    status?: 'available' | 'approval' | 'beta' | 'offline'
+    monthly_calls?: number
+    difficulty?: string
+    target_system?: string
+    target_users?: string
+    access_mode?: 'direct' | 'profile'
+    access_url?: string
+  }
+) {
+  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, payload, {
     headers: getRequiredAdminAuthHeaders()
   })
+  return data
+}
+
+export async function rejectSubmission(submissionId: number, reason?: string) {
+  const { data } = await client.post(
+    `/api/submissions/${submissionId}/reject`,
+    { reason: reason || '' },
+    {
+      headers: getRequiredAdminAuthHeaders()
+    }
+  )
   return data
 }
 
@@ -397,6 +426,7 @@ export async function updateAppRankingSetting(
   appId: number,
   settingId: number,
   payload: {
+    ranking_config_id?: string
     is_enabled?: boolean
     weight_factor?: number
     custom_tags?: string

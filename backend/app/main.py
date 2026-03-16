@@ -6,7 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -26,6 +26,7 @@ from .schemas import (
     Stats,
     SubmissionCreate,
     SubmissionOut,
+    SubmissionApprovePayload,
     RankingDimensionCreate,
     RankingDimensionUpdate,
     RankingDimensionOut,
@@ -407,7 +408,14 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
         
         # 按得分排序
         app_scores.sort(key=lambda x: x["score"], reverse=True)
-        
+
+        # 清理不再参与该榜单的实时排名（解决“换榜后旧榜仍残留”问题）
+        participating_app_ids = {item["app"].id for item in app_scores}
+        stale_rankings_query = db.query(Ranking).filter(Ranking.ranking_config_id == config.id)
+        if participating_app_ids:
+            stale_rankings_query = stale_rankings_query.filter(~Ranking.app_id.in_(participating_app_ids))
+        removed_realtime_rows = stale_rankings_query.delete(synchronize_session=False)
+
         # 更新或创建排名记录
         for index, item in enumerate(app_scores, start=1):
             app = item["app"]
@@ -499,7 +507,8 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
             payload_summary=(
                 f"dimension_score_updates={config_dimension_updates},"
                 f"ranking_updates={config_ranking_updates},"
-                f"historical_ranking_updates={config_historical_updates}"
+                f"historical_ranking_updates={config_historical_updates},"
+                f"realtime_removed={removed_realtime_rows}"
             ),
         )
 
@@ -692,96 +701,106 @@ def resolve_latest_run_id(db: Session, ranking_type: str, period_date: date) -> 
 @app.get(f"{settings.api_prefix}/rankings", response_model=list[RankingItem])
 def list_rankings(
     ranking_type: str = "excellent",
-    period_date: date | None = Query(default=None, description="查询历史榜单日期，格式：YYYY-MM-DD。不传则返回最新一期历史榜单"),
+    ranking_config_id: str | None = Query(default=None, description="榜单配置ID（兼容前端 ranking_config_id 参数）"),
+    period_date: date | None = Query(default=None, description="查询历史榜单日期，格式：YYYY-MM-DD；不传则返回实时榜单"),
     db: Session = Depends(get_db)
 ):
     """
     获取应用榜单
     - 榜单仅展示省内应用
     - 支持按日期查询历史榜单
-    - 不传日期则返回最新一期的历史榜单数据
+    - 不传日期则返回实时榜单（Ranking 表），用于首页/管理页即时展示
     """
+    effective_ranking_type = (ranking_config_id or ranking_type or "").strip() or "excellent"
+
+    def _to_ranking_item(
+        *,
+        app: App,
+        ranking_config_id_value: str | None,
+        position: int,
+        tag: str,
+        score: int,
+        metric_type: str,
+        value_dimension: str,
+        usage_30d: int,
+        declared_at: date,
+        updated_at: datetime | None = None,
+    ) -> dict:
+        return {
+            "ranking_config_id": ranking_config_id_value,
+            "position": position,
+            "tag": tag,
+            "score": score,
+            "likes": None,
+            "metric_type": metric_type,
+            "value_dimension": value_dimension,
+            "usage_30d": usage_30d,
+            "declared_at": declared_at,
+            "updated_at": updated_at,
+            "app": app,
+        }
+
     try:
         if period_date:
             # 查询指定日期的历史榜单
-            selected_run_id = resolve_latest_run_id(db, ranking_type, period_date)
-            historical_query = (
-                db.query(HistoricalRanking)
-                .filter(HistoricalRanking.ranking_type == ranking_type)
-                .filter(HistoricalRanking.period_date == period_date)
-            )
+            selected_run_id = resolve_latest_run_id(db, effective_ranking_type, period_date)
+            historical_query = db.query(HistoricalRanking).filter(HistoricalRanking.period_date == period_date)
+            if ranking_config_id:
+                historical_query = historical_query.filter(HistoricalRanking.ranking_config_id == effective_ranking_type)
+            else:
+                historical_query = historical_query.filter(HistoricalRanking.ranking_type == effective_ranking_type)
             if selected_run_id is not None:
                 historical_query = historical_query.filter(HistoricalRanking.run_id == selected_run_id)
             else:
                 historical_query = historical_query.filter(HistoricalRanking.run_id.is_(None))
 
             historical_rankings = historical_query.order_by(HistoricalRanking.position).all()
-            
-            # 转换为 RankingItem 格式
             result = []
             for hr in historical_rankings:
                 app = db.query(App).filter(App.id == hr.app_id).first()
                 if app and app.section == "province":
-                    result.append({
-                        "ranking_config_id": hr.ranking_config_id,
-                        "position": hr.position,
-                        "tag": hr.tag,
-                        "score": hr.score,
-                        "likes": None,
-                        "metric_type": hr.metric_type,
-                        "value_dimension": hr.value_dimension,
-                        "usage_30d": hr.usage_30d,
-                        "declared_at": hr.period_date,
-                        "updated_at": getattr(hr, "updated_at", None),
-                        "app": app
-                    })
+                    result.append(
+                        _to_ranking_item(
+                            app=app,
+                            ranking_config_id_value=hr.ranking_config_id,
+                            position=hr.position,
+                            tag=hr.tag,
+                            score=hr.score,
+                            metric_type=hr.metric_type,
+                            value_dimension=hr.value_dimension,
+                            usage_30d=hr.usage_30d,
+                            declared_at=hr.period_date,
+                            updated_at=getattr(hr, "updated_at", None),
+                        )
+                    )
             return result
+        # 查询实时榜单（Ranking 表）
+        realtime_query = db.query(Ranking)
+        if ranking_config_id:
+            realtime_query = realtime_query.filter(Ranking.ranking_config_id == effective_ranking_type)
         else:
-            # 查询最新一期的历史榜单
-            latest_date = (
-                db.query(HistoricalRanking.period_date)
-                .filter(HistoricalRanking.ranking_type == ranking_type)
-                .order_by(HistoricalRanking.period_date.desc())
-                .first()
-            )
-            
-            if latest_date:
-                # 使用最新日期查询
-                selected_run_id = resolve_latest_run_id(db, ranking_type, latest_date[0])
-                historical_query = (
-                    db.query(HistoricalRanking)
-                    .filter(HistoricalRanking.ranking_type == ranking_type)
-                    .filter(HistoricalRanking.period_date == latest_date[0])
-                )
-                if selected_run_id is not None:
-                    historical_query = historical_query.filter(HistoricalRanking.run_id == selected_run_id)
-                else:
-                    historical_query = historical_query.filter(HistoricalRanking.run_id.is_(None))
+            realtime_query = realtime_query.filter(Ranking.ranking_type == effective_ranking_type)
 
-                historical_rankings = historical_query.order_by(HistoricalRanking.position).all()
-                
-                # 转换为 RankingItem 格式
-                result = []
-                for hr in historical_rankings:
-                    app = db.query(App).filter(App.id == hr.app_id).first()
-                    if app and app.section == "province":
-                        result.append({
-                            "ranking_config_id": hr.ranking_config_id,
-                            "position": hr.position,
-                            "tag": hr.tag,
-                            "score": hr.score,
-                            "likes": None,
-                            "metric_type": hr.metric_type,
-                            "value_dimension": hr.value_dimension,
-                            "usage_30d": hr.usage_30d,
-                            "declared_at": hr.period_date,
-                            "updated_at": getattr(hr, "updated_at", None),
-                            "app": app
-                        })
-                return result
-            else:
-                # 没有历史数据，返回空列表
-                return []
+        realtime_rows = realtime_query.order_by(Ranking.position).all()
+        result = []
+        for row in realtime_rows:
+            app = db.query(App).filter(App.id == row.app_id).first()
+            if app and app.section == "province":
+                result.append(
+                    _to_ranking_item(
+                        app=app,
+                        ranking_config_id_value=row.ranking_config_id,
+                        position=row.position,
+                        tag=row.tag,
+                        score=row.score,
+                        metric_type=row.metric_type,
+                        value_dimension=row.value_dimension,
+                        usage_30d=row.usage_30d,
+                        declared_at=row.declared_at,
+                        updated_at=row.updated_at,
+                    )
+                )
+        return result
     except Exception as e:
         # 数据库表结构可能不完整，返回空列表
         print(f"Error in list_rankings: {e}")
@@ -1298,6 +1317,7 @@ def batch_update_ranking_params(
 @app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/approve-and-create-app")
 def approve_submission_and_create_app(
     submission_id: int,
+    payload: SubmissionApprovePayload | None = None,
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
@@ -1314,6 +1334,14 @@ def approve_submission_and_create_app(
             raise HTTPException(status_code=400, detail="申报状态不是待审批")
 
         validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
+
+        resolved_status = (payload.status if payload and payload.status else "approval")
+        if resolved_status not in APP_STATUS_VALUES:
+            raise HTTPException(status_code=422, detail="Invalid status")
+
+        resolved_access_mode = (payload.access_mode if payload and payload.access_mode else "profile")
+        if resolved_access_mode not in {"direct", "profile"}:
+            raise HTTPException(status_code=422, detail="Invalid access_mode")
 
         normalized_name = normalize_dedupe_text(submission.app_name)
         normalized_unit = normalize_dedupe_text(submission.unit_name)
@@ -1335,15 +1363,25 @@ def approve_submission_and_create_app(
             section="province",
             category=submission.category,
             description=submission.scenario,
-            status="available",
-            monthly_calls=0.0,
+            status=resolved_status,
+            monthly_calls=payload.monthly_calls if payload and payload.monthly_calls is not None else 0.0,
             release_date=datetime.now().date(),
             api_open=True,
-            difficulty="Medium",
+            difficulty=(payload.difficulty.strip() if payload and payload.difficulty else "Medium"),
             contact_name=submission.contact,
             highlight="",
-            access_mode="direct",
-            target_users="",
+            access_mode=resolved_access_mode,
+            access_url=(
+                payload.access_url.strip()
+                if payload and payload.access_url and resolved_access_mode == "direct"
+                else ""
+            ),
+            target_system=(
+                payload.target_system.strip()
+                if payload and payload.target_system
+                else submission.embedded_system
+            ),
+            target_users=(payload.target_users.strip() if payload and payload.target_users else ""),
             problem_statement=submission.problem_statement,
             effectiveness_type=submission.effectiveness_type,
             effectiveness_metric=submission.effectiveness_metric,
@@ -1355,14 +1393,6 @@ def approve_submission_and_create_app(
 
         db.add(app)
         db.flush()
-
-        db.add(
-            AppRankingSetting(
-                app_id=app.id,
-                ranking_config_id=None,
-                is_enabled=False,
-            )
-        )
 
         submission.status = "approved"
         try:
@@ -1381,6 +1411,31 @@ def approve_submission_and_create_app(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/reject")
+def reject_submission(
+    submission_id: int,
+    reason: str | None = Body(default=None, embed=True),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db)
+):
+    """
+    拒绝申报
+    """
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核申报可拒绝")
+
+    submission.status = "rejected"
+    db.commit()
+    return {
+        "message": "申报已拒绝",
+        "submission_id": submission_id,
+        "reason": reason or "",
+    }
 
 
 # 集团应用专用录入接口（仅管理员使用）
@@ -1489,7 +1544,7 @@ def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
         width, height = img.size
     
     # Generate URLs
-    base_url = "/static/uploads"
+    base_url = f"{settings.api_prefix}/static/uploads"
     if submission_id:
         image_url = f"{base_url}/submissions/{submission_id}/{filename}"
         thumbnail_url = f"{base_url}/submissions/{submission_id}/{thumb_filename}"
@@ -1615,6 +1670,7 @@ def get_submission_images(submission_id: int, db: Session = Depends(get_db)):
 # Mount static files
 ensure_runtime_directories()
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount(f"{settings.api_prefix}/static", StaticFiles(directory=str(STATIC_DIR)), name="api-static")
 
 
 # ==================== 三层架构排行榜系统 API ====================
@@ -1784,7 +1840,10 @@ def list_app_ranking_settings(
     """
     settings_list = (
         db.query(AppRankingSetting)
-        .filter(AppRankingSetting.app_id == app_id)
+        .filter(
+            AppRankingSetting.app_id == app_id,
+            AppRankingSetting.ranking_config_id.is_not(None),
+        )
         .options(joinedload(AppRankingSetting.ranking_config))
         .all()
     )
@@ -1801,6 +1860,9 @@ def create_app_ranking_setting(
     """
     创建应用榜单设置
     """
+    if not payload.ranking_config_id.strip():
+        raise HTTPException(status_code=422, detail="ranking_config_id is required")
+
     # 检查应用是否存在
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
@@ -1866,7 +1928,30 @@ def update_app_ranking_setting(
     )
     if not setting:
         raise HTTPException(status_code=404, detail="榜单设置不存在")
-    
+
+    if payload.ranking_config_id is not None and payload.ranking_config_id != setting.ranking_config_id:
+        new_config_id = payload.ranking_config_id.strip()
+        if not new_config_id:
+            raise HTTPException(status_code=422, detail="ranking_config_id must not be empty")
+
+        config = db.query(RankingConfig).filter(RankingConfig.id == new_config_id).first()
+        if not config:
+            raise HTTPException(status_code=404, detail="榜单配置不存在")
+
+        duplicate_setting = (
+            db.query(AppRankingSetting)
+            .filter(
+                AppRankingSetting.app_id == app_id,
+                AppRankingSetting.ranking_config_id == new_config_id,
+                AppRankingSetting.id != setting_id,
+            )
+            .first()
+        )
+        if duplicate_setting:
+            raise HTTPException(status_code=400, detail="该榜单设置已存在")
+
+        setting.ranking_config_id = new_config_id
+
     if payload.is_enabled is not None:
         setting.is_enabled = payload.is_enabled
     if payload.weight_factor is not None:
@@ -1939,7 +2024,9 @@ def list_all_app_ranking_settings(
         joinedload(AppRankingSetting.app),
         joinedload(AppRankingSetting.ranking_config)
     )
-    
+
+    query = query.filter(AppRankingSetting.ranking_config_id.is_not(None))
+
     if ranking_config_id:
         query = query.filter(AppRankingSetting.ranking_config_id == ranking_config_id)
     

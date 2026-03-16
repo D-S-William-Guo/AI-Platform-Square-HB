@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores, fetchRankingConfigs } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
@@ -8,6 +8,7 @@ import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import { resolveMediaUrl } from './utils/media'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
 const statusOptions = [
@@ -65,6 +66,13 @@ function rankingMetricText(row: RankingItem) {
   if (row.metric_type === 'likes') return `点赞 ${row.likes ?? 0}`
   if (row.metric_type === 'growth_rate') return `增速 +${row.score}%`
   return `综合分 ${row.score}`
+}
+
+function monthlyCallsText(app: AppItem) {
+  if (app.monthly_calls > 0) {
+    return `${app.monthly_calls}k/月`
+  }
+  return app.section === 'province' ? '展示应用' : '0k/月'
 }
 
 // 表单验证规则类型定义
@@ -564,7 +572,10 @@ function HomePage() {
             <section className="grid">
               {apps.map((app) => (
                 <article className="card" key={app.id} onClick={() => setSelectedApp(app)}>
-                  <div className="card-image" style={{ background: app.cover_image_url ? `url(${app.cover_image_url}) center/cover` : getGradient(app.id) }}>
+                  <div
+                    className="card-image"
+                    style={{ background: app.cover_image_url ? `url(${resolveMediaUrl(app.cover_image_url)}) center/cover` : getGradient(app.id) }}
+                  >
                     <span className={`status-badge ${app.status}`}>
                       {statusOptions.find((x) => x.value === app.status)?.label}
                     </span>
@@ -579,7 +590,7 @@ function HomePage() {
                     <p className="card-desc">{app.description}</p>
                     <div className="card-footer">
                       <div className="card-metrics">
-                        <span>📊 {app.monthly_calls}k/月</span>
+                        <span>📊 {monthlyCallsText(app)}</span>
                         <span>📅 {app.release_date}</span>
                       </div>
                     </div>
@@ -733,7 +744,10 @@ function HomePage() {
             </div>
             
             <div className="modal-body">
-              <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
+              <div
+                className="modal-cover"
+                style={{ background: selectedApp.cover_image_url ? `url(${resolveMediaUrl(selectedApp.cover_image_url)}) center/cover` : getGradient(selectedApp.id) }}
+              >
                 <span className={`modal-status-badge ${selectedApp.status}`}>
                   {statusOptions.find((x) => x.value === selectedApp.status)?.label}
                 </span>
@@ -753,7 +767,7 @@ function HomePage() {
                 <div className="modal-metric-item">
                   <div className="modal-metric-icon">📊</div>
                   <div className="modal-metric-label">月调用量</div>
-                  <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
+                  <div className="modal-metric-value">{monthlyCallsText(selectedApp)}</div>
                 </div>
                 <div className="modal-metric-item">
                   <div className="modal-metric-icon">📅</div>
@@ -800,7 +814,7 @@ function HomePage() {
             </div>
 
             <div className="modal-footer">
-              {selectedApp.access_mode === 'direct' ? (
+              {selectedApp.section === 'group' && selectedApp.access_mode === 'direct' && Boolean(selectedApp.access_url) ? (
                 <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
                   <span>🚀</span>
                   <span>申请试用</span>
@@ -808,13 +822,13 @@ function HomePage() {
               ) : (
                 <button className="modal-btn primary" disabled>
                   <span>🔒</span>
-                  <span>需申请接入</span>
+                  <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
                 </button>
               )}
-              <button className="modal-btn secondary">
+              <Link to="/guide" className="modal-btn secondary">
                 <span>📄</span>
                 <span>详细文档</span>
-              </button>
+              </Link>
             </div>
           </div>
         </div>

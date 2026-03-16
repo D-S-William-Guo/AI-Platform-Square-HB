@@ -116,6 +116,16 @@ class SubmissionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubmissionApprovePayload(BaseModel):
+    status: str | None = None
+    monthly_calls: float | None = Field(default=None, ge=0)
+    difficulty: str | None = Field(default=None, max_length=20)
+    target_system: str | None = Field(default=None, max_length=120)
+    target_users: str | None = Field(default=None, max_length=120)
+    access_mode: str | None = None
+    access_url: str | None = Field(default=None, max_length=255)
+
+
 class ImageUploadResponse(BaseModel):
     success: bool
     image_url: str
@@ -293,6 +303,7 @@ class AppRankingSettingCreate(BaseModel):
 
 class AppRankingSettingUpdate(BaseModel):
     """更新应用榜单设置"""
+    ranking_config_id: str | None = Field(None, min_length=1, max_length=50)
     is_enabled: bool | None = None
     weight_factor: float | None = Field(None, ge=0.1, le=10.0)
     custom_tags: str | None = Field(None, max_length=255)

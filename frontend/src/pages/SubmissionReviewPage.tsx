@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import {
   fetchSubmissions,
   approveSubmissionAndCreateApp,
+  rejectSubmission,
   syncRankings,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
 import type { Submission } from '../types'
+import { resolveMediaUrl } from '../utils/media'
 
 const statusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待审核', color: '#f59e0b' },
@@ -43,6 +44,15 @@ export default function SubmissionReviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
+  const [approvalForm, setApprovalForm] = useState({
+    status: 'approval' as 'available' | 'approval' | 'beta' | 'offline',
+    monthly_calls: 0,
+    difficulty: 'Medium',
+    target_users: '',
+    target_system: '',
+    access_mode: 'profile' as 'direct' | 'profile',
+    access_url: ''
+  })
   const [processing, setProcessing] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
 
@@ -64,20 +74,65 @@ export default function SubmissionReviewPage() {
     loadSubmissions()
   }, [loadSubmissions])
 
-  const handleApprove = async (id: number) => {
+  const openSubmissionDetail = (submission: Submission) => {
+    setSelectedSubmission(submission)
+    setApprovalForm({
+      status: 'approval',
+      monthly_calls: 0,
+      difficulty: 'Medium',
+      target_users: '',
+      target_system: submission.embedded_system || '',
+      access_mode: 'profile',
+      access_url: ''
+    })
+  }
+
+  const handleApprove = async (id: number, useFormSettings: boolean = false) => {
     if (!confirm('确定要通过此申报吗？通过后应用将进入排行榜评估体系。')) {
       return
     }
 
     try {
       setProcessing(true)
-      await approveSubmissionAndCreateApp(id)
+      await approveSubmissionAndCreateApp(
+        id,
+        useFormSettings
+          ? {
+              status: approvalForm.status,
+              monthly_calls: approvalForm.monthly_calls,
+              difficulty: approvalForm.difficulty,
+              target_system: approvalForm.target_system,
+              target_users: approvalForm.target_users,
+              access_mode: approvalForm.access_mode,
+              access_url: approvalForm.access_url
+            }
+          : undefined
+      )
       await syncRankings() // 同步排行榜数据
       alert('审核通过！应用已创建并同步到排行榜。')
+      setSelectedSubmission(null)
       loadSubmissions() // 刷新列表
     } catch (err) {
       alert(resolveAdminError(err, '审核失败，请重试'))
       console.error('Failed to approve submission:', err)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleReject = async (id: number) => {
+    if (!confirm('确定要拒绝此申报吗？')) {
+      return
+    }
+    try {
+      setProcessing(true)
+      await rejectSubmission(id)
+      alert('已拒绝该申报。')
+      setSelectedSubmission(null)
+      loadSubmissions()
+    } catch (err) {
+      alert(resolveAdminError(err, '拒绝失败，请重试'))
+      console.error('Failed to reject submission:', err)
     } finally {
       setProcessing(false)
     }
@@ -192,7 +247,7 @@ export default function SubmissionReviewPage() {
               <div 
                 key={submission.id} 
                 className={`submission-card ${submission.status}`}
-                onClick={() => setSelectedSubmission(submission)}
+                onClick={() => openSubmissionDetail(submission)}
               >
                 <div className="submission-header">
                   <div className="submission-title">
@@ -245,6 +300,16 @@ export default function SubmissionReviewPage() {
                       disabled={processing}
                     >
                       {processing ? '处理中...' : '通过审核'}
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleReject(submission.id)
+                      }}
+                      disabled={processing}
+                    >
+                      拒绝
                     </button>
                     <button className="btn-secondary">查看详情</button>
                   </div>
@@ -318,6 +383,73 @@ export default function SubmissionReviewPage() {
                 </div>
               </div>
 
+              {selectedSubmission.status === 'pending' && (
+                <div className="detail-section">
+                  <h4>审批设置</h4>
+                  <div className="detail-grid">
+                    <div className="detail-item">
+                      <span className="detail-label">上线状态</span>
+                      <select
+                        className="form-select"
+                        value={approvalForm.status}
+                        onChange={(e) => setApprovalForm(prev => ({
+                          ...prev,
+                          status: e.target.value as 'available' | 'approval' | 'beta' | 'offline'
+                        }))}
+                      >
+                        <option value="available">可用</option>
+                        <option value="approval">需申请</option>
+                        <option value="beta">试运行</option>
+                        <option value="offline">已下线</option>
+                      </select>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">月调用量（k）</span>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={approvalForm.monthly_calls}
+                        onChange={(e) => setApprovalForm(prev => ({
+                          ...prev,
+                          monthly_calls: Math.max(0, Number(e.target.value || 0))
+                        }))}
+                      />
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">接入难度</span>
+                      <select
+                        className="form-select"
+                        value={approvalForm.difficulty}
+                        onChange={(e) => setApprovalForm(prev => ({ ...prev, difficulty: e.target.value }))}
+                      >
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                      </select>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">适用人群</span>
+                      <input
+                        className="form-input"
+                        value={approvalForm.target_users}
+                        onChange={(e) => setApprovalForm(prev => ({ ...prev, target_users: e.target.value }))}
+                        placeholder="如：客服代表、运维工程师"
+                      />
+                    </div>
+                    <div className="detail-item full-width">
+                      <span className="detail-label">接入系统</span>
+                      <input
+                        className="form-input"
+                        value={approvalForm.target_system}
+                        onChange={(e) => setApprovalForm(prev => ({ ...prev, target_system: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="detail-section">
                 <h4>成效评估</h4>
                 <div className="detail-grid">
@@ -362,7 +494,7 @@ export default function SubmissionReviewPage() {
                 <div className="detail-section">
                   <h4>封面图片</h4>
                   <img 
-                    src={selectedSubmission.cover_image_url} 
+                    src={resolveMediaUrl(selectedSubmission.cover_image_url)}
                     alt="应用封面" 
                     className="cover-image"
                   />
@@ -372,13 +504,22 @@ export default function SubmissionReviewPage() {
 
             <div className="modal-footer">
               {selectedSubmission.status === 'pending' && (
-                <button 
-                  className="btn-primary"
-                  onClick={() => handleApprove(selectedSubmission.id)}
-                  disabled={processing}
-                >
-                  {processing ? '处理中...' : '通过审核'}
-                </button>
+                <>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleReject(selectedSubmission.id)}
+                    disabled={processing}
+                  >
+                    拒绝
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleApprove(selectedSubmission.id, true)}
+                    disabled={processing}
+                  >
+                    {processing ? '处理中...' : '通过审核'}
+                  </button>
+                </>
               )}
               <button className="btn-secondary" onClick={() => setSelectedSubmission(null)}>
                 关闭
