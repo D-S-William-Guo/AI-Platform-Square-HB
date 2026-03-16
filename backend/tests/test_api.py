@@ -1,9 +1,12 @@
+import json
+import uuid
+
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.models import App, AppRankingSetting, Submission
+from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, Submission
 
 
 client = TestClient(app)
@@ -121,6 +124,44 @@ def test_reject_submission_changes_status_to_rejected():
     assert target['status'] == 'rejected'
 
 
+def test_approve_maps_detail_doc_fields_to_app():
+    Base.metadata.create_all(bind=engine)
+
+    payload = {
+        'category': 'group',
+        'app_name': '文档映射测试应用',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'cover_image_url': '',
+        'detail_doc_url': '/api/static/uploads/docs/demo.pdf',
+        'detail_doc_name': 'demo.pdf',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    app_resp = client.get(f'/api/apps/{app_id}')
+    assert app_resp.status_code == 200
+    app_data = app_resp.json()
+    assert app_data['detail_doc_url'] == payload['detail_doc_url']
+    assert app_data['detail_doc_name'] == payload['detail_doc_name']
+
+
 def test_approve_creates_app_without_placeholder_ranking_setting():
     Base.metadata.create_all(bind=engine)
 
@@ -161,6 +202,209 @@ def test_approve_creates_app_without_placeholder_ranking_setting():
         assert setting is None
     finally:
         db.close()
+
+
+def test_update_app_dimension_score_accepts_json_body():
+    payload = {
+        'category': 'group',
+        'app_name': '维度改分测试应用',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    update_resp = client.put(
+        f'/api/apps/{app_id}/dimension-scores/1',
+        headers=ADMIN_HEADERS,
+        json={'score': 88}
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()['score'] == 88
+    assert update_resp.json()['synced'] >= 0
+    assert update_resp.json()['run_id']
+
+
+def test_delete_ranking_config_cleans_downstream_records():
+    unique_suffix = uuid.uuid4().hex[:8]
+    config_id = f"cfg-{unique_suffix}"
+
+    payload = {
+        'category': 'group',
+        'app_name': f'删配置联动测试应用-{unique_suffix}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    config_resp = client.post(
+        '/api/ranking-configs',
+        headers=ADMIN_HEADERS,
+        json={
+            "id": config_id,
+            "name": f"测试榜单-{unique_suffix}",
+            "description": "删除联动测试",
+            "dimensions_config": "[]",
+            "calculation_method": "composite",
+            "is_active": True,
+        },
+    )
+    assert config_resp.status_code == 200
+
+    setting_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings',
+        headers=ADMIN_HEADERS,
+        json={
+            "ranking_config_id": config_id,
+            "is_enabled": True,
+            "weight_factor": 1.0,
+            "custom_tags": "测试",
+        },
+    )
+    assert setting_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        assert db.query(AppRankingSetting).filter(AppRankingSetting.ranking_config_id == config_id).count() >= 1
+        assert db.query(Ranking).filter(Ranking.ranking_config_id == config_id).count() >= 1
+        assert db.query(HistoricalRanking).filter(HistoricalRanking.ranking_config_id == config_id).count() >= 1
+    finally:
+        db.close()
+
+    delete_resp = client.delete(f'/api/ranking-configs/{config_id}', headers=ADMIN_HEADERS)
+    assert delete_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        assert db.query(AppRankingSetting).filter(AppRankingSetting.ranking_config_id == config_id).count() == 0
+        assert db.query(Ranking).filter(Ranking.ranking_config_id == config_id).count() == 0
+        assert db.query(HistoricalRanking).filter(HistoricalRanking.ranking_config_id == config_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_delete_ranking_dimension_prunes_config_and_scores():
+    unique_suffix = uuid.uuid4().hex[:8]
+    config_id = f"cfg-dim-{unique_suffix}"
+
+    payload = {
+        'category': 'group',
+        'app_name': f'删维度联动测试应用-{unique_suffix}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    dim_resp = client.post(
+        '/api/ranking-dimensions',
+        headers=ADMIN_HEADERS,
+        json={
+            "name": f"删维度测试-{unique_suffix}",
+            "description": "用于测试删除维度联动",
+            "calculation_method": "默认规则",
+            "weight": 1.0,
+            "is_active": True,
+        },
+    )
+    assert dim_resp.status_code == 200
+    dimension_id = dim_resp.json()['id']
+
+    config_resp = client.post(
+        '/api/ranking-configs',
+        headers=ADMIN_HEADERS,
+        json={
+            "id": config_id,
+            "name": f"维度联动榜单-{unique_suffix}",
+            "description": "维度联动测试",
+            "dimensions_config": json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
+            "calculation_method": "composite",
+            "is_active": True,
+        },
+    )
+    assert config_resp.status_code == 200
+
+    setting_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings',
+        headers=ADMIN_HEADERS,
+        json={
+            "ranking_config_id": config_id,
+            "is_enabled": True,
+            "weight_factor": 1.0,
+            "custom_tags": "测试",
+        },
+    )
+    assert setting_resp.status_code == 200
+
+    score_resp = client.put(
+        f'/api/apps/{app_id}/dimension-scores/{dimension_id}',
+        headers=ADMIN_HEADERS,
+        json={'score': 90},
+    )
+    assert score_resp.status_code == 200
+
+    delete_dim_resp = client.delete(f'/api/ranking-dimensions/{dimension_id}', headers=ADMIN_HEADERS)
+    assert delete_dim_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        assert db.query(AppDimensionScore).filter(AppDimensionScore.dimension_id == dimension_id).count() == 0
+    finally:
+        db.close()
+
+    config_after_resp = client.get(f'/api/ranking-configs/{config_id}')
+    assert config_after_resp.status_code == 200
+    dimensions = json.loads(config_after_resp.json()['dimensions_config'])
+    assert all(item.get('dim_id') != dimension_id for item in dimensions)
 
 
 def test_admin_endpoint_requires_token():

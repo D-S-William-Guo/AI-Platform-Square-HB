@@ -29,6 +29,8 @@ class App(Base):
     highlight: Mapped[str] = mapped_column(String(200), default="")
     access_mode: Mapped[str] = mapped_column(String(20), default="direct")  # direct | profile
     access_url: Mapped[str] = mapped_column(String(255), default="")
+    detail_doc_url: Mapped[str] = mapped_column(String(500), default="")
+    detail_doc_name: Mapped[str] = mapped_column(String(255), default="")
     target_system: Mapped[str] = mapped_column(String(120), default="")
     target_users: Mapped[str] = mapped_column(String(120), default="")
     problem_statement: Mapped[str] = mapped_column(String(255), default="")
@@ -100,6 +102,8 @@ class Submission(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     cover_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cover_image_url: Mapped[str] = mapped_column(String(500), default="")
+    detail_doc_url: Mapped[str] = mapped_column(String(500), default="")
+    detail_doc_name: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # 排行榜相关字段
     ranking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

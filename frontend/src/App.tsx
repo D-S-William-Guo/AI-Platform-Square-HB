@@ -9,7 +9,6 @@ import {
   submitApp,
   uploadImage,
   uploadDocument,
-  associateImageWithSubmission,
   fetchRankingDimensions,
   fetchDimensionScores,
   fetchRankingConfigs
@@ -53,6 +52,8 @@ const defaultSubmission: SubmissionPayload = {
   data_level: 'L2',
   expected_benefit: '',
   cover_image_url: '',
+  detail_doc_url: '',
+  detail_doc_name: '',
   // 排行榜相关字段
   ranking_enabled: true,
   ranking_weight: 1.0,
@@ -418,6 +419,11 @@ function HomePage() {
         size: result.file_size,
         mimeType: file.type || ''
       })
+      setSubmission(prev => ({
+        ...prev,
+        detail_doc_url: result.file_url,
+        detail_doc_name: result.original_name
+      }))
     } catch (_error) {
       alert('文档上传失败，请重试')
     } finally {
@@ -439,17 +445,7 @@ function HomePage() {
     }
 
     try {
-      const createdSubmission = await submitApp(submission)
-      if (documentMeta?.url && createdSubmission?.id) {
-        await associateImageWithSubmission(createdSubmission.id, {
-          image_url: documentMeta.url,
-          thumbnail_url: '',
-          original_name: documentMeta.name,
-          file_size: documentMeta.size,
-          mime_type: documentMeta.mimeType,
-          is_cover: false
-        })
-      }
+      await submitApp(submission)
       setShowSubmission(false)
       setSubmission(defaultSubmission)
       setImagePreview(null)
@@ -892,10 +888,10 @@ function HomePage() {
                   <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
                 </button>
               )}
-              {selectedApp.section === 'province' && selectedApp.access_url && (
-                <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn secondary">
+              {selectedApp.section === 'province' && selectedApp.detail_doc_url && (
+                <a href={resolveMediaUrl(selectedApp.detail_doc_url)} target="_blank" rel="noreferrer" className="modal-btn secondary">
                   <span>📄</span>
-                  <span>详细文档</span>
+                  <span>{selectedApp.detail_doc_name || '详细文档'}</span>
                 </a>
               )}
             </div>
@@ -975,7 +971,14 @@ function HomePage() {
                   ) : documentMeta ? (
                     <div className="doc-uploaded">
                       <span className="doc-name">{documentMeta.name}</span>
-                      <button type="button" className="doc-remove-btn" onClick={() => setDocumentMeta(null)}>
+                      <button
+                        type="button"
+                        className="doc-remove-btn"
+                        onClick={() => {
+                          setDocumentMeta(null)
+                          setSubmission(prev => ({ ...prev, detail_doc_url: '', detail_doc_name: '' }))
+                        }}
+                      >
                         移除
                       </button>
                     </div>

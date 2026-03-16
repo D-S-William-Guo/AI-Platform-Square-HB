@@ -18,6 +18,8 @@ export type AppItem = {
   highlight: string
   access_mode: 'direct' | 'profile'
   access_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   target_system: string
   target_users: string
   problem_statement: string
@@ -79,6 +81,8 @@ export type Submission = {
   status: 'pending' | 'approved' | 'rejected'
   cover_image_id: number | null
   cover_image_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   created_at: string
   // 排行榜相关字段
   ranking_enabled: boolean
@@ -102,6 +106,8 @@ export type SubmissionPayload = {
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
   cover_image_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   // 排行榜相关字段
   ranking_enabled: boolean
   ranking_weight: number

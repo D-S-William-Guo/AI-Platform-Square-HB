@@ -22,6 +22,8 @@ class AppDetail(AppBase):
     highlight: str
     access_mode: str
     access_url: str
+    detail_doc_url: str = ""
+    detail_doc_name: str = ""
     target_system: str
     target_users: str
     problem_statement: str
@@ -82,6 +84,8 @@ class SubmissionCreate(BaseModel):
     data_level: str
     expected_benefit: str = Field(min_length=10, max_length=300)
     cover_image_url: str = Field(default="", max_length=500)
+    detail_doc_url: str = Field(default="", max_length=500)
+    detail_doc_name: str = Field(default="", max_length=255)
     # 排行榜相关字段
     ranking_enabled: bool = Field(default=True)
     ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
@@ -106,6 +110,8 @@ class SubmissionOut(BaseModel):
     expected_benefit: str
     status: str
     cover_image_url: str
+    detail_doc_url: str
+    detail_doc_name: str
     created_at: datetime
     # 排行榜相关字段
     ranking_enabled: bool
