@@ -27,6 +27,8 @@ from .schemas import (
     Stats,
     SubmissionCreate,
     SubmissionOut,
+    SubmissionManageTokenPayload,
+    SubmissionSelfUpdate,
     SubmissionApprovePayload,
     RankingDimensionCreate,
     RankingDimensionUpdate,
@@ -89,6 +91,7 @@ def ensure_additive_schema_columns() -> None:
             "detail_doc_name": "VARCHAR(255) DEFAULT ''",
         },
         "submissions": {
+            "manage_token": "VARCHAR(64) DEFAULT ''",
             "detail_doc_url": "VARCHAR(500) DEFAULT ''",
             "detail_doc_name": "VARCHAR(255) DEFAULT ''",
         },
@@ -107,6 +110,27 @@ def ensure_additive_schema_columns() -> None:
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
 
 
+def ensure_submission_manage_tokens() -> None:
+    """回填历史 submissions.manage_token，确保自助管理接口可用。"""
+    db = Session(bind=engine)
+    try:
+        rows = (
+            db.query(Submission)
+            .filter(or_(Submission.manage_token.is_(None), Submission.manage_token == ""))
+            .all()
+        )
+        if not rows:
+            return
+        for row in rows:
+            row.manage_token = uuid.uuid4().hex
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def normalize_dedupe_text(value: str) -> str:
     return " ".join(value.strip().lower().split())
 
@@ -121,6 +145,7 @@ async def lifespan(_: FastAPI):
     ensure_runtime_directories()
     Base.metadata.create_all(bind=engine)
     ensure_additive_schema_columns()
+    ensure_submission_manage_tokens()
     db = next(get_db())
     try:
         seed_data(db)
@@ -941,7 +966,7 @@ def rules():
 
 @app.get(f"{settings.api_prefix}/submissions", response_model=list[SubmissionOut])
 def list_submissions(
-    status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected"),
+    status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected, withdrawn"),
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
@@ -971,7 +996,7 @@ def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
 
-    submission = Submission(**payload.model_dump())
+    submission = Submission(**payload.model_dump(), manage_token=uuid.uuid4().hex)
     db.add(submission)
     try:
         db.commit()
@@ -980,6 +1005,86 @@ def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="检测到重复申报，请勿重复提交")
     db.refresh(submission)
     return submission
+
+
+@app.get(f"{settings.api_prefix}/submissions/self", response_model=SubmissionOut)
+def get_submission_self(
+    manage_token: str = Query(..., min_length=16, max_length=128),
+    db: Session = Depends(get_db)
+):
+    """
+    通过管理令牌查询本人申报（用于申报人查看/修改/撤回）。
+    """
+    submission = db.query(Submission).filter(Submission.manage_token == manage_token).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="未找到对应申报")
+    return submission
+
+
+@app.put(f"{settings.api_prefix}/submissions/{{submission_id}}/self", response_model=SubmissionOut)
+def update_submission_self(
+    submission_id: int,
+    payload: SubmissionSelfUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    申报人修改本人申报（仅 pending）。
+    """
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.manage_token != payload.manage_token:
+        raise HTTPException(status_code=403, detail="管理令牌无效")
+    if submission.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
+
+    normalized_name = normalize_dedupe_text(payload.app_name)
+    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    duplicate = (
+        db.query(Submission)
+        .filter(
+            Submission.id != submission_id,
+            func.lower(func.trim(Submission.app_name)) == normalized_name,
+            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
+            Submission.status.in_(("pending", "approved")),
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
+
+    create_payload = SubmissionCreate(**payload.model_dump(exclude={"manage_token"}))
+    validate_submission_payload(create_payload)
+
+    update_fields = create_payload.model_dump()
+    for key, value in update_fields.items():
+        setattr(submission, key, value)
+
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/withdraw")
+def withdraw_submission_self(
+    submission_id: int,
+    payload: SubmissionManageTokenPayload,
+    db: Session = Depends(get_db)
+):
+    """
+    申报人撤回本人申报（仅 pending）。
+    """
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.manage_token != payload.manage_token:
+        raise HTTPException(status_code=403, detail="管理令牌无效")
+    if submission.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核申报可撤回")
+
+    submission.status = "withdrawn"
+    db.commit()
+    return {"message": "申报已撤回", "submission_id": submission_id}
 
 
 @app.get(f"{settings.api_prefix}/meta/enums")

@@ -85,6 +85,69 @@ def test_submission_flow():
     resp = client.post('/api/submissions', json=payload)
     assert resp.status_code == 200
     assert resp.json()['status'] == 'pending'
+    assert resp.json()['manage_token']
+
+
+def test_submission_self_manage_flow():
+    payload = {
+        'category': 'group',
+        'app_name': f'申报自助管理测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    create_resp = client.post('/api/submissions', json=payload)
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+    submission_id = created['id']
+    manage_token = created['manage_token']
+    assert isinstance(manage_token, str)
+    assert len(manage_token) >= 16
+
+    self_resp = client.get('/api/submissions/self', params={'manage_token': manage_token})
+    assert self_resp.status_code == 200
+    assert self_resp.json()['id'] == submission_id
+
+    updated_name = f"{payload['app_name']}-更新"
+    update_resp = client.put(
+        f'/api/submissions/{submission_id}/self',
+        json={
+            **payload,
+            'app_name': updated_name,
+            'manage_token': manage_token,
+        },
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()['app_name'] == updated_name
+
+    withdraw_resp = client.post(
+        f'/api/submissions/{submission_id}/withdraw',
+        json={'manage_token': manage_token},
+    )
+    assert withdraw_resp.status_code == 200
+
+    after_resp = client.get('/api/submissions/self', params={'manage_token': manage_token})
+    assert after_resp.status_code == 200
+    assert after_resp.json()['status'] == 'withdrawn'
+
+    blocked_update_resp = client.put(
+        f'/api/submissions/{submission_id}/self',
+        json={
+            **payload,
+            'manage_token': manage_token,
+        },
+    )
+    assert blocked_update_resp.status_code == 400
 
 
 def test_rules_oa_links():

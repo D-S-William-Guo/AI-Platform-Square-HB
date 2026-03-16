@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, datetime
 
 from typing import Optional
@@ -100,6 +101,7 @@ class Submission(Base):
     data_level: Mapped[str] = mapped_column(String(10), nullable=False)
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    manage_token: Mapped[str] = mapped_column(String(64), default=lambda: uuid.uuid4().hex, nullable=False)
     cover_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cover_image_url: Mapped[str] = mapped_column(String(500), default="")
     detail_doc_url: Mapped[str] = mapped_column(String(500), default="")

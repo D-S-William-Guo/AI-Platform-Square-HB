@@ -78,7 +78,8 @@ export type Submission = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  manage_token: string
   cover_image_id: number | null
   cover_image_url: string
   detail_doc_url: string

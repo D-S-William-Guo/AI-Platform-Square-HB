@@ -36,6 +36,7 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
   [*] --> SubmissionPending: 创建申报
+  SubmissionPending --> SubmissionWithdrawn: 申报人撤回
   SubmissionPending --> SubmissionApproved: 审核通过
   SubmissionPending --> SubmissionRejected: 审核拒绝
   SubmissionApproved --> AppActive: 创建省内应用
@@ -49,6 +50,8 @@ stateDiagram-v2
 | 节点 | 操作 | 下游影响 | 同步动作 |
 |---|---|---|---|
 | `submissions` | 新增/编辑（待审） | 仅影响审核池 | 不触发榜单同步 |
+| `submissions` | 申报人修改（待审） | 更新审核池内容 | 不触发榜单同步 |
+| `submissions` | 申报人撤回（待审） | 进入 `withdrawn`，退出审核池 | 不触发榜单同步 |
 | `submissions` | 审核通过 | 生成 `apps` 记录 | 同事务触发同步，返回 `run_id` |
 | `apps` 排行参数 | 修改权重/开关/标签 | 影响实时分值与排序 | 自动触发榜单同步 |
 | `app_ranking_settings` | 新增/修改/删除参与榜单 | 影响参与范围与排序 | 自动触发榜单同步 |

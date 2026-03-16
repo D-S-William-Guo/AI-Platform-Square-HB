@@ -13,7 +13,8 @@ import { resolveMediaUrl } from '../utils/media'
 const statusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待审核', color: '#f59e0b' },
   approved: { label: '已通过', color: '#10b981' },
-  rejected: { label: '已拒绝', color: '#ef4444' }
+  rejected: { label: '已拒绝', color: '#ef4444' },
+  withdrawn: { label: '已撤回', color: '#6b7280' }
 }
 
 const valueDimensionLabel: Record<string, string> = {
@@ -54,7 +55,7 @@ export default function SubmissionReviewPage() {
     access_url: ''
   })
   const [processing, setProcessing] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'withdrawn'>('all')
 
   const loadSubmissions = useCallback(async () => {
     try {
@@ -147,7 +148,8 @@ export default function SubmissionReviewPage() {
     total: submissions.length,
     pending: submissions.filter(s => s.status === 'pending').length,
     approved: submissions.filter(s => s.status === 'approved').length,
-    rejected: submissions.filter(s => s.status === 'rejected').length
+    rejected: submissions.filter(s => s.status === 'rejected').length,
+    withdrawn: submissions.filter(s => s.status === 'withdrawn').length
   }
 
   return (
@@ -217,6 +219,12 @@ export default function SubmissionReviewPage() {
               onClick={() => setFilter('rejected')}
             >
               已拒绝 ({stats.rejected})
+            </button>
+            <button
+              className={`filter-btn ${filter === 'withdrawn' ? 'active' : ''}`}
+              onClick={() => setFilter('withdrawn')}
+            >
+              已撤回 ({stats.withdrawn})
             </button>
           </div>
           <button className="refresh-btn" onClick={loadSubmissions} disabled={loading}>

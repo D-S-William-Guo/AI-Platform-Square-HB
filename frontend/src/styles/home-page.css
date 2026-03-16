@@ -806,6 +806,26 @@
   color: #374151;
 }
 
+.home-page .modal-status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.home-page .modal-status-badge.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.home-page .modal-status-badge.rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.home-page .modal-status-badge.withdrawn {
+  background: #e5e7eb;
+  color: #374151;
+}
+
 /* 模态框标签 */
 .home-page .modal-tags {
   display: flex;
@@ -982,6 +1002,84 @@
 .home-page .modal-btn.secondary:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
+}
+
+.home-page .modal-btn.secondary.danger {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.home-page .modal-btn.secondary.danger:hover:not(:disabled) {
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.home-page .manage-token-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.home-page .manage-token-query {
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.home-page .manage-token-query:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.home-page .manage-submission-card {
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: var(--bg-color);
+}
+
+.home-page .manage-submission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.home-page .manage-submission-header h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.home-page .manage-submission-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.home-page .manage-submission-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.home-page .manage-submission-grid .label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.home-page .manage-submission-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 /* 模态框通用样式 */

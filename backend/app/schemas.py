@@ -109,6 +109,7 @@ class SubmissionOut(BaseModel):
     data_level: str
     expected_benefit: str
     status: str
+    manage_token: str
     cover_image_url: str
     detail_doc_url: str
     detail_doc_name: str
@@ -130,6 +131,14 @@ class SubmissionApprovePayload(BaseModel):
     target_users: str | None = Field(default=None, max_length=120)
     access_mode: str | None = None
     access_url: str | None = Field(default=None, max_length=255)
+
+
+class SubmissionManageTokenPayload(BaseModel):
+    manage_token: str = Field(min_length=16, max_length=128)
+
+
+class SubmissionSelfUpdate(SubmissionCreate):
+    manage_token: str = Field(min_length=16, max_length=128)
 
 
 class ImageUploadResponse(BaseModel):

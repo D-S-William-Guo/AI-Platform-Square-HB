@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   data_level VARCHAR(10) NOT NULL,
   expected_benefit VARCHAR(300) NOT NULL,
   status VARCHAR(20) DEFAULT 'pending',
+  manage_token VARCHAR(64) NOT NULL,
   cover_image_id INT DEFAULT NULL,
   cover_image_url VARCHAR(500) DEFAULT '',
   detail_doc_url VARCHAR(500) DEFAULT '',

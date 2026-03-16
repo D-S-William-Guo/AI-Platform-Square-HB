@@ -87,7 +87,29 @@ export async function fetchRules() {
 }
 
 export async function submitApp(payload: SubmissionPayload) {
-  const { data } = await client.post('/api/submissions', payload)
+  const { data } = await client.post<Submission>('/api/submissions', payload)
+  return data
+}
+
+export async function fetchSubmissionSelf(manageToken: string) {
+  const { data } = await client.get<Submission>('/api/submissions/self', {
+    params: { manage_token: manageToken }
+  })
+  return data
+}
+
+export async function updateSubmissionSelf(
+  submissionId: number,
+  payload: SubmissionPayload & { manage_token: string }
+) {
+  const { data } = await client.put<Submission>(`/api/submissions/${submissionId}/self`, payload)
+  return data
+}
+
+export async function withdrawSubmissionSelf(submissionId: number, manageToken: string) {
+  const { data } = await client.post(`/api/submissions/${submissionId}/withdraw`, {
+    manage_token: manageToken
+  })
   return data
 }
 

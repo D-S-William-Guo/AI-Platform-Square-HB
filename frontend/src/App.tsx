@@ -7,6 +7,9 @@ import {
   fetchRules,
   fetchStats,
   submitApp,
+  fetchSubmissionSelf,
+  updateSubmissionSelf,
+  withdrawSubmissionSelf,
   uploadImage,
   uploadDocument,
   fetchRankingDimensions,
@@ -19,7 +22,7 @@ import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -59,6 +62,13 @@ const defaultSubmission: SubmissionPayload = {
   ranking_weight: 1.0,
   ranking_tags: '',
   ranking_dimensions: ''
+}
+
+const submissionStatusLabel: Record<Submission['status'], string> = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝',
+  withdrawn: '已撤回'
 }
 
 // 生成渐变色
@@ -148,6 +158,14 @@ function HomePage() {
     size: number
     mimeType: string
   } | null>(null)
+  const [showSubmissionManage, setShowSubmissionManage] = useState(false)
+  const [manageToken, setManageToken] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem('LATEST_SUBMISSION_MANAGE_TOKEN') || ''
+  })
+  const [managedSubmission, setManagedSubmission] = useState<Submission | null>(null)
+  const [manageLoading, setManageLoading] = useState(false)
+  const [editingSubmissionMeta, setEditingSubmissionMeta] = useState<{ id: number; manageToken: string } | null>(null)
 
   useEffect(() => {
     fetchRecommendations().then(setRecommendations)
@@ -438,6 +456,87 @@ function HomePage() {
     }
   }, [handleDocumentUpload])
 
+  async function lookupManagedSubmission() {
+    const token = manageToken.trim()
+    if (!token) {
+      alert('请输入申报管理令牌')
+      return
+    }
+    try {
+      setManageLoading(true)
+      const result = await fetchSubmissionSelf(token)
+      setManagedSubmission(result)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', token)
+      }
+    } catch (_error) {
+      setManagedSubmission(null)
+      alert('未找到对应申报，请检查管理令牌是否正确')
+    } finally {
+      setManageLoading(false)
+    }
+  }
+
+  async function withdrawManagedSubmission() {
+    if (!managedSubmission || managedSubmission.status !== 'pending') {
+      return
+    }
+    if (!confirm('确定撤回该申报吗？撤回后将不会进入审核。')) {
+      return
+    }
+    try {
+      await withdrawSubmissionSelf(managedSubmission.id, manageToken.trim())
+      const refreshed = await fetchSubmissionSelf(manageToken.trim())
+      setManagedSubmission(refreshed)
+      alert('申报已撤回。')
+    } catch (_error) {
+      alert('撤回失败，请稍后重试')
+    }
+  }
+
+  function editManagedSubmission() {
+    if (!managedSubmission || managedSubmission.status !== 'pending') {
+      return
+    }
+    setEditingSubmissionMeta({ id: managedSubmission.id, manageToken: manageToken.trim() })
+    setSubmission({
+      app_name: managedSubmission.app_name,
+      unit_name: managedSubmission.unit_name,
+      contact: managedSubmission.contact,
+      contact_phone: managedSubmission.contact_phone,
+      contact_email: managedSubmission.contact_email,
+      category: managedSubmission.category,
+      scenario: managedSubmission.scenario,
+      embedded_system: managedSubmission.embedded_system,
+      problem_statement: managedSubmission.problem_statement,
+      effectiveness_type: managedSubmission.effectiveness_type,
+      effectiveness_metric: managedSubmission.effectiveness_metric,
+      data_level: managedSubmission.data_level,
+      expected_benefit: managedSubmission.expected_benefit,
+      cover_image_url: managedSubmission.cover_image_url || '',
+      detail_doc_url: managedSubmission.detail_doc_url || '',
+      detail_doc_name: managedSubmission.detail_doc_name || '',
+      ranking_enabled: managedSubmission.ranking_enabled,
+      ranking_weight: managedSubmission.ranking_weight,
+      ranking_tags: managedSubmission.ranking_tags,
+      ranking_dimensions: managedSubmission.ranking_dimensions
+    })
+    setImagePreview(managedSubmission.cover_image_url ? resolveMediaUrl(managedSubmission.cover_image_url) : null)
+    setDocumentMeta(
+      managedSubmission.detail_doc_url
+        ? {
+            url: managedSubmission.detail_doc_url,
+            name: managedSubmission.detail_doc_name || '详细文档',
+            size: 0,
+            mimeType: ''
+          }
+        : null
+    )
+    setErrors({})
+    setShowSubmissionManage(false)
+    setShowSubmission(true)
+  }
+
   async function onSubmit() {
     if (!validateForm()) {
       alert('请检查表单填写是否正确')
@@ -445,13 +544,29 @@ function HomePage() {
     }
 
     try {
-      await submitApp(submission)
+      if (editingSubmissionMeta) {
+        await updateSubmissionSelf(editingSubmissionMeta.id, {
+          ...submission,
+          manage_token: editingSubmissionMeta.manageToken
+        })
+        alert('申报已更新，等待审核。')
+      } else {
+        const created = await submitApp(submission)
+        if (typeof window !== 'undefined' && created.manage_token) {
+          window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', created.manage_token)
+        }
+        alert(
+          created.manage_token
+            ? `申报已提交，等待审核。\n请保存管理令牌：${created.manage_token}`
+            : '申报已提交，等待审核。'
+        )
+      }
       setShowSubmission(false)
       setSubmission(defaultSubmission)
       setImagePreview(null)
       setDocumentMeta(null)
       setErrors({})
-      alert('申报已提交，等待审核。')
+      setEditingSubmissionMeta(null)
     } catch (error) {
       alert('提交失败，请重试')
     }
@@ -463,6 +578,7 @@ function HomePage() {
     setImagePreview(null)
     setDocumentMeta(null)
     setErrors({})
+    setEditingSubmissionMeta(null)
   }
 
   return (
@@ -482,6 +598,10 @@ function HomePage() {
           />
         </div>
         <div className="header-actions">
+          <button className="secondary" onClick={() => setShowSubmissionManage(true)}>
+            <span>📋</span>
+            <span>申报管理</span>
+          </button>
           <button className="primary" onClick={() => setShowSubmission(true)}>
             <span>+</span>
             <span>我要申报</span>
@@ -899,13 +1019,90 @@ function HomePage() {
         </div>
       )}
 
+      {showSubmissionManage && (
+        <div className="modal-overlay" onClick={() => setShowSubmissionManage(false)}>
+          <div className="modal-container submission-manage-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-section">
+                <h3 className="modal-title">申报管理</h3>
+                <p className="modal-subtitle">输入管理令牌后可查看、修改、撤回申报</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowSubmissionManage(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">管理令牌</label>
+                <div className="manage-token-row">
+                  <input
+                    className="form-input"
+                    value={manageToken}
+                    onChange={(e) => setManageToken(e.target.value)}
+                    placeholder="请输入提交后保存的管理令牌"
+                  />
+                  <button
+                    type="button"
+                    className="manage-token-query"
+                    onClick={lookupManagedSubmission}
+                    disabled={manageLoading}
+                  >
+                    {manageLoading ? '查询中...' : '查询'}
+                  </button>
+                </div>
+              </div>
+
+              {managedSubmission && (
+                <div className="manage-submission-card">
+                  <div className="manage-submission-header">
+                    <h4>{managedSubmission.app_name}</h4>
+                    <span className={`modal-status-badge ${managedSubmission.status}`}>
+                      {submissionStatusLabel[managedSubmission.status]}
+                    </span>
+                  </div>
+                  <div className="manage-submission-grid">
+                    <div><span className="label">申报单位</span><span>{managedSubmission.unit_name}</span></div>
+                    <div><span className="label">联系人</span><span>{managedSubmission.contact}</span></div>
+                    <div><span className="label">嵌入系统</span><span>{managedSubmission.embedded_system}</span></div>
+                    <div><span className="label">更新时间</span><span>{new Date(managedSubmission.created_at).toLocaleString()}</span></div>
+                  </div>
+                  <div className="manage-submission-actions">
+                    <button
+                      type="button"
+                      className="modal-btn secondary"
+                      onClick={editManagedSubmission}
+                      disabled={managedSubmission.status !== 'pending'}
+                    >
+                      修改申报
+                    </button>
+                    <button
+                      type="button"
+                      className="modal-btn secondary danger"
+                      onClick={withdrawManagedSubmission}
+                      disabled={managedSubmission.status !== 'pending'}
+                    >
+                      撤回申报
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn secondary" onClick={() => setShowSubmissionManage(false)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSubmission && (
         <div className="modal-overlay" onClick={closeSubmission}>
           <div className="modal-container submission-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-section">
-                <h3 className="modal-title">应用申报</h3>
-                <p className="modal-subtitle">请填写完整的应用信息，带 * 的为必填项</p>
+                <h3 className="modal-title">{editingSubmissionMeta ? '修改申报' : '应用申报'}</h3>
+                <p className="modal-subtitle">
+                  {editingSubmissionMeta ? '仅待审核申报可修改，修改后重新进入审核流程。' : '请填写完整的应用信息，带 * 的为必填项'}
+                </p>
               </div>
               <button className="modal-close" onClick={closeSubmission}>×</button>
             </div>
@@ -1241,8 +1438,8 @@ function HomePage() {
 
             <div className="modal-footer">
               <button className="modal-btn secondary" onClick={closeSubmission}>取消</button>
-              <button className="modal-btn primary" onClick={onSubmit} disabled={uploading}>
-                {uploading ? '上传中...' : '提交申报'}
+              <button className="modal-btn primary" onClick={onSubmit} disabled={uploading || manageLoading}>
+                {uploading ? '上传中...' : editingSubmissionMeta ? '保存修改' : '提交申报'}
               </button>
             </div>
           </div>
