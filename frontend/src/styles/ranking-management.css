@@ -122,6 +122,13 @@ div.page.ranking-management-page div.page-content {
   margin: 0;
 }
 
+.ranking-management-page .section-note {
+  margin: -12px 0 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
 /* 主要按钮 */
 .ranking-management-page .primary-button {
   background: var(--primary-color);
@@ -774,6 +781,12 @@ div.page.ranking-management-page div.page-content {
   color: var(--text-primary);
 }
 
+.ranking-management-page .form-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .ranking-management-page .config-form .form-group input,
 .ranking-management-page .config-form .form-group select,
 .ranking-management-page .config-form .form-group textarea,
@@ -812,6 +825,42 @@ div.page.ranking-management-page div.page-content {
 .ranking-management-page .config-form .checkbox-group input,
 .ranking-management-page .app-setting-form .checkbox-group input {
   width: auto;
+}
+
+.ranking-management-page .dimension-form .checkbox-group {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.ranking-management-page .dimension-form .checkbox-group input {
+  width: auto;
+}
+
+.ranking-management-page .dimension-score-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.ranking-management-page .dimension-score-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-color);
+}
+
+.ranking-management-page .dimension-score-name {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.ranking-management-page .dimension-score-item input {
+  width: 88px;
 }
 
 /* ==================== 空状态和加载 ==================== */

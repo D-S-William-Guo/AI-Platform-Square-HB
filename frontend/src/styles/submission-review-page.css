@@ -361,6 +361,17 @@
   line-height: 1.5;
 }
 
+.submission-review-page .detail-item .form-input,
+.submission-review-page .detail-item .form-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--card-bg);
+}
+
 .submission-review-page .cover-image {
   width: 100%;
   max-height: 300px;

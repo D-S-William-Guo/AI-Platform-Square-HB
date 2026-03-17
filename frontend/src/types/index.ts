@@ -18,6 +18,8 @@ export type AppItem = {
   highlight: string
   access_mode: 'direct' | 'profile'
   access_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   target_system: string
   target_users: string
   problem_statement: string
@@ -76,9 +78,12 @@ export type Submission = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  manage_token: string
   cover_image_id: number | null
   cover_image_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   created_at: string
   // 排行榜相关字段
   ranking_enabled: boolean
@@ -102,6 +107,8 @@ export type SubmissionPayload = {
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
   cover_image_url: string
+  detail_doc_url: string
+  detail_doc_name: string
   // 排行榜相关字段
   ranking_enabled: boolean
   ranking_weight: number
@@ -113,6 +120,14 @@ export type ImageUploadResponse = {
   success: boolean
   image_url: string
   thumbnail_url: string
+  original_name: string
+  file_size: number
+  message: string
+}
+
+export type DocumentUploadResponse = {
+  success: boolean
+  file_url: string
   original_name: string
   file_size: number
   message: string

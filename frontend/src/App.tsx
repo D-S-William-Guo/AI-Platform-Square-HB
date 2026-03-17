@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { fetchApps, fetchRankings, fetchRecommendations, fetchRules, fetchStats, submitApp, uploadImage, fetchRankingDimensions, fetchDimensionScores, fetchRankingConfigs } from './api/client'
+import { Routes, Route, Link } from 'react-router-dom'
+import {
+  fetchApps,
+  fetchRankings,
+  fetchStats,
+  submitApp,
+  fetchSubmissionSelf,
+  updateSubmissionSelf,
+  withdrawSubmissionSelf,
+  uploadImage,
+  uploadDocument,
+  fetchRankingDimensions,
+  fetchDimensionScores,
+  fetchRankingConfigs
+} from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import type { AppItem, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import { resolveMediaUrl } from './utils/media'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
 const statusOptions = [
@@ -39,11 +53,20 @@ const defaultSubmission: SubmissionPayload = {
   data_level: 'L2',
   expected_benefit: '',
   cover_image_url: '',
+  detail_doc_url: '',
+  detail_doc_name: '',
   // 排行榜相关字段
   ranking_enabled: true,
   ranking_weight: 1.0,
   ranking_tags: '',
   ranking_dimensions: ''
+}
+
+const submissionStatusLabel: Record<Submission['status'], string> = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝',
+  withdrawn: '已撤回'
 }
 
 // 生成渐变色
@@ -65,6 +88,13 @@ function rankingMetricText(row: RankingItem) {
   if (row.metric_type === 'likes') return `点赞 ${row.likes ?? 0}`
   if (row.metric_type === 'growth_rate') return `增速 +${row.score}%`
   return `综合分 ${row.score}`
+}
+
+function monthlyCallsText(app: AppItem) {
+  if (app.monthly_calls > 0) {
+    return `${app.monthly_calls}k/月`
+  }
+  return app.section === 'province' ? '展示应用' : '0k/月'
 }
 
 // 表单验证规则类型定义
@@ -107,8 +137,6 @@ function HomePage() {
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
   const [rankingConfigs, setRankingConfigs] = useState<any[]>([])
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
-  const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
@@ -119,10 +147,23 @@ function HomePage() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [documentUploading, setDocumentUploading] = useState(false)
+  const [documentMeta, setDocumentMeta] = useState<{
+    url: string
+    name: string
+    size: number
+    mimeType: string
+  } | null>(null)
+  const [showSubmissionManage, setShowSubmissionManage] = useState(false)
+  const [manageToken, setManageToken] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem('LATEST_SUBMISSION_MANAGE_TOKEN') || ''
+  })
+  const [managedSubmission, setManagedSubmission] = useState<Submission | null>(null)
+  const [manageLoading, setManageLoading] = useState(false)
+  const [editingSubmissionMeta, setEditingSubmissionMeta] = useState<{ id: number; manageToken: string } | null>(null)
 
   useEffect(() => {
-    fetchRecommendations().then(setRecommendations)
-    fetchRules().then(setRules)
     fetchRankingDimensions()
       .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
       .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
@@ -369,6 +410,127 @@ function HomePage() {
     setSubmission(prev => ({ ...prev, cover_image_url: '' }))
   }, [])
 
+  const handleDocumentUpload = useCallback(async (file: File) => {
+    const allowedExt = ['pdf', 'doc', 'docx', 'txt', 'md']
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    if (!allowedExt.includes(ext)) {
+      alert('详细文档仅支持 PDF/DOC/DOCX/TXT/MD')
+      return
+    }
+
+    setDocumentUploading(true)
+    try {
+      const result = await uploadDocument(file)
+      if (!result.success) {
+        alert(result.message || '文档上传失败')
+        return
+      }
+      setDocumentMeta({
+        url: result.file_url,
+        name: result.original_name,
+        size: result.file_size,
+        mimeType: file.type || ''
+      })
+      setSubmission(prev => ({
+        ...prev,
+        detail_doc_url: result.file_url,
+        detail_doc_name: result.original_name
+      }))
+    } catch (_error) {
+      alert('文档上传失败，请重试')
+    } finally {
+      setDocumentUploading(false)
+    }
+  }, [])
+
+  const handleDocumentSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleDocumentUpload(file)
+    }
+  }, [handleDocumentUpload])
+
+  async function lookupManagedSubmission() {
+    const token = manageToken.trim()
+    if (!token) {
+      alert('请输入申报管理令牌')
+      return
+    }
+    try {
+      setManageLoading(true)
+      const result = await fetchSubmissionSelf(token)
+      setManagedSubmission(result)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', token)
+      }
+    } catch (_error) {
+      setManagedSubmission(null)
+      alert('未找到对应申报，请检查管理令牌是否正确')
+    } finally {
+      setManageLoading(false)
+    }
+  }
+
+  async function withdrawManagedSubmission() {
+    if (!managedSubmission || managedSubmission.status !== 'pending') {
+      return
+    }
+    if (!confirm('确定撤回该申报吗？撤回后将不会进入审核。')) {
+      return
+    }
+    try {
+      await withdrawSubmissionSelf(managedSubmission.id, manageToken.trim())
+      const refreshed = await fetchSubmissionSelf(manageToken.trim())
+      setManagedSubmission(refreshed)
+      alert('申报已撤回。')
+    } catch (_error) {
+      alert('撤回失败，请稍后重试')
+    }
+  }
+
+  function editManagedSubmission() {
+    if (!managedSubmission || managedSubmission.status !== 'pending') {
+      return
+    }
+    setEditingSubmissionMeta({ id: managedSubmission.id, manageToken: manageToken.trim() })
+    setSubmission({
+      app_name: managedSubmission.app_name,
+      unit_name: managedSubmission.unit_name,
+      contact: managedSubmission.contact,
+      contact_phone: managedSubmission.contact_phone,
+      contact_email: managedSubmission.contact_email,
+      category: managedSubmission.category,
+      scenario: managedSubmission.scenario,
+      embedded_system: managedSubmission.embedded_system,
+      problem_statement: managedSubmission.problem_statement,
+      effectiveness_type: managedSubmission.effectiveness_type,
+      effectiveness_metric: managedSubmission.effectiveness_metric,
+      data_level: managedSubmission.data_level,
+      expected_benefit: managedSubmission.expected_benefit,
+      cover_image_url: managedSubmission.cover_image_url || '',
+      detail_doc_url: managedSubmission.detail_doc_url || '',
+      detail_doc_name: managedSubmission.detail_doc_name || '',
+      ranking_enabled: managedSubmission.ranking_enabled,
+      ranking_weight: managedSubmission.ranking_weight,
+      ranking_tags: managedSubmission.ranking_tags,
+      ranking_dimensions: managedSubmission.ranking_dimensions
+    })
+    setImagePreview(managedSubmission.cover_image_url ? resolveMediaUrl(managedSubmission.cover_image_url) : null)
+    setDocumentMeta(
+      managedSubmission.detail_doc_url
+        ? {
+            url: managedSubmission.detail_doc_url,
+            name: managedSubmission.detail_doc_name || '详细文档',
+            size: 0,
+            mimeType: ''
+          }
+        : null
+    )
+    setErrors({})
+    setShowSubmissionManage(false)
+    setShowSubmission(true)
+  }
+
   async function onSubmit() {
     if (!validateForm()) {
       alert('请检查表单填写是否正确')
@@ -376,12 +538,29 @@ function HomePage() {
     }
 
     try {
-      await submitApp(submission)
+      if (editingSubmissionMeta) {
+        await updateSubmissionSelf(editingSubmissionMeta.id, {
+          ...submission,
+          manage_token: editingSubmissionMeta.manageToken
+        })
+        alert('申报已更新，等待审核。')
+      } else {
+        const created = await submitApp(submission)
+        if (typeof window !== 'undefined' && created.manage_token) {
+          window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', created.manage_token)
+        }
+        alert(
+          created.manage_token
+            ? `申报已提交，等待审核。\n请保存管理令牌：${created.manage_token}`
+            : '申报已提交，等待审核。'
+        )
+      }
       setShowSubmission(false)
       setSubmission(defaultSubmission)
       setImagePreview(null)
+      setDocumentMeta(null)
       setErrors({})
-      alert('申报已提交，等待审核。')
+      setEditingSubmissionMeta(null)
     } catch (error) {
       alert('提交失败，请重试')
     }
@@ -391,7 +570,9 @@ function HomePage() {
     setShowSubmission(false)
     setSubmission(defaultSubmission)
     setImagePreview(null)
+    setDocumentMeta(null)
     setErrors({})
+    setEditingSubmissionMeta(null)
   }
 
   return (
@@ -411,6 +592,10 @@ function HomePage() {
           />
         </div>
         <div className="header-actions">
+          <button className="secondary" onClick={() => setShowSubmissionManage(true)}>
+            <span>📋</span>
+            <span>申报管理</span>
+          </button>
           <button className="primary" onClick={() => setShowSubmission(true)}>
             <span>+</span>
             <span>我要申报</span>
@@ -499,6 +684,56 @@ function HomePage() {
               <span>历史榜单</span>
             </Link>
           </div>
+
+          <div className="quick-links stats-panel">
+            <div className="nav-section-title">申报统计</div>
+            <div className="stats-grid">
+              {statsLoading ? (
+                <div className="stats-loading">
+                  <div className="loading-spinner"></div>
+                  <span>加载中...</span>
+                </div>
+              ) : statsError ? (
+                <div className="stats-error">
+                  <span className="error-icon">❌</span>
+                  <span>{statsError}</span>
+                  <button
+                    className="retry-button"
+                    onClick={async () => {
+                      try {
+                        setStatsLoading(true)
+                        setStatsError(null)
+                        const data = await fetchStats()
+                        setStats(data)
+                      } catch (error) {
+                        console.error('Failed to fetch stats:', error)
+                        setStatsError('获取统计数据失败')
+                      } finally {
+                        setStatsLoading(false)
+                      }
+                    }}
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="stat-item">
+                    <span className="stat-label">待审核</span>
+                    <span className="stat-value pending">{stats.pending}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">本期已通过</span>
+                    <span className="stat-value approved">{stats.approved_period}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">累计应用</span>
+                    <span className="stat-value total">{stats.total_apps}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </aside>
 
         <main className="main">
@@ -564,7 +799,10 @@ function HomePage() {
             <section className="grid">
               {apps.map((app) => (
                 <article className="card" key={app.id} onClick={() => setSelectedApp(app)}>
-                  <div className="card-image" style={{ background: app.cover_image_url ? `url(${app.cover_image_url}) center/cover` : getGradient(app.id) }}>
+                  <div
+                    className="card-image"
+                    style={{ background: app.cover_image_url ? `url(${resolveMediaUrl(app.cover_image_url)}) center/cover` : getGradient(app.id) }}
+                  >
                     <span className={`status-badge ${app.status}`}>
                       {statusOptions.find((x) => x.value === app.status)?.label}
                     </span>
@@ -579,7 +817,7 @@ function HomePage() {
                     <p className="card-desc">{app.description}</p>
                     <div className="card-footer">
                       <div className="card-metrics">
-                        <span>📊 {app.monthly_calls}k/月</span>
+                        <span>📊 {monthlyCallsText(app)}</span>
                         <span>📅 {app.release_date}</span>
                       </div>
                     </div>
@@ -611,107 +849,6 @@ function HomePage() {
           )}
         </main>
 
-        <aside className="right">
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">⭐</span>
-              <span>本期推荐</span>
-            </h4>
-            {recommendations.map((item, index) => (
-              <div className="mini-card" key={item.title}>
-                <div className="mini-card-icon" style={{ background: getGradient(index) }}>
-                  {['🤖', '💼', '📊'][index % 3]}
-                </div>
-                <div className="mini-card-content">
-                  <div className="mini-card-title">{item.title}</div>
-                  <p className="mini-card-desc">{item.scene}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">📈</span>
-              <span>申报统计</span>
-            </h4>
-            <div className="stats-grid">
-              {statsLoading ? (
-                <div className="stats-loading">
-                  <div className="loading-spinner"></div>
-                  <span>加载中...</span>
-                </div>
-              ) : statsError ? (
-                <div className="stats-error">
-                  <span className="error-icon">❌</span>
-                  <span>{statsError}</span>
-                  <button 
-                    className="retry-button" 
-                    onClick={async () => {
-                      try {
-                        setStatsLoading(true)
-                        setStatsError(null)
-                        const data = await fetchStats()
-                        setStats(data)
-                      } catch (error) {
-                        console.error('Failed to fetch stats:', error)
-                        setStatsError('获取统计数据失败')
-                      } finally {
-                        setStatsLoading(false)
-                      }
-                    }}
-                  >
-                    重试
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="stat-item">
-                    <span className="stat-label">待审核</span>
-                    <span className="stat-value pending">{stats.pending}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">本期已通过</span>
-                    <span className="stat-value approved">{stats.approved_period}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">累计应用</span>
-                    <span className="stat-value total">{stats.total_apps}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">⚡</span>
-              <span>快速入口</span>
-            </h4>
-            <div className="rule-list">
-              <Link to="/guide" className="rule-item">
-                <span className="rule-icon">📋</span>
-                <span>申报指南</span>
-              </Link>
-              <Link to="/rule" className="rule-item">
-                <span className="rule-icon">📜</span>
-                <span>榜单规则</span>
-              </Link>
-              <Link to="/ranking-management" className="rule-item">
-                <span className="rule-icon">⚙️</span>
-                <span>排行榜管理</span>
-              </Link>
-              <Link to="/submission-review" className="rule-item">
-                <span className="rule-icon">✅</span>
-                <span>申报审核</span>
-              </Link>
-              <Link to="/historical-ranking" className="rule-item">
-                <span className="rule-icon">📊</span>
-                <span>历史榜单</span>
-              </Link>
-            </div>
-          </div>
-        </aside>
       </div>
 
       <footer className="footer">
@@ -733,7 +870,10 @@ function HomePage() {
             </div>
             
             <div className="modal-body">
-              <div className="modal-cover" style={{ background: selectedApp.cover_image_url ? `url(${selectedApp.cover_image_url}) center/cover` : getGradient(selectedApp.id) }}>
+              <div
+                className="modal-cover"
+                style={{ background: selectedApp.cover_image_url ? `url(${resolveMediaUrl(selectedApp.cover_image_url)}) center/cover` : getGradient(selectedApp.id) }}
+              >
                 <span className={`modal-status-badge ${selectedApp.status}`}>
                   {statusOptions.find((x) => x.value === selectedApp.status)?.label}
                 </span>
@@ -753,7 +893,7 @@ function HomePage() {
                 <div className="modal-metric-item">
                   <div className="modal-metric-icon">📊</div>
                   <div className="modal-metric-label">月调用量</div>
-                  <div className="modal-metric-value">{selectedApp.monthly_calls}k</div>
+                  <div className="modal-metric-value">{monthlyCallsText(selectedApp)}</div>
                 </div>
                 <div className="modal-metric-item">
                   <div className="modal-metric-icon">📅</div>
@@ -800,7 +940,7 @@ function HomePage() {
             </div>
 
             <div className="modal-footer">
-              {selectedApp.access_mode === 'direct' ? (
+              {selectedApp.section === 'group' && selectedApp.access_mode === 'direct' && Boolean(selectedApp.access_url) ? (
                 <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
                   <span>🚀</span>
                   <span>申请试用</span>
@@ -808,12 +948,89 @@ function HomePage() {
               ) : (
                 <button className="modal-btn primary" disabled>
                   <span>🔒</span>
-                  <span>需申请接入</span>
+                  <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
                 </button>
               )}
-              <button className="modal-btn secondary">
-                <span>📄</span>
-                <span>详细文档</span>
+              {selectedApp.section === 'province' && selectedApp.detail_doc_url && (
+                <a href={resolveMediaUrl(selectedApp.detail_doc_url)} target="_blank" rel="noreferrer" className="modal-btn secondary">
+                  <span>📄</span>
+                  <span>{selectedApp.detail_doc_name || '详细文档'}</span>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSubmissionManage && (
+        <div className="modal-overlay" onClick={() => setShowSubmissionManage(false)}>
+          <div className="modal-container submission-manage-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-section">
+                <h3 className="modal-title">申报管理</h3>
+                <p className="modal-subtitle">输入管理令牌后可查看、修改、撤回申报</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowSubmissionManage(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">管理令牌</label>
+                <div className="manage-token-row">
+                  <input
+                    className="form-input"
+                    value={manageToken}
+                    onChange={(e) => setManageToken(e.target.value)}
+                    placeholder="请输入提交后保存的管理令牌"
+                  />
+                  <button
+                    type="button"
+                    className="manage-token-query"
+                    onClick={lookupManagedSubmission}
+                    disabled={manageLoading}
+                  >
+                    {manageLoading ? '查询中...' : '查询'}
+                  </button>
+                </div>
+              </div>
+
+              {managedSubmission && (
+                <div className="manage-submission-card">
+                  <div className="manage-submission-header">
+                    <h4>{managedSubmission.app_name}</h4>
+                    <span className={`modal-status-badge ${managedSubmission.status}`}>
+                      {submissionStatusLabel[managedSubmission.status]}
+                    </span>
+                  </div>
+                  <div className="manage-submission-grid">
+                    <div><span className="label">申报单位</span><span>{managedSubmission.unit_name}</span></div>
+                    <div><span className="label">联系人</span><span>{managedSubmission.contact}</span></div>
+                    <div><span className="label">嵌入系统</span><span>{managedSubmission.embedded_system}</span></div>
+                    <div><span className="label">更新时间</span><span>{new Date(managedSubmission.created_at).toLocaleString()}</span></div>
+                  </div>
+                  <div className="manage-submission-actions">
+                    <button
+                      type="button"
+                      className="modal-btn secondary"
+                      onClick={editManagedSubmission}
+                      disabled={managedSubmission.status !== 'pending'}
+                    >
+                      修改申报
+                    </button>
+                    <button
+                      type="button"
+                      className="modal-btn secondary danger"
+                      onClick={withdrawManagedSubmission}
+                      disabled={managedSubmission.status !== 'pending'}
+                    >
+                      撤回申报
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn secondary" onClick={() => setShowSubmissionManage(false)}>
+                关闭
               </button>
             </div>
           </div>
@@ -825,8 +1042,10 @@ function HomePage() {
           <div className="modal-container submission-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-section">
-                <h3 className="modal-title">应用申报</h3>
-                <p className="modal-subtitle">请填写完整的应用信息，带 * 的为必填项</p>
+                <h3 className="modal-title">{editingSubmissionMeta ? '修改申报' : '应用申报'}</h3>
+                <p className="modal-subtitle">
+                  {editingSubmissionMeta ? '仅待审核申报可修改，修改后重新进入审核流程。' : '请填写完整的应用信息，带 * 的为必填项'}
+                </p>
               </div>
               <button className="modal-close" onClick={closeSubmission}>×</button>
             </div>
@@ -843,7 +1062,18 @@ function HomePage() {
                   {imagePreview ? (
                     <div className="image-preview">
                       <img src={imagePreview} alt="预览" />
-                      <button className="remove-image" onClick={removeImage}>×</button>
+                      <button
+                        type="button"
+                        className="remove-image"
+                        aria-label="移除封面图"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          removeImage()
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ) : (
                     <div className="upload-placeholder">
@@ -863,6 +1093,38 @@ function HomePage() {
                       <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
                       <span className="progress-text">{uploadProgress}%</span>
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 详细文档上传 */}
+              <div className="form-group">
+                <label className="form-label">详细文档（可选）</label>
+                <div className="doc-upload-area">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    onChange={handleDocumentSelect}
+                    className="doc-file-input"
+                  />
+                  {documentUploading ? (
+                    <span className="doc-upload-status">文档上传中...</span>
+                  ) : documentMeta ? (
+                    <div className="doc-uploaded">
+                      <span className="doc-name">{documentMeta.name}</span>
+                      <button
+                        type="button"
+                        className="doc-remove-btn"
+                        onClick={() => {
+                          setDocumentMeta(null)
+                          setSubmission(prev => ({ ...prev, detail_doc_url: '', detail_doc_name: '' }))
+                        }}
+                      >
+                        移除
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="doc-upload-status">点击上传文档，支持 PDF/DOC/DOCX/TXT/MD</span>
                   )}
                 </div>
               </div>
@@ -1120,8 +1382,8 @@ function HomePage() {
 
             <div className="modal-footer">
               <button className="modal-btn secondary" onClick={closeSubmission}>取消</button>
-              <button className="modal-btn primary" onClick={onSubmit} disabled={uploading}>
-                {uploading ? '上传中...' : '提交申报'}
+              <button className="modal-btn primary" onClick={onSubmit} disabled={uploading || manageLoading}>
+                {uploading ? '上传中...' : editingSubmissionMeta ? '保存修改' : '提交申报'}
               </button>
             </div>
           </div>

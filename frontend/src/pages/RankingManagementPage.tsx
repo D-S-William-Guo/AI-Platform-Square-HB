@@ -5,18 +5,17 @@ import {
   createRankingDimension,
   updateRankingDimension,
   deleteRankingDimension,
-  fetchRankingLogs,
-  syncRankings,
+  fetchRankingAuditLogs,
+  publishRankings,
   fetchApps,
   fetchRankingConfigs,
   createRankingConfig,
   updateRankingConfig,
   deleteRankingConfig,
-  fetchAppRankingSettings,
   fetchAllAppRankingSettings,
-  createAppRankingSetting,
-  updateAppRankingSetting,
+  fetchAppDimensionScores,
   deleteAppRankingSetting,
+  saveAppRankingSetting,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
@@ -63,7 +62,21 @@ function resolveAdminError(err: unknown, fallback: string): string {
   if (status === 403) {
     return '管理员令牌已识别，但无权限访问该页面。'
   }
-
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (detail && typeof detail === 'object') {
+    const message = (detail as { message?: string }).message || fallback
+    const fieldErrors = (detail as { field_errors?: Array<{ field?: string; message?: string }> }).field_errors || []
+    if (fieldErrors.length > 0) {
+      const rendered = fieldErrors
+        .map((item) => `${item.field || '字段'}: ${item.message || '参数无效'}`)
+        .join('；')
+      return `${message}（${rendered}）`
+    }
+    return message
+  }
   return fallback
 }
 
@@ -89,6 +102,7 @@ const RankingManagementPage = () => {
   const [apps, setApps] = useState<AppItem[]>([])
   const [appSettings, setAppSettings] = useState<Record<number, AppRankingSettingItem[]>>({})
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<AppItem | null>(null)
+  const [editingAppSetting, setEditingAppSetting] = useState<AppRankingSettingItem | null>(null)
   const [showAppSettingModal, setShowAppSettingModal] = useState(false)
   const [appSettingForm, setAppSettingForm] = useState({
     ranking_config_id: '',
@@ -96,6 +110,8 @@ const RankingManagementPage = () => {
     weight_factor: 1.0,
     custom_tags: ''
   })
+  const [dimensionScores, setDimensionScores] = useState<Record<number, number>>({})
+  const [loadingDimensionScores, setLoadingDimensionScores] = useState(false)
 
   // 通用状态
   const [loading, setLoading] = useState(true)
@@ -125,7 +141,7 @@ const RankingManagementPage = () => {
     try {
       const [dimensionsData, logsData, appsData, configsData] = await Promise.all([
         fetchRankingDimensions(),
-        fetchRankingLogs(),
+        fetchRankingAuditLogs(),
         fetchApps(),
         fetchRankingConfigs()
       ])
@@ -138,6 +154,9 @@ const RankingManagementPage = () => {
       const allSettings = await fetchAllAppRankingSettings()
       const settingsMap: Record<number, AppRankingSettingItem[]> = {}
       for (const setting of allSettings) {
+        if (!setting.ranking_config_id) {
+          continue
+        }
         if (!settingsMap[setting.app_id]) {
           settingsMap[setting.app_id] = []
         }
@@ -253,26 +272,37 @@ const RankingManagementPage = () => {
     if (!selectedAppForConfig) return
 
     try {
-      const existingSetting = appSettings[selectedAppForConfig.id]?.find(
-        s => s.ranking_config_id === appSettingForm.ranking_config_id
-      )
-
-      if (existingSetting) {
-        await updateAppRankingSetting(selectedAppForConfig.id, existingSetting.id, {
-          is_enabled: appSettingForm.is_enabled,
-          weight_factor: appSettingForm.weight_factor,
-          custom_tags: appSettingForm.custom_tags
-        })
-      } else {
-        await createAppRankingSetting(selectedAppForConfig.id, {
-          ranking_config_id: appSettingForm.ranking_config_id,
-          is_enabled: appSettingForm.is_enabled,
-          weight_factor: appSettingForm.weight_factor,
-          custom_tags: appSettingForm.custom_tags
-        })
+      if (!appSettingForm.ranking_config_id) {
+        setError('请选择榜单后再保存')
+        return
       }
 
+      const sameConfigSetting = appSettings[selectedAppForConfig.id]?.find(
+        s =>
+          s.ranking_config_id === appSettingForm.ranking_config_id
+          && s.id !== editingAppSetting?.id
+      )
+      if (sameConfigSetting) {
+        setError('该应用已参与所选榜单，请直接编辑已有配置')
+        return
+      }
+
+      const scoreUpdates = Object.entries(dimensionScores).map(([dimensionId, score]) => ({
+        dimension_id: Number(dimensionId),
+        score: Math.max(0, Math.min(100, Number(score)))
+      }))
+
+      await saveAppRankingSetting(selectedAppForConfig.id, {
+        setting_id: editingAppSetting?.id,
+        ranking_config_id: appSettingForm.ranking_config_id,
+        is_enabled: appSettingForm.is_enabled,
+        weight_factor: appSettingForm.weight_factor,
+        custom_tags: appSettingForm.custom_tags,
+        dimension_scores: scoreUpdates
+      })
+
       setShowAppSettingModal(false)
+      setEditingAppSetting(null)
       loadData()
     } catch (err) {
       setError(resolveAdminError(err, '保存应用榜单设置失败'))
@@ -292,8 +322,9 @@ const RankingManagementPage = () => {
     }
   }
 
-  const openAppSettingModal = (app: AppItem, existingSetting?: AppRankingSettingItem) => {
+  const openAppSettingModal = async (app: AppItem, existingSetting?: AppRankingSettingItem) => {
     setSelectedAppForConfig(app)
+    setEditingAppSetting(existingSetting || null)
     if (existingSetting) {
       setAppSettingForm({
         ranking_config_id: existingSetting.ranking_config_id,
@@ -309,6 +340,24 @@ const RankingManagementPage = () => {
         custom_tags: ''
       })
     }
+
+    setLoadingDimensionScores(true)
+    try {
+      const scoreData = await fetchAppDimensionScores(app.id)
+      const scoreMap: Record<number, number> = {}
+      for (const item of scoreData) {
+        if (typeof item.dimension_id === 'number') {
+          scoreMap[item.dimension_id] = Number(item.score || 0)
+        }
+      }
+      setDimensionScores(scoreMap)
+    } catch (err) {
+      console.error('Failed to fetch app dimension scores:', err)
+      setDimensionScores({})
+    } finally {
+      setLoadingDimensionScores(false)
+    }
+
     setShowAppSettingModal(true)
   }
 
@@ -371,16 +420,43 @@ const RankingManagementPage = () => {
     setSyncing(true)
     setSyncMessage(null)
     try {
-      const result = await syncRankings()
-      setSyncMessage(`同步成功！更新了 ${result.updated_count} 条排名数据`)
+      const result = await publishRankings()
+      setSyncMessage(`发布成功！更新了 ${result.updated_count} 条榜单数据（run_id: ${result.run_id}）`)
       loadData()
     } catch (err) {
       console.error('同步失败:', err)
-      setSyncMessage(resolveAdminError(err, '同步失败，请重试'))
+      setSyncMessage(resolveAdminError(err, '发布失败，请重试'))
     } finally {
       setSyncing(false)
     }
   }
+
+  const selectedConfigDimensions = (() => {
+    const activeDimensions = dimensions.filter(d => d.is_active)
+    if (!appSettingForm.ranking_config_id) {
+      return activeDimensions
+    }
+    const selectedConfig = rankingConfigs.find(config => config.id === appSettingForm.ranking_config_id)
+    if (!selectedConfig) {
+      return activeDimensions
+    }
+    try {
+      const parsed = JSON.parse(selectedConfig.dimensions_config || '[]')
+      const ids = new Set<number>(
+        Array.isArray(parsed)
+          ? parsed
+              .map((item: DimensionConfig) => Number(item.dim_id))
+              .filter((id: number) => !Number.isNaN(id))
+          : []
+      )
+      if (ids.size === 0) {
+        return activeDimensions
+      }
+      return activeDimensions.filter(d => ids.has(d.id))
+    } catch (_err) {
+      return activeDimensions
+    }
+  })()
 
   // ==================== 渲染 ====================
 
@@ -540,9 +616,12 @@ const RankingManagementPage = () => {
                   onClick={() => handleSyncRankings()}
                   disabled={syncing}
                 >
-                  {syncing ? '🔄 同步中...' : '🔄 同步所有榜单'}
+                  {syncing ? '🔄 发布中...' : '🚀 发布榜单'}
                 </button>
               </div>
+              <p className="section-note">
+                评分来源说明：榜单最终分数 = 各维度评分 × 维度权重 × 应用权重系数。维度评分可在“添加参与/编辑”弹窗中维护。
+              </p>
 
               {syncMessage && (
                 <div className={`sync-message ${syncMessage.includes('成功') ? 'success' : 'error'}`}>
@@ -740,13 +819,27 @@ const RankingManagementPage = () => {
                             {new Date(log.created_at).toLocaleString()}
                           </td>
                           <td className="log-action">
-                            <span className={`action-badge ${log.action}`}>
-                              {log.action === 'create' ? '创建' : log.action === 'update' ? '更新' : '删除'}
+                            <span
+                              className={`action-badge ${
+                                String(log.action || '').includes('created')
+                                  ? 'create'
+                                  : String(log.action || '').includes('deleted')
+                                    ? 'delete'
+                                    : 'update'
+                              }`}
+                            >
+                              {String(log.action || '').includes('created')
+                                ? '创建'
+                                : String(log.action || '').includes('deleted')
+                                  ? '删除'
+                                  : String(log.action || '').includes('sync')
+                                    ? '同步'
+                                    : '更新'}
                             </span>
                           </td>
-                          <td className="log-dimension">{log.dimension_name}</td>
-                          <td className="log-changes">{log.changes}</td>
-                          <td className="log-operator">{log.operator}</td>
+                          <td className="log-dimension">{log.ranking_config_id || log.ranking_type || '-'}</td>
+                          <td className="log-changes">{log.payload_summary || '-'}</td>
+                          <td className="log-operator">{log.actor || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -875,11 +968,25 @@ const RankingManagementPage = () => {
 
       {/* 应用榜单设置模态框 */}
       {showAppSettingModal && selectedAppForConfig && (
-        <div className="modal-overlay" onClick={() => setShowAppSettingModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setShowAppSettingModal(false)
+            setEditingAppSetting(null)
+          }}
+        >
           <div className="modal-container" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>配置应用参与 - {selectedAppForConfig.name}</h3>
-              <button className="modal-close" onClick={() => setShowAppSettingModal(false)}>×</button>
+              <h3>{editingAppSetting ? '编辑应用参与' : '配置应用参与'} - {selectedAppForConfig.name}</h3>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setShowAppSettingModal(false)
+                  setEditingAppSetting(null)
+                }}
+              >
+                ×
+              </button>
             </div>
             <div className="modal-body">
               <form className="app-setting-form">
@@ -889,7 +996,6 @@ const RankingManagementPage = () => {
                     id="setting-config"
                     value={appSettingForm.ranking_config_id}
                     onChange={(e) => setAppSettingForm(prev => ({ ...prev, ranking_config_id: e.target.value }))}
-                    disabled={appSettings[selectedAppForConfig.id]?.some(s => s.ranking_config_id === appSettingForm.ranking_config_id)}
                   >
                     <option value="">请选择榜单</option>
                     {rankingConfigs.map(config => (
@@ -932,10 +1038,49 @@ const RankingManagementPage = () => {
                     placeholder="多个标签用逗号分隔"
                   />
                 </div>
+
+                <div className="form-group">
+                  <label>维度评分（0-100）</label>
+                  <p className="form-hint">
+                    应用最终分数由“榜单维度权重 × 应用维度评分 × 权重系数”计算，未填写时默认沿用当前评分。
+                  </p>
+                  {loadingDimensionScores ? (
+                    <div className="loading">加载维度评分中...</div>
+                  ) : selectedConfigDimensions.length === 0 ? (
+                    <div className="empty-state">
+                      <p>当前榜单未配置有效维度</p>
+                    </div>
+                  ) : (
+                    <div className="dimension-score-grid">
+                      {selectedConfigDimensions.map((dimension) => (
+                        <div key={dimension.id} className="dimension-score-item">
+                          <span className="dimension-score-name">{dimension.name}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={dimensionScores[dimension.id] ?? 0}
+                            onChange={(e) => {
+                              const nextValue = Math.max(0, Math.min(100, Number(e.target.value || 0)))
+                              setDimensionScores(prev => ({ ...prev, [dimension.id]: nextValue }))
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </form>
             </div>
             <div className="modal-footer">
-              <button className="secondary-button" onClick={() => setShowAppSettingModal(false)}>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setShowAppSettingModal(false)
+                  setEditingAppSetting(null)
+                }}
+              >
                 取消
               </button>
               <button className="primary-button" onClick={handleSaveAppSetting}>

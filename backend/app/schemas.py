@@ -22,6 +22,8 @@ class AppDetail(AppBase):
     highlight: str
     access_mode: str
     access_url: str
+    detail_doc_url: str = ""
+    detail_doc_name: str = ""
     target_system: str
     target_users: str
     problem_statement: str
@@ -82,6 +84,8 @@ class SubmissionCreate(BaseModel):
     data_level: str
     expected_benefit: str = Field(min_length=10, max_length=300)
     cover_image_url: str = Field(default="", max_length=500)
+    detail_doc_url: str = Field(default="", max_length=500)
+    detail_doc_name: str = Field(default="", max_length=255)
     # 排行榜相关字段
     ranking_enabled: bool = Field(default=True)
     ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
@@ -105,7 +109,10 @@ class SubmissionOut(BaseModel):
     data_level: str
     expected_benefit: str
     status: str
+    manage_token: str
     cover_image_url: str
+    detail_doc_url: str
+    detail_doc_name: str
     created_at: datetime
     # 排行榜相关字段
     ranking_enabled: bool
@@ -116,10 +123,36 @@ class SubmissionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubmissionApprovePayload(BaseModel):
+    status: str | None = None
+    monthly_calls: float | None = Field(default=None, ge=0)
+    difficulty: str | None = Field(default=None, max_length=20)
+    target_system: str | None = Field(default=None, max_length=120)
+    target_users: str | None = Field(default=None, max_length=120)
+    access_mode: str | None = None
+    access_url: str | None = Field(default=None, max_length=255)
+
+
+class SubmissionManageTokenPayload(BaseModel):
+    manage_token: str = Field(min_length=16, max_length=128)
+
+
+class SubmissionSelfUpdate(SubmissionCreate):
+    manage_token: str = Field(min_length=16, max_length=128)
+
+
 class ImageUploadResponse(BaseModel):
     success: bool
     image_url: str
     thumbnail_url: str
+    original_name: str
+    file_size: int
+    message: str
+
+
+class DocumentUploadResponse(BaseModel):
+    success: bool
+    file_url: str
     original_name: str
     file_size: int
     message: str
@@ -193,6 +226,10 @@ class AppDimensionScoreOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DimensionScoreUpdate(BaseModel):
+    score: int = Field(..., ge=0, le=100)
 
 
 class HistoricalRankingOut(BaseModel):
@@ -293,6 +330,7 @@ class AppRankingSettingCreate(BaseModel):
 
 class AppRankingSettingUpdate(BaseModel):
     """更新应用榜单设置"""
+    ranking_config_id: str | None = Field(None, min_length=1, max_length=50)
     is_enabled: bool | None = None
     weight_factor: float | None = Field(None, ge=0.1, le=10.0)
     custom_tags: str | None = Field(None, max_length=255)
@@ -306,6 +344,30 @@ class AppRankingSettingOut(AppRankingSettingBase):
     ranking_config: RankingConfigOut | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AppDimensionScoreInput(BaseModel):
+    """应用维度评分输入"""
+    dimension_id: int = Field(..., ge=1)
+    score: int = Field(..., ge=0, le=100)
+
+
+class AppRankingSettingSaveRequest(BaseModel):
+    """原子保存应用榜单参与与维度评分"""
+    setting_id: int | None = None
+    ranking_config_id: str = Field(..., min_length=1, max_length=50)
+    is_enabled: bool = True
+    weight_factor: float = Field(default=1.0, ge=0.1, le=10.0)
+    custom_tags: str = Field(default="", max_length=255)
+    dimension_scores: list[AppDimensionScoreInput] = Field(default_factory=list)
+
+
+class AppRankingSettingSaveResponse(BaseModel):
+    """原子保存结果"""
+    setting: AppRankingSettingOut
+    updated_dimensions: int
+    synced: int
+    run_id: str
 
 
 class DimensionConfigItem(BaseModel):
