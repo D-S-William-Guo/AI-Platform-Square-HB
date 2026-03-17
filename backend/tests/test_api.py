@@ -12,12 +12,60 @@ from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRank
 
 client = TestClient(app)
 ADMIN_HEADERS = {'X-Admin-Token': settings.admin_token}
+DEFAULT_USER_LOGIN = {"username": "zhangsan", "password": settings.user_default_password}
+
+
+def login_and_get_token(username: str, password: str) -> str:
+    client.cookies.clear()
+    resp = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert resp.status_code == 200
+    return resp.json()["access_token"]
 
 
 def test_health():
     resp = client.get('/api/health')
     assert resp.status_code == 200
     assert resp.json()['status'] == 'ok'
+
+
+def test_auth_login_me_logout_flow():
+    client.cookies.clear()
+    login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+    assert login_resp.status_code == 200
+    token = login_resp.json()["access_token"]
+    assert token
+    assert login_resp.json()["user"]["username"] == "zhangsan"
+
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["user"]["role"] == "user"
+
+    logout_resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert logout_resp.status_code == 200
+
+    after_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert after_resp.status_code == 401
+
+
+def test_auth_login_rejects_invalid_password():
+    client.cookies.clear()
+    resp = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})
+    assert resp.status_code == 401
+
+
+def test_admin_api_supports_admin_session_token():
+    token = login_and_get_token("lisi", settings.admin_default_password)
+    resp = client.get("/api/submissions", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+    client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+
+
+def test_admin_api_rejects_non_admin_session_token():
+    token = login_and_get_token("zhangsan", settings.user_default_password)
+    resp = client.get("/api/submissions", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403
+    client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
 
 
 def test_list_apps():
@@ -472,12 +520,14 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
 
 
 def test_admin_endpoint_requires_token():
+    client.cookies.clear()
     resp = client.post('/api/rankings/sync')
     assert resp.status_code == 401
 
 
 def test_admin_endpoint_accepts_valid_token():
     Base.metadata.create_all(bind=engine)
+    client.cookies.clear()
     resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
     assert resp.status_code == 200
 

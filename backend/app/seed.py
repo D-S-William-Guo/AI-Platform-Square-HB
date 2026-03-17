@@ -3,7 +3,17 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from .models import App, Ranking, RankingConfig, RankingDimension, Submission, AppRankingSetting
+from .auth_utils import hash_password
+from .config import settings
+from .models import (
+    App,
+    AppRankingSetting,
+    Ranking,
+    RankingConfig,
+    RankingDimension,
+    Submission,
+    User,
+)
 
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
@@ -18,6 +28,21 @@ LEGACY_DIMENSION_ID_TO_NAME = {
     7: "用户增长",
     8: "市场热度",
 }
+
+DEFAULT_USERS = [
+    {
+        "username": "zhangsan",
+        "chinese_name": "张三",
+        "role": "user",
+        "password": settings.user_default_password,
+    },
+    {
+        "username": "lisi",
+        "chinese_name": "李四",
+        "role": "admin",
+        "password": settings.admin_default_password,
+    },
+]
 
 
 GROUP_APPS = [
@@ -701,6 +726,49 @@ def sync_rankings(db: Session, ranking_config_id: str | None = None) -> int:
     return updated_count
 
 
+def seed_default_users(db: Session) -> None:
+    usernames = [item["username"] for item in DEFAULT_USERS]
+    existing = {
+        user.username: user
+        for user in db.query(User).filter(User.username.in_(usernames)).all()
+    }
+    changed = False
+
+    for item in DEFAULT_USERS:
+        user = existing.get(item["username"])
+        if user is None:
+            db.add(
+                User(
+                    username=item["username"],
+                    chinese_name=item["chinese_name"],
+                    role=item["role"],
+                    is_active=True,
+                    phone="",
+                    email="",
+                    department="",
+                    password_hash=hash_password(item["password"]),
+                )
+            )
+            changed = True
+            continue
+
+        if not user.password_hash:
+            user.password_hash = hash_password(item["password"])
+            changed = True
+        if not user.chinese_name:
+            user.chinese_name = item["chinese_name"]
+            changed = True
+        if user.role not in {"user", "admin"}:
+            user.role = item["role"]
+            changed = True
+        if user.is_active is None:
+            user.is_active = True
+            changed = True
+
+    if changed:
+        db.commit()
+
+
 def seed_data(db: Session) -> None:
     """初始化数据库数据
     - 集团应用直接录入（系统内置）
@@ -713,6 +781,13 @@ def seed_data(db: Session) -> None:
     except Exception as exc:
         print(f"Database error during seed: {exc}")
         return
+
+    # 0. 初始化默认用户
+    try:
+        seed_default_users(db)
+    except Exception as exc:
+        print(f"Error seeding users: {exc}")
+        db.rollback()
 
     # 1. 初始化维度
     try:

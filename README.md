@@ -147,6 +147,19 @@ cp .env.local.example .env.local
 >
 > 生产环境请勿使用 `VITE_ADMIN_TOKEN` 存放真实管理员密钥（前端变量会暴露）。后端在 `ENVIRONMENT=production` 且 `ADMIN_TOKEN` 仍为默认值时会拒绝启动。
 
+## 登录与权限（第一阶段）
+
+- 新增会话登录接口：
+  - `POST /api/auth/login`
+  - `GET /api/auth/me`
+  - `POST /api/auth/logout`
+- 默认会在启动时种子两个账号（可通过环境变量修改默认密码）：
+  - 普通用户：`zhangsan`（张三）
+  - 管理员：`lisi`（李四）
+- 管理接口已支持两种鉴权方式并存（平滑过渡）：
+  - 新方式：`Authorization: Bearer <session_token>`（管理员登录态）
+  - 兼容方式：`X-Admin-Token: <ADMIN_TOKEN>`
+
 ## ⚠️ 前端开发规范（重要）
 
 ### CSS 命名空间规范（必读）
