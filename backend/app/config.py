@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     image_dir: str = "static/images"
     environment: str = "development"
     admin_token: str = "admin-secret-token"
+    auth_cookie_name: str = "AI_APP_AUTH"
+    auth_session_ttl_hours: int = 12
+    user_default_password: str = "ChangeMe_User_123!"
+    admin_default_password: str = "ChangeMe_Admin_123!"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -23,6 +27,11 @@ class Settings(BaseSettings):
 def validate_settings(settings_obj: Settings) -> None:
     if settings_obj.environment.lower() in {"prod", "production"} and settings_obj.admin_token == "admin-secret-token":
         raise ValueError("ADMIN_TOKEN must be set to a non-default value in production")
+    if settings_obj.environment.lower() in {"prod", "production"}:
+        if settings_obj.user_default_password == "ChangeMe_User_123!":
+            raise ValueError("USER_DEFAULT_PASSWORD must be changed in production")
+        if settings_obj.admin_default_password == "ChangeMe_Admin_123!":
+            raise ValueError("ADMIN_DEFAULT_PASSWORD must be changed in production")
 
 
 settings = Settings()

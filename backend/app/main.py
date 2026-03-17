@@ -3,11 +3,11 @@ import os
 import uuid
 import json
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Body, Cookie, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -15,11 +15,31 @@ from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
+from .auth_utils import generate_session_token, verify_password
 from .config import resolve_runtime_path, settings
 from .database import Base, engine, get_db
-from .models import App, Ranking, Submission, SubmissionImage, RankingDimension, RankingLog, RankingAuditLog, AppDimensionScore, HistoricalRanking, RankingConfig, AppRankingSetting
+from .models import (
+    ActionLog,
+    App,
+    AppDimensionScore,
+    AppRankingSetting,
+    AuthSession,
+    HistoricalRanking,
+    Ranking,
+    RankingAuditLog,
+    RankingConfig,
+    RankingDimension,
+    RankingLog,
+    Submission,
+    SubmissionImage,
+    User,
+)
 from .schemas import (
+    ActionLogOut,
     AppDetail,
+    AuthLoginRequest,
+    AuthLoginResponse,
+    AuthMeResponse,
     ImageUploadResponse,
     DocumentUploadResponse,
     RankingItem,
@@ -50,6 +70,7 @@ from .schemas import (
     AppRankingSettingOut,
     DimensionConfigItem,
     RankingConfigWithDimensions,
+    UserPublic,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
@@ -177,22 +198,113 @@ def validate_submission_payload(payload: SubmissionCreate) -> None:
     )
 
 
+def extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    if not authorization.lower().startswith("bearer "):
+        return None
+    return authorization[7:].strip() or None
+
+
+def load_active_session(db: Session, token: str | None) -> AuthSession | None:
+    if not token:
+        return None
+    session = (
+        db.query(AuthSession)
+        .options(joinedload(AuthSession.user))
+        .filter(AuthSession.token_jti == token)
+        .first()
+    )
+    if not session:
+        return None
+    if session.revoked_at is not None:
+        return None
+    if session.expires_at <= datetime.utcnow():
+        return None
+    if not session.user or not session.user.is_active:
+        return None
+    return session
+
+
+def to_public_user(user: User) -> UserPublic:
+    return UserPublic(
+        id=user.id,
+        username=user.username,
+        chinese_name=user.chinese_name,
+        role=user.role,
+        phone=user.phone or "",
+        email=user.email or "",
+        department=user.department or "",
+        is_active=bool(user.is_active),
+    )
+
+
+def write_action_log(
+    db: Session,
+    *,
+    action: str,
+    actor_user: User | None = None,
+    resource_type: str = "",
+    resource_id: str = "",
+    request_id: str = "",
+    payload_summary: str = "",
+) -> None:
+    db.add(
+        ActionLog(
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role=(actor_user.role if actor_user else ""),
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            request_id=request_id,
+            payload_summary=payload_summary,
+        )
+    )
+
+
+def require_auth_session(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+    auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
+) -> AuthSession:
+    token = extract_bearer_token(authorization) or auth_cookie_token
+    if not token or token == settings.admin_token:
+        raise HTTPException(status_code=401, detail="请先登录")
+    session = load_active_session(db, token)
+    if not session:
+        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
+    return session
+
+
 def require_admin_token(
+    db: Session = Depends(get_db),
     x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
     authorization: Optional[str] = Header(default=None),
+    auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> None:
-    bearer_token: Optional[str] = None
-    if authorization and authorization.lower().startswith("bearer "):
-        bearer_token = authorization[7:].strip()
+    bearer_token = extract_bearer_token(authorization)
+    has_any_credential = bool(x_admin_token or bearer_token or auth_cookie_token)
 
-    provided_token = x_admin_token or bearer_token
-    if not provided_token:
-        raise HTTPException(status_code=401, detail="缺少管理员令牌")
-    if provided_token != settings.admin_token:
+    if x_admin_token:
+        if x_admin_token != settings.admin_token:
+            raise HTTPException(status_code=403, detail="无权限访问")
+        return
+
+    if bearer_token == settings.admin_token:
+        return
+
+    for candidate in (bearer_token, auth_cookie_token):
+        if not candidate or candidate == settings.admin_token:
+            continue
+        session = load_active_session(db, candidate)
+        if session:
+            if session.user.role != "admin":
+                raise HTTPException(status_code=403, detail="无权限访问")
+            return
+
+    if has_any_credential:
         raise HTTPException(status_code=403, detail="无权限访问")
-
-
-
+    raise HTTPException(status_code=401, detail="缺少管理员令牌")
 
 def write_ranking_audit_log(
     db: Session,
@@ -662,6 +774,97 @@ def sync_after_chain_mutation(db: Session, trigger: str) -> tuple[int, str]:
 @app.get(f"{settings.api_prefix}/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.post(f"{settings.api_prefix}/auth/login", response_model=AuthLoginResponse)
+def auth_login(
+    payload: AuthLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    username = payload.username.strip()
+    user = (
+        db.query(User)
+        .filter(func.lower(User.username) == username.lower())
+        .first()
+    )
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="用户已被禁用")
+
+    ttl_hours = max(1, settings.auth_session_ttl_hours)
+    issued_at = datetime.utcnow()
+    expires_at = issued_at + timedelta(hours=ttl_hours)
+    token = generate_session_token()
+
+    db.add(
+        AuthSession(
+            user_id=user.id,
+            token_jti=token,
+            issued_at=issued_at,
+            expires_at=expires_at,
+            ip=(request.client.host if request.client else ""),
+            user_agent=request.headers.get("user-agent", ""),
+        )
+    )
+    write_action_log(
+        db,
+        action="auth.login",
+        actor_user=user,
+        resource_type="session",
+        resource_id=token[:16],
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary="login_success",
+    )
+    db.commit()
+
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=token,
+        httponly=True,
+        secure=settings.environment.lower() in {"prod", "production"},
+        samesite="lax",
+        max_age=ttl_hours * 3600,
+    )
+
+    return AuthLoginResponse(
+        access_token=token,
+        token_type="bearer",
+        expires_at=expires_at,
+        user=to_public_user(user),
+    )
+
+
+@app.get(f"{settings.api_prefix}/auth/me", response_model=AuthMeResponse)
+def auth_me(auth_session: AuthSession = Depends(require_auth_session)):
+    return AuthMeResponse(
+        expires_at=auth_session.expires_at,
+        user=to_public_user(auth_session.user),
+    )
+
+
+@app.post(f"{settings.api_prefix}/auth/logout")
+def auth_logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    auth_session: AuthSession = Depends(require_auth_session),
+):
+    auth_session.revoked_at = datetime.utcnow()
+    write_action_log(
+        db,
+        action="auth.logout",
+        actor_user=auth_session.user,
+        resource_type="session",
+        resource_id=auth_session.token_jti[:16],
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary="logout_success",
+    )
+    db.commit()
+    response.delete_cookie(settings.auth_cookie_name)
+    return {"message": "已退出登录"}
 
 
 @app.get(f"{settings.api_prefix}/venv/info")
@@ -1592,6 +1795,38 @@ def get_ranking_audit_logs(
 ):
     """获取排行榜审计日志。"""
     return db.query(RankingAuditLog).order_by(RankingAuditLog.created_at.desc()).limit(limit).all()
+
+
+@app.get(f"{settings.api_prefix}/action-logs", response_model=list[ActionLogOut])
+def get_action_logs(
+    limit: int = Query(default=100, ge=1, le=500),
+    action: str | None = Query(default=None),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    query = db.query(ActionLog).options(joinedload(ActionLog.actor_user))
+    if action:
+        query = query.filter(ActionLog.action == action)
+    rows = (
+        query.order_by(ActionLog.created_at.desc(), ActionLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        ActionLogOut(
+            id=row.id,
+            actor_user_id=row.actor_user_id,
+            actor_username=row.actor_user.username if row.actor_user else "",
+            actor_role=row.actor_role,
+            action=row.action,
+            resource_type=row.resource_type,
+            resource_id=row.resource_id,
+            request_id=row.request_id,
+            payload_summary=row.payload_summary,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
 
 
 # 数据联动 API

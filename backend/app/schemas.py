@@ -69,6 +69,48 @@ class RuleLink(BaseModel):
     href: str
 
 
+class UserPublic(BaseModel):
+    id: int
+    username: str
+    chinese_name: str
+    role: str
+    phone: str
+    email: str
+    department: str
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class AuthLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: datetime
+    user: UserPublic
+
+
+class AuthMeResponse(BaseModel):
+    expires_at: datetime
+    user: UserPublic
+
+
+class ActionLogOut(BaseModel):
+    id: int
+    actor_user_id: int | None
+    actor_username: str
+    actor_role: str
+    action: str
+    resource_type: str
+    resource_id: str
+    request_id: str
+    payload_summary: str
+    created_at: datetime
+
 class SubmissionCreate(BaseModel):
     app_name: str = Field(min_length=2, max_length=120)
     unit_name: str = Field(min_length=2, max_length=120)
