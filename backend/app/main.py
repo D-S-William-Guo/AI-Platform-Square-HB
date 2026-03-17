@@ -111,26 +111,86 @@ def ensure_additive_schema_columns() -> None:
     """为历史数据库补齐增量字段，避免版本升级后因缺列导致 500。"""
     expected_columns = {
         "apps": {
-            "detail_doc_url": "VARCHAR(500) DEFAULT ''",
-            "detail_doc_name": "VARCHAR(255) DEFAULT ''",
+            "detail_doc_url": {
+                "mysql": "VARCHAR(500) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "detail_doc_name": {
+                "mysql": "VARCHAR(255) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "created_by_user_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "created_from_submission_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "approved_by_user_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "approved_at": {
+                "mysql": "DATETIME NULL",
+                "sqlite": "DATETIME",
+            },
         },
         "submissions": {
-            "manage_token": "VARCHAR(64) DEFAULT ''",
-            "detail_doc_url": "VARCHAR(500) DEFAULT ''",
-            "detail_doc_name": "VARCHAR(255) DEFAULT ''",
+            "manage_token": {
+                "mysql": "VARCHAR(64) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "detail_doc_url": {
+                "mysql": "VARCHAR(500) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "detail_doc_name": {
+                "mysql": "VARCHAR(255) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "submitter_user_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "approved_by_user_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "approved_at": {
+                "mysql": "DATETIME NULL",
+                "sqlite": "DATETIME",
+            },
+            "rejected_by_user_id": {
+                "mysql": "INT NULL",
+                "sqlite": "INTEGER",
+            },
+            "rejected_at": {
+                "mysql": "DATETIME NULL",
+                "sqlite": "DATETIME",
+            },
+            "rejected_reason": {
+                "mysql": "VARCHAR(255) DEFAULT ''",
+                "sqlite": "TEXT DEFAULT ''",
+            },
+            "updated_at": {
+                "mysql": "DATETIME NULL",
+                "sqlite": "DATETIME",
+            },
         },
     }
     with engine.begin() as conn:
         inspector = inspect(conn)
         for table_name, columns in expected_columns.items():
             existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
-            for col_name, col_def in columns.items():
+            for col_name, defs in columns.items():
                 if col_name in existing_cols:
                     continue
                 if conn.dialect.name == "sqlite":
-                    sqlite_def = "TEXT DEFAULT ''"
+                    sqlite_def = defs["sqlite"]
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {sqlite_def}"))
                 else:
+                    col_def = defs["mysql"]
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
 
 
@@ -276,22 +336,36 @@ def require_auth_session(
     return session
 
 
+def get_optional_auth_session(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+    auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
+) -> AuthSession | None:
+    token = extract_bearer_token(authorization) or auth_cookie_token
+    if not token or token == settings.admin_token:
+        return None
+    session = load_active_session(db, token)
+    if not session:
+        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
+    return session
+
+
 def require_admin_token(
     db: Session = Depends(get_db),
     x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
     authorization: Optional[str] = Header(default=None),
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
-) -> None:
+) -> User | None:
     bearer_token = extract_bearer_token(authorization)
     has_any_credential = bool(x_admin_token or bearer_token or auth_cookie_token)
 
     if x_admin_token:
         if x_admin_token != settings.admin_token:
             raise HTTPException(status_code=403, detail="无权限访问")
-        return
+        return None
 
     if bearer_token == settings.admin_token:
-        return
+        return None
 
     for candidate in (bearer_token, auth_cookie_token):
         if not candidate or candidate == settings.admin_token:
@@ -300,7 +374,7 @@ def require_admin_token(
         if session:
             if session.user.role != "admin":
                 raise HTTPException(status_code=403, detail="无权限访问")
-            return
+            return session.user
 
     if has_any_credential:
         raise HTTPException(status_code=403, detail="无权限访问")
@@ -1216,7 +1290,12 @@ def list_submissions(
 
 
 @app.post(f"{settings.api_prefix}/submissions", response_model=SubmissionOut)
-def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
+def create_submission(
+    payload: SubmissionCreate,
+    request: Request,
+    auth_session: AuthSession | None = Depends(get_optional_auth_session),
+    db: Session = Depends(get_db),
+):
     validate_submission_payload(payload)
     normalized_name = normalize_dedupe_text(payload.app_name)
     normalized_unit = normalize_dedupe_text(payload.unit_name)
@@ -1235,9 +1314,24 @@ def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db)):
     submission_data = payload.model_dump()
     # 收敛：ranking_dimensions 仅保留历史读兼容，不再作为可写输入。
     submission_data["ranking_dimensions"] = ""
-    submission = Submission(**submission_data, manage_token=uuid.uuid4().hex)
+    submitter = auth_session.user if auth_session else None
+    submission = Submission(
+        **submission_data,
+        manage_token=uuid.uuid4().hex,
+        submitter_user_id=(submitter.id if submitter else None),
+    )
     db.add(submission)
     try:
+        db.flush()
+        write_action_log(
+            db,
+            action="submission.create",
+            actor_user=submitter,
+            resource_type="submission",
+            resource_id=str(submission.id),
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -1264,6 +1358,7 @@ def get_submission_self(
 def update_submission_self(
     submission_id: int,
     payload: SubmissionSelfUpdate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -1301,6 +1396,20 @@ def update_submission_self(
     for key, value in update_fields.items():
         setattr(submission, key, value)
 
+    actor_user = (
+        db.query(User).filter(User.id == submission.submitter_user_id).first()
+        if submission.submitter_user_id
+        else None
+    )
+    write_action_log(
+        db,
+        action="submission.update_self",
+        actor_user=actor_user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
+    )
     db.commit()
     db.refresh(submission)
     return submission
@@ -1310,6 +1419,7 @@ def update_submission_self(
 def withdraw_submission_self(
     submission_id: int,
     payload: SubmissionManageTokenPayload,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -1324,6 +1434,20 @@ def withdraw_submission_self(
         raise HTTPException(status_code=400, detail="仅待审核申报可撤回")
 
     submission.status = "withdrawn"
+    actor_user = (
+        db.query(User).filter(User.id == submission.submitter_user_id).first()
+        if submission.submitter_user_id
+        else None
+    )
+    write_action_log(
+        db,
+        action="submission.withdraw",
+        actor_user=actor_user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"status={submission.status}",
+    )
     db.commit()
     return {"message": "申报已撤回", "submission_id": submission_id}
 
@@ -1981,8 +2105,9 @@ def batch_update_ranking_params(
 @app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/approve-and-create-app")
 def approve_submission_and_create_app(
     submission_id: int,
+    request: Request,
     payload: SubmissionApprovePayload | None = None,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -2031,6 +2156,7 @@ def approve_submission_and_create_app(
             .first()
         )
         document_url = submission_document.image_url if submission_document else ""
+        approved_at = datetime.utcnow()
 
         app = App(
             name=submission.app_name,
@@ -2063,6 +2189,10 @@ def approve_submission_and_create_app(
             effectiveness_type=submission.effectiveness_type,
             effectiveness_metric=submission.effectiveness_metric,
             cover_image_url=submission.cover_image_url,
+            created_by_user_id=submission.submitter_user_id,
+            created_from_submission_id=submission.id,
+            approved_by_user_id=(admin_user.id if admin_user else None),
+            approved_at=approved_at,
             ranking_enabled=submission.ranking_enabled,
             ranking_weight=submission.ranking_weight,
             ranking_tags=submission.ranking_tags,
@@ -2076,6 +2206,20 @@ def approve_submission_and_create_app(
             raise HTTPException(status_code=409, detail="检测到重复应用创建请求，已拒绝")
 
         submission.status = "approved"
+        submission.approved_at = approved_at
+        submission.approved_by_user_id = admin_user.id if admin_user else None
+        submission.rejected_at = None
+        submission.rejected_by_user_id = None
+        submission.rejected_reason = ""
+        write_action_log(
+            db,
+            action="submission.approve",
+            actor_user=admin_user,
+            resource_type="submission",
+            resource_id=str(submission.id),
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=f"app_id={app.id},app_name={app.name}",
+        )
         updated_count, run_id = sync_after_chain_mutation(db, "submission_approved_and_created_app")
         db.refresh(app)
 
@@ -2095,8 +2239,9 @@ def approve_submission_and_create_app(
 @app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/reject")
 def reject_submission(
     submission_id: int,
+    request: Request,
     reason: str | None = Body(default=None, embed=True),
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -2109,11 +2254,25 @@ def reject_submission(
         raise HTTPException(status_code=400, detail="仅待审核申报可拒绝")
 
     submission.status = "rejected"
+    submission.rejected_reason = (reason or "").strip()
+    submission.rejected_at = datetime.utcnow()
+    submission.rejected_by_user_id = admin_user.id if admin_user else None
+    submission.approved_at = None
+    submission.approved_by_user_id = None
+    write_action_log(
+        db,
+        action="submission.reject",
+        actor_user=admin_user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"reason={submission.rejected_reason}",
+    )
     db.commit()
     return {
         "message": "申报已拒绝",
         "submission_id": submission_id,
-        "reason": reason or "",
+        "reason": submission.rejected_reason,
     }
 
 
@@ -2121,7 +2280,8 @@ def reject_submission(
 @app.post(f"{settings.api_prefix}/admin/group-apps", response_model=AppDetail)
 def create_group_app(
     payload: GroupAppCreate,
-    _: None = Depends(require_admin_token),
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -2152,11 +2312,25 @@ def create_group_app(
             effectiveness_type=payload.effectiveness_type,
             effectiveness_metric=payload.effectiveness_metric,
             cover_image_url=payload.cover_image_url,
+            created_by_user_id=(admin_user.id if admin_user else None),
+            created_from_submission_id=None,
+            approved_by_user_id=(admin_user.id if admin_user else None),
+            approved_at=datetime.utcnow(),
             ranking_enabled=payload.ranking_enabled,
             ranking_weight=payload.ranking_weight,
             ranking_tags=payload.ranking_tags,
         )
         db.add(app)
+        db.flush()
+        write_action_log(
+            db,
+            action="app.create_group",
+            actor_user=admin_user,
+            resource_type="app",
+            resource_id=str(app.id),
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=f"name={app.name},org={app.org}",
+        )
         db.commit()
         db.refresh(app)
         return app

@@ -68,6 +68,148 @@ def test_admin_api_rejects_non_admin_session_token():
     client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
 
 
+def test_submission_records_submitter_user_from_session():
+    client.cookies.clear()
+    login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+    assert login_resp.status_code == 200
+    user_id = login_resp.json()["user"]["id"]
+    token = login_resp.json()["access_token"]
+
+    payload = {
+        'category': 'group',
+        'app_name': f'申报人绑定测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    resp = client.post('/api/submissions', json=payload, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert resp.json()['submitter_user_id'] == user_id
+
+    db = SessionLocal()
+    try:
+        row = db.query(Submission).filter(Submission.id == resp.json()['id']).first()
+        assert row is not None
+        assert row.submitter_user_id == user_id
+        assert row.updated_at is not None
+    finally:
+        db.close()
+
+
+def test_approve_submission_records_admin_actor_fields():
+    client.cookies.clear()
+    user_login = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+    assert user_login.status_code == 200
+    user_token = user_login.json()["access_token"]
+
+    payload = {
+        'category': 'group',
+        'app_name': f'审批人绑定测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload, headers={"Authorization": f"Bearer {user_token}"})
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    admin_login = client.post("/api/auth/login", json={"username": "lisi", "password": settings.admin_default_password})
+    assert admin_login.status_code == 200
+    admin_id = admin_login.json()["user"]["id"]
+    admin_token = admin_login.json()["access_token"]
+
+    approve_resp = client.post(
+        f"/api/submissions/{submission_id}/approve-and-create-app",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()["app_id"]
+
+    db = SessionLocal()
+    try:
+        submission = db.query(Submission).filter(Submission.id == submission_id).first()
+        app = db.query(App).filter(App.id == app_id).first()
+        assert submission is not None
+        assert app is not None
+        assert submission.approved_by_user_id == admin_id
+        assert submission.approved_at is not None
+        assert app.approved_by_user_id == admin_id
+        assert app.created_from_submission_id == submission_id
+    finally:
+        db.close()
+
+
+def test_reject_submission_records_admin_and_reason():
+    client.cookies.clear()
+    user_login = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+    assert user_login.status_code == 200
+    user_token = user_login.json()["access_token"]
+
+    payload = {
+        'category': 'group',
+        'app_name': f'拒绝原因测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload, headers={"Authorization": f"Bearer {user_token}"})
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+
+    admin_login = client.post("/api/auth/login", json={"username": "lisi", "password": settings.admin_default_password})
+    assert admin_login.status_code == 200
+    admin_id = admin_login.json()["user"]["id"]
+    admin_token = admin_login.json()["access_token"]
+
+    reject_resp = client.post(
+        f"/api/submissions/{submission_id}/reject",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={'reason': '资料不完整'}
+    )
+    assert reject_resp.status_code == 200
+    assert reject_resp.json()["reason"] == "资料不完整"
+
+    db = SessionLocal()
+    try:
+        submission = db.query(Submission).filter(Submission.id == submission_id).first()
+        assert submission is not None
+        assert submission.rejected_by_user_id == admin_id
+        assert submission.rejected_at is not None
+        assert submission.rejected_reason == "资料不完整"
+    finally:
+        db.close()
+
+
 def test_list_apps():
     seed_payload = {
         'category': 'group',

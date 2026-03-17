@@ -30,6 +30,10 @@ class AppDetail(AppBase):
     effectiveness_type: str
     effectiveness_metric: str
     cover_image_url: str
+    created_by_user_id: int | None = None
+    created_from_submission_id: int | None = None
+    approved_by_user_id: int | None = None
+    approved_at: datetime | None = None
     # 排行榜相关字段
     ranking_enabled: bool | None = None
     ranking_weight: float | None = None
@@ -151,11 +155,18 @@ class SubmissionOut(BaseModel):
     data_level: str
     expected_benefit: str
     status: str
+    submitter_user_id: int | None = None
+    approved_by_user_id: int | None = None
+    approved_at: datetime | None = None
+    rejected_by_user_id: int | None = None
+    rejected_at: datetime | None = None
+    rejected_reason: str = ""
     manage_token: str
     cover_image_url: str
     detail_doc_url: str
     detail_doc_name: str
     created_at: datetime
+    updated_at: datetime | None = None
     # 排行榜相关字段
     ranking_enabled: bool
     ranking_weight: float
