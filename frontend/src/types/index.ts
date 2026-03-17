@@ -62,6 +62,31 @@ export type RuleLink = {
   href: string
 }
 
+export type UserRole = 'user' | 'admin'
+
+export type AuthUser = {
+  id: number
+  username: string
+  chinese_name: string
+  role: UserRole
+  phone: string
+  email: string
+  department: string
+  is_active: boolean
+}
+
+export type AuthLoginResponse = {
+  access_token: string
+  token_type: 'bearer'
+  expires_at: string
+  user: AuthUser
+}
+
+export type AuthMeResponse = {
+  expires_at: string
+  user: AuthUser
+}
+
 // 申报数据
 export type Submission = {
   id: number

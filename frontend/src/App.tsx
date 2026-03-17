@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Navigate, Routes, Route, Link, useLocation } from 'react-router-dom'
 import {
+  clearAuthToken,
+  fetchAuthMe,
   fetchApps,
   fetchRankings,
   fetchStats,
+  logout,
   submitApp,
   fetchSubmissionSelf,
   updateSubmissionSelf,
@@ -20,7 +23,8 @@ import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
-import type { AppItem, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import LoginPage from './pages/LoginPage'
+import type { AppItem, AuthUser, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -126,7 +130,7 @@ const validationRules: Record<string, ValidationRule> = {
 }
 
 // 主页面组件
-function HomePage() {
+function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: () => Promise<void> }) {
   const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('全部')
@@ -600,7 +604,12 @@ function HomePage() {
             <span>+</span>
             <span>我要申报</span>
           </button>
-          <div className="avatar">张</div>
+          <button className="secondary" onClick={onLogout}>
+            <span>退出登录</span>
+          </button>
+          <div className="avatar" title={`${currentUser.chinese_name} (${currentUser.role === 'admin' ? '管理员' : '普通用户'})`}>
+            {(currentUser.chinese_name || currentUser.username).slice(0, 1)}
+          </div>
         </div>
       </header>
 
@@ -671,14 +680,18 @@ function HomePage() {
               <span>📜</span>
               <span>榜单规则</span>
             </Link>
-            <Link to="/ranking-management" className="quick-link">
-              <span>⚙️</span>
-              <span>排行榜管理</span>
-            </Link>
-            <Link to="/submission-review" className="quick-link">
-              <span>✅</span>
-              <span>申报审核</span>
-            </Link>
+            {currentUser.role === 'admin' && (
+              <Link to="/ranking-management" className="quick-link">
+                <span>⚙️</span>
+                <span>排行榜管理</span>
+              </Link>
+            )}
+            {currentUser.role === 'admin' && (
+              <Link to="/submission-review" className="quick-link">
+                <span>✅</span>
+                <span>申报审核</span>
+              </Link>
+            )}
             <Link to="/historical-ranking" className="quick-link">
               <span>📊</span>
               <span>历史榜单</span>
@@ -1395,15 +1408,69 @@ function HomePage() {
 
 // 主应用组件，包含路由配置
 function App() {
+  const location = useLocation()
+  const [authLoading, setAuthLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+
+  const loadCurrentUser = useCallback(async () => {
+    try {
+      const me = await fetchAuthMe()
+      setCurrentUser(me.user)
+    } catch {
+      clearAuthToken()
+      setCurrentUser(null)
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCurrentUser()
+  }, [loadCurrentUser])
+
+  const handleLogout = useCallback(async () => {
+    await logout()
+    setCurrentUser(null)
+  }, [])
+
+  const handleLoginSuccess = useCallback((user: AuthUser) => {
+    setCurrentUser(user)
+  }, [])
+
+  if (authLoading) {
+    return (
+      <div className="page login-page">
+        <div className="login-loading">登录状态校验中...</div>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
+        <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
+      </Routes>
+    )
+  }
+
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/" element={<HomePage currentUser={currentUser} onLogout={handleLogout} />} />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
-      <Route path="/ranking-management" element={<RankingManagementPage />} />
-      <Route path="/submission-review" element={<SubmissionReviewPage />} />
+      <Route
+        path="/ranking-management"
+        element={currentUser.role === 'admin' ? <RankingManagementPage /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/submission-review"
+        element={currentUser.role === 'admin' ? <SubmissionReviewPage /> : <Navigate to="/" replace />}
+      />
       <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
       <Route path="/ranking/:configId" element={<RankingDetailPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

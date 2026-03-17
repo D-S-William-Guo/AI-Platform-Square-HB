@@ -1,6 +1,8 @@
 import axios from 'axios'
 import type {
   AppItem,
+  AuthLoginResponse,
+  AuthMeResponse,
   RankingItem,
   Recommendation,
   RuleLink,
@@ -13,14 +15,15 @@ import type {
   HistoricalRanking
 } from '../types'
 
-const client = axios.create({ baseURL: '/' })
+const AUTH_TOKEN_STORAGE_KEY = 'AI_APP_AUTH_TOKEN'
+const client = axios.create({ baseURL: '/', withCredentials: true })
 const MISSING_ADMIN_TOKEN_ERROR_CODE = 'MISSING_ADMIN_TOKEN'
 
 export class MissingAdminTokenError extends Error {
   code = MISSING_ADMIN_TOKEN_ERROR_CODE
 
   constructor() {
-    super('Missing admin token. Configure VITE_ADMIN_TOKEN or localStorage ADMIN_TOKEN/admin_token.')
+    super('Missing admin auth. Login as an admin user or configure legacy ADMIN_TOKEN.')
     this.name = 'MissingAdminTokenError'
   }
 }
@@ -34,13 +37,41 @@ export function isMissingAdminTokenError(error: unknown): boolean {
 }
 
 export function getAdminTokenSetupHint(): string {
-  return '请先在项目根目录创建 .env.local（可从 .env.local.example 复制），并设置 ADMIN_TOKEN 与 VITE_ADMIN_TOKEN。'
+  return '请先登录管理员账号。开发调试场景下，也可临时配置 .env.local 的 ADMIN_TOKEN / VITE_ADMIN_TOKEN。'
 }
 
+export function getAuthToken() {
+  if (typeof window === 'undefined') return ''
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''
+}
+
+export function setAuthToken(token: string) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token)
+}
+
+export function clearAuthToken() {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+}
+
+client.interceptors.request.use((config) => {
+  const token = getAuthToken().trim()
+  if (token) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 // Admin API token source (priority):
-// 1) Vite env: VITE_ADMIN_TOKEN
-// 2) localStorage: ADMIN_TOKEN / admin_token
+// 1) Logged-in user token
+// 2) Vite env: VITE_ADMIN_TOKEN
+// 3) localStorage: ADMIN_TOKEN / admin_token
 function getAdminToken() {
+  const authToken = getAuthToken().trim()
+  if (authToken) return authToken
+
   const envToken = (import.meta as ImportMeta & { env?: { VITE_ADMIN_TOKEN?: string } }).env?.VITE_ADMIN_TOKEN || ''
   if (envToken) return envToken
 
@@ -58,7 +89,29 @@ function getRequiredAdminAuthHeaders() {
   if (!adminToken) {
     throw new MissingAdminTokenError()
   }
+  if (getAuthToken().trim()) {
+    return { Authorization: `Bearer ${adminToken}` }
+  }
   return { 'X-Admin-Token': adminToken }
+}
+
+export async function login(username: string, password: string) {
+  const { data } = await client.post<AuthLoginResponse>('/api/auth/login', { username, password })
+  setAuthToken(data.access_token)
+  return data
+}
+
+export async function fetchAuthMe() {
+  const { data } = await client.get<AuthMeResponse>('/api/auth/me')
+  return data
+}
+
+export async function logout() {
+  try {
+    await client.post('/api/auth/logout')
+  } finally {
+    clearAuthToken()
+  }
 }
 
 export async function fetchApps(params?: Record<string, string>) {
