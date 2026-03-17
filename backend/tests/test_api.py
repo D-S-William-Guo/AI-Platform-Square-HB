@@ -210,6 +210,138 @@ def test_reject_submission_records_admin_and_reason():
         db.close()
 
 
+def test_admin_list_users_contains_seeded_accounts():
+    resp = client.get('/api/admin/users', headers=ADMIN_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+    usernames = {item['username'] for item in data}
+    assert {'zhangsan', 'lisi'}.issubset(usernames)
+
+
+def test_admin_user_import_does_not_override_existing_role():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+
+    import_resp = client.post(
+        '/api/admin/users/import',
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "source": "test-import",
+            "users": [
+                {
+                    "username": "wangwu",
+                    "chinese_name": "王五",
+                    "phone": "13800001234",
+                    "email": "wangwu@example.com",
+                    "department": "测试部",
+                    "is_active": True
+                }
+            ]
+        }
+    )
+    assert import_resp.status_code == 200
+    assert import_resp.json()["created"] >= 1
+
+    list_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
+    assert list_resp.status_code == 200
+    user = next(item for item in list_resp.json() if item["username"] == "wangwu")
+    user_id = user["id"]
+    assert user["role"] == "user"
+
+    role_resp = client.put(
+        f"/api/admin/users/{user_id}/role",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"role": "admin"}
+    )
+    assert role_resp.status_code == 200
+    assert role_resp.json()["role"] == "admin"
+
+    import_again_resp = client.post(
+        '/api/admin/users/import',
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "source": "test-import",
+            "users": [
+                {
+                    "username": "wangwu",
+                    "chinese_name": "王五-更新",
+                    "phone": "",
+                    "email": "",
+                    "department": "二次导入",
+                    "is_active": False
+                }
+            ]
+        }
+    )
+    assert import_again_resp.status_code == 200
+    assert import_again_resp.json()["updated"] >= 1
+
+    verify_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
+    assert verify_resp.status_code == 200
+    updated = next(item for item in verify_resp.json() if item["username"] == "wangwu")
+    assert updated["role"] == "admin"
+    assert updated["department"] == "二次导入"
+    assert updated["is_active"] is False
+
+
+def test_admin_update_user_status_blocks_disabling_last_active_admin():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+
+    list_resp = client.get('/api/admin/users?role=admin&is_active=true', headers={"Authorization": f"Bearer {admin_token}"})
+    assert list_resp.status_code == 200
+    admins = list_resp.json()
+    lisi = next(item for item in admins if item["username"] == "lisi")
+
+    disable_resp = client.put(
+        f"/api/admin/users/{lisi['id']}/status",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"is_active": False}
+    )
+    assert disable_resp.status_code == 409
+
+
+def test_external_user_sync_requires_and_validates_sync_token():
+    original_token = settings.user_sync_token
+    settings.user_sync_token = "sync-test-token"
+    try:
+        no_token_resp = client.post(
+            '/api/integration/users/sync',
+            json={
+                "source": "external-system",
+                "users": [{"username": "zhaoliu", "chinese_name": "赵六"}]
+            }
+        )
+        assert no_token_resp.status_code == 401
+
+        bad_token_resp = client.post(
+            '/api/integration/users/sync',
+            headers={"X-User-Sync-Token": "bad-token"},
+            json={
+                "source": "external-system",
+                "users": [{"username": "zhaoliu", "chinese_name": "赵六"}]
+            }
+        )
+        assert bad_token_resp.status_code == 403
+
+        ok_resp = client.post(
+            '/api/integration/users/sync',
+            headers={"X-User-Sync-Token": "sync-test-token"},
+            json={
+                "source": "external-system",
+                "users": [{"username": "zhaoliu", "chinese_name": "赵六", "department": "集成系统"}]
+            }
+        )
+        assert ok_resp.status_code == 200
+        assert ok_resp.json()["source"] == "external-system"
+        assert ok_resp.json()["created"] >= 1
+
+        users = client.get('/api/admin/users?q=zhaoliu', headers=ADMIN_HEADERS).json()
+        row = next(item for item in users if item["username"] == "zhaoliu")
+        assert row["role"] == "user"
+        assert row["department"] == "集成系统"
+    finally:
+        settings.user_sync_token = original_token
+
+
 def test_list_apps():
     seed_payload = {
         'category': 'group',

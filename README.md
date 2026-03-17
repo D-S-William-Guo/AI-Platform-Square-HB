@@ -165,6 +165,14 @@ cp .env.local.example .env.local
 - 审计追溯增强：
   - `submissions` / `apps` 新增申报人、审批人、审批/拒绝时间与拒绝原因等追溯字段。
   - 关键动作（申报创建、修改、撤回、审批、拒绝、集团应用录入）会写入 `action_logs`。
+- 用户管理能力（管理员）：
+  - `GET /api/admin/users`（查询用户）
+  - `PUT /api/admin/users/{id}/role`（调整角色）
+  - `PUT /api/admin/users/{id}/status`（启停用户）
+  - `POST /api/admin/users/import`（批量导入/更新用户资料，角色不随导入变更）
+- 外部系统同步预留：
+  - `POST /api/integration/users/sync`（基于 `X-User-Sync-Token`）
+  - 当 `USER_SYNC_TOKEN` 未配置时该接口默认禁用
 
 ## ⚠️ 前端开发规范（重要）
 
