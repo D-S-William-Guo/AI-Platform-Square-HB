@@ -159,6 +159,9 @@ cp .env.local.example .env.local
 - 管理接口已支持两种鉴权方式并存（平滑过渡）：
   - 新方式：`Authorization: Bearer <session_token>`（管理员登录态）
   - 兼容方式：`X-Admin-Token: <ADMIN_TOKEN>`
+- 前端访问控制：
+  - 未登录用户会被重定向到登录页，不能直接进入首页。
+  - 普通用户可访问展示能力；管理员可额外访问“申报审核/排行榜管理”。
 
 ## ⚠️ 前端开发规范（重要）
 

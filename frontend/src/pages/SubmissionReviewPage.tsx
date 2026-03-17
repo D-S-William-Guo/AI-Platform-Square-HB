@@ -25,15 +25,15 @@ const valueDimensionLabel: Record<string, string> = {
 
 function resolveAdminError(err: unknown, fallback: string): string {
   if (isMissingAdminTokenError(err)) {
-    return `缺少管理员令牌。${getAdminTokenSetupHint()}`
+    return `缺少管理员认证信息。${getAdminTokenSetupHint()}`
   }
 
   const status = (err as { response?: { status?: number } })?.response?.status
   if (status === 401) {
-    return `管理员令牌无效或未生效。${getAdminTokenSetupHint()}`
+    return `登录状态已失效。${getAdminTokenSetupHint()}`
   }
   if (status === 403) {
-    return '管理员令牌已识别，但无权限执行该操作。'
+    return '当前账号不是管理员，无法执行该操作。'
   }
 
   return fallback
