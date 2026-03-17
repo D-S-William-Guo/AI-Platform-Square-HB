@@ -3,8 +3,6 @@ import { Routes, Route, Link } from 'react-router-dom'
 import {
   fetchApps,
   fetchRankings,
-  fetchRecommendations,
-  fetchRules,
   fetchStats,
   submitApp,
   fetchSubmissionSelf,
@@ -22,7 +20,7 @@ import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
-import type { AppItem, RankingItem, Recommendation, RuleLink, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import type { AppItem, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 
 const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
@@ -139,8 +137,6 @@ function HomePage() {
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
   const [rankingConfigs, setRankingConfigs] = useState<any[]>([])
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
-  const [rules, setRules] = useState<RuleLink[]>([])
   const [stats, setStats] = useState<Stats>({ pending: 12, approved_period: 7, total_apps: 86 })
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
@@ -168,8 +164,6 @@ function HomePage() {
   const [editingSubmissionMeta, setEditingSubmissionMeta] = useState<{ id: number; manageToken: string } | null>(null)
 
   useEffect(() => {
-    fetchRecommendations().then(setRecommendations)
-    fetchRules().then(setRules)
     fetchRankingDimensions()
       .then((data) => setRankingDimensions(data.filter((item) => item.is_active)))
       .catch((error) => console.error('Failed to fetch ranking dimensions:', error))
@@ -690,6 +684,56 @@ function HomePage() {
               <span>历史榜单</span>
             </Link>
           </div>
+
+          <div className="quick-links stats-panel">
+            <div className="nav-section-title">申报统计</div>
+            <div className="stats-grid">
+              {statsLoading ? (
+                <div className="stats-loading">
+                  <div className="loading-spinner"></div>
+                  <span>加载中...</span>
+                </div>
+              ) : statsError ? (
+                <div className="stats-error">
+                  <span className="error-icon">❌</span>
+                  <span>{statsError}</span>
+                  <button
+                    className="retry-button"
+                    onClick={async () => {
+                      try {
+                        setStatsLoading(true)
+                        setStatsError(null)
+                        const data = await fetchStats()
+                        setStats(data)
+                      } catch (error) {
+                        console.error('Failed to fetch stats:', error)
+                        setStatsError('获取统计数据失败')
+                      } finally {
+                        setStatsLoading(false)
+                      }
+                    }}
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="stat-item">
+                    <span className="stat-label">待审核</span>
+                    <span className="stat-value pending">{stats.pending}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">本期已通过</span>
+                    <span className="stat-value approved">{stats.approved_period}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">累计应用</span>
+                    <span className="stat-value total">{stats.total_apps}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </aside>
 
         <main className="main">
@@ -805,107 +849,6 @@ function HomePage() {
           )}
         </main>
 
-        <aside className="right">
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">⭐</span>
-              <span>本期推荐</span>
-            </h4>
-            {recommendations.map((item, index) => (
-              <div className="mini-card" key={item.title}>
-                <div className="mini-card-icon" style={{ background: getGradient(index) }}>
-                  {['🤖', '💼', '📊'][index % 3]}
-                </div>
-                <div className="mini-card-content">
-                  <div className="mini-card-title">{item.title}</div>
-                  <p className="mini-card-desc">{item.scene}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">📈</span>
-              <span>申报统计</span>
-            </h4>
-            <div className="stats-grid">
-              {statsLoading ? (
-                <div className="stats-loading">
-                  <div className="loading-spinner"></div>
-                  <span>加载中...</span>
-                </div>
-              ) : statsError ? (
-                <div className="stats-error">
-                  <span className="error-icon">❌</span>
-                  <span>{statsError}</span>
-                  <button 
-                    className="retry-button" 
-                    onClick={async () => {
-                      try {
-                        setStatsLoading(true)
-                        setStatsError(null)
-                        const data = await fetchStats()
-                        setStats(data)
-                      } catch (error) {
-                        console.error('Failed to fetch stats:', error)
-                        setStatsError('获取统计数据失败')
-                      } finally {
-                        setStatsLoading(false)
-                      }
-                    }}
-                  >
-                    重试
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="stat-item">
-                    <span className="stat-label">待审核</span>
-                    <span className="stat-value pending">{stats.pending}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">本期已通过</span>
-                    <span className="stat-value approved">{stats.approved_period}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">累计应用</span>
-                    <span className="stat-value total">{stats.total_apps}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="section-card">
-            <h4 className="section-title">
-              <span className="section-icon">⚡</span>
-              <span>快速入口</span>
-            </h4>
-            <div className="rule-list">
-              <Link to="/guide" className="rule-item">
-                <span className="rule-icon">📋</span>
-                <span>申报指南</span>
-              </Link>
-              <Link to="/rule" className="rule-item">
-                <span className="rule-icon">📜</span>
-                <span>榜单规则</span>
-              </Link>
-              <Link to="/ranking-management" className="rule-item">
-                <span className="rule-icon">⚙️</span>
-                <span>排行榜管理</span>
-              </Link>
-              <Link to="/submission-review" className="rule-item">
-                <span className="rule-icon">✅</span>
-                <span>申报审核</span>
-              </Link>
-              <Link to="/historical-ranking" className="rule-item">
-                <span className="rule-icon">📊</span>
-                <span>历史榜单</span>
-              </Link>
-            </div>
-          </div>
-        </aside>
       </div>
 
       <footer className="footer">
