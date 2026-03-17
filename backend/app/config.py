@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     auth_session_ttl_hours: int = 12
     user_default_password: str = "ChangeMe_User_123!"
     admin_default_password: str = "ChangeMe_Admin_123!"
+    user_sync_token: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

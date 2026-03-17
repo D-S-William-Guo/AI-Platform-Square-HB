@@ -15,7 +15,7 @@ from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .auth_utils import generate_session_token, verify_password
+from .auth_utils import generate_session_token, hash_password, verify_password
 from .config import resolve_runtime_path, settings
 from .database import Base, engine, get_db
 from .models import (
@@ -71,6 +71,10 @@ from .schemas import (
     DimensionConfigItem,
     RankingConfigWithDimensions,
     UserPublic,
+    UserImportRequest,
+    UserImportResponse,
+    UserRoleUpdatePayload,
+    UserStatusUpdatePayload,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
@@ -320,6 +324,108 @@ def write_action_log(
             payload_summary=payload_summary,
         )
     )
+
+
+def upsert_users(
+    db: Session,
+    *,
+    payload: UserImportRequest,
+) -> UserImportResponse:
+    normalized_inputs: dict[str, dict] = {}
+    for item in payload.users:
+        username = item.username.strip()
+        if not username:
+            continue
+        normalized_inputs[username.lower()] = {
+            "username": username,
+            "chinese_name": item.chinese_name.strip(),
+            "phone": item.phone.strip(),
+            "email": item.email.strip(),
+            "department": item.department.strip(),
+            "is_active": item.is_active,
+        }
+
+    if not normalized_inputs:
+        raise HTTPException(status_code=422, detail="导入用户列表为空")
+
+    existing_rows = (
+        db.query(User)
+        .filter(func.lower(User.username).in_(list(normalized_inputs.keys())))
+        .all()
+    )
+    existing_map = {row.username.lower(): row for row in existing_rows}
+
+    created = 0
+    updated = 0
+    unchanged = 0
+
+    for key, item in normalized_inputs.items():
+        user = existing_map.get(key)
+        if not user:
+            db.add(
+                User(
+                    username=item["username"],
+                    chinese_name=item["chinese_name"] or item["username"],
+                    role="user",
+                    phone=item["phone"],
+                    email=item["email"],
+                    department=item["department"],
+                    is_active=item["is_active"],
+                    password_hash=hash_password(settings.user_default_password),
+                )
+            )
+            created += 1
+            continue
+
+        changed = False
+        if user.chinese_name != item["chinese_name"]:
+            user.chinese_name = item["chinese_name"]
+            changed = True
+        if (user.phone or "") != item["phone"]:
+            user.phone = item["phone"]
+            changed = True
+        if (user.email or "") != item["email"]:
+            user.email = item["email"]
+            changed = True
+        if (user.department or "") != item["department"]:
+            user.department = item["department"]
+            changed = True
+        if bool(user.is_active) != bool(item["is_active"]):
+            user.is_active = item["is_active"]
+            changed = True
+            if not item["is_active"]:
+                db.query(AuthSession).filter(
+                    AuthSession.user_id == user.id,
+                    AuthSession.revoked_at.is_(None),
+                ).update(
+                    {AuthSession.revoked_at: datetime.utcnow()},
+                    synchronize_session=False,
+                )
+
+        if changed:
+            updated += 1
+        else:
+            unchanged += 1
+
+    db.flush()
+    return UserImportResponse(
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        source=payload.source,
+    )
+
+
+def require_user_sync_token(
+    x_user_sync_token: str | None = Header(default=None, alias="X-User-Sync-Token"),
+) -> None:
+    configured = settings.user_sync_token.strip()
+    if not configured:
+        raise HTTPException(status_code=503, detail="USER_SYNC_TOKEN 未配置，外部用户同步接口已禁用")
+    if not x_user_sync_token:
+        raise HTTPException(status_code=401, detail="缺少用户同步令牌")
+    if x_user_sync_token != configured:
+        raise HTTPException(status_code=403, detail="用户同步令牌无效")
 
 
 def require_auth_session(
@@ -1951,6 +2057,184 @@ def get_action_logs(
         )
         for row in rows
     ]
+
+
+@app.get(f"{settings.api_prefix}/admin/users", response_model=list[UserPublic])
+def list_users(
+    q: str | None = Query(default=None),
+    role: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    _: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    query = db.query(User)
+    if q:
+        query = query.filter(
+            or_(
+                User.username.contains(q),
+                User.chinese_name.contains(q),
+                User.email.contains(q),
+                User.department.contains(q),
+            )
+        )
+    if role:
+        if role not in {"user", "admin"}:
+            raise HTTPException(status_code=422, detail="Invalid role")
+        query = query.filter(User.role == role)
+    if is_active is not None:
+        query = query.filter(User.is_active.is_(is_active))
+
+    return query.order_by(User.id.asc()).all()
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/role", response_model=UserPublic)
+def update_user_role(
+    user_id: int,
+    payload: UserRoleUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.role == payload.role:
+        return user
+
+    if user.role == "admin" and payload.role != "admin":
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    old_role = user.role
+    user.role = payload.role
+    write_action_log(
+        db,
+        action="user.role_updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"username={user.username},old={old_role},new={user.role}",
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/status", response_model=UserPublic)
+def update_user_status(
+    user_id: int,
+    payload: UserStatusUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if bool(user.is_active) == bool(payload.is_active):
+        return user
+
+    if user.role == "admin" and user.is_active and not payload.is_active:
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    if admin_user and admin_user.id == user.id and not payload.is_active:
+        raise HTTPException(status_code=409, detail="不能禁用当前登录管理员账号")
+
+    old_status = bool(user.is_active)
+    user.is_active = payload.is_active
+    if not payload.is_active:
+        db.query(AuthSession).filter(
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+        ).update(
+            {AuthSession.revoked_at: datetime.utcnow()},
+            synchronize_session=False,
+        )
+
+    write_action_log(
+        db,
+        action="user.status_updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"username={user.username},old={old_status},new={bool(user.is_active)}",
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.post(f"{settings.api_prefix}/admin/users/import", response_model=UserImportResponse)
+def import_users(
+    payload: UserImportRequest,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = upsert_users(db, payload=payload)
+        write_action_log(
+            db,
+            action="user.import",
+            actor_user=admin_user,
+            resource_type="user",
+            resource_id="",
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=(
+                f"source={result.source},created={result.created},"
+                f"updated={result.updated},unchanged={result.unchanged}"
+            ),
+        )
+        db.commit()
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"导入用户失败: {str(exc)}") from exc
+
+
+@app.post(f"{settings.api_prefix}/integration/users/sync", response_model=UserImportResponse)
+def sync_users_from_integration(
+    payload: UserImportRequest,
+    request: Request,
+    _: None = Depends(require_user_sync_token),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = upsert_users(db, payload=payload)
+        write_action_log(
+            db,
+            action="user.sync_external",
+            actor_user=None,
+            resource_type="user",
+            resource_id="",
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=(
+                f"source={result.source},created={result.created},"
+                f"updated={result.updated},unchanged={result.unchanged}"
+            ),
+        )
+        db.commit()
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"外部用户同步失败: {str(exc)}") from exc
 
 
 # 数据联动 API

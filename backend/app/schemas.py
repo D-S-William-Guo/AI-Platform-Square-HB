@@ -115,6 +115,36 @@ class ActionLogOut(BaseModel):
     payload_summary: str
     created_at: datetime
 
+
+class UserRoleUpdatePayload(BaseModel):
+    role: str = Field(..., pattern="^(user|admin)$")
+
+
+class UserStatusUpdatePayload(BaseModel):
+    is_active: bool
+
+
+class UserImportItem(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+    chinese_name: str = Field(..., min_length=1, max_length=80)
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=120)
+    department: str = Field(default="", max_length=120)
+    is_active: bool = True
+
+
+class UserImportRequest(BaseModel):
+    source: str = Field(default="manual", max_length=80)
+    users: list[UserImportItem] = Field(default_factory=list, min_length=1)
+
+
+class UserImportResponse(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    source: str
+
+
 class SubmissionCreate(BaseModel):
     app_name: str = Field(min_length=2, max_length=120)
     unit_name: str = Field(min_length=2, max_length=120)
