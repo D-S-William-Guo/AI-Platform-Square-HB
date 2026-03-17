@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS apps (
   effectiveness_type VARCHAR(40) DEFAULT 'cost_reduction',
   effectiveness_metric VARCHAR(120) DEFAULT '',
   cover_image_url VARCHAR(500) DEFAULT '',
+  created_by_user_id INT DEFAULT NULL,
+  created_from_submission_id INT DEFAULT NULL,
+  approved_by_user_id INT DEFAULT NULL,
+  approved_at DATETIME DEFAULT NULL,
   ranking_enabled TINYINT(1) DEFAULT 1,
   ranking_weight FLOAT DEFAULT 1.0,
   ranking_tags VARCHAR(255) DEFAULT '',
@@ -122,16 +126,26 @@ CREATE TABLE IF NOT EXISTS submissions (
   data_level VARCHAR(10) NOT NULL,
   expected_benefit VARCHAR(300) NOT NULL,
   status VARCHAR(20) DEFAULT 'pending',
+  submitter_user_id INT DEFAULT NULL,
+  approved_by_user_id INT DEFAULT NULL,
+  approved_at DATETIME DEFAULT NULL,
+  rejected_by_user_id INT DEFAULT NULL,
+  rejected_at DATETIME DEFAULT NULL,
+  rejected_reason VARCHAR(255) DEFAULT '',
   manage_token VARCHAR(64) NOT NULL,
   cover_image_id INT DEFAULT NULL,
   cover_image_url VARCHAR(500) DEFAULT '',
   detail_doc_url VARCHAR(500) DEFAULT '',
   detail_doc_name VARCHAR(255) DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   ranking_enabled TINYINT(1) DEFAULT 1,
   ranking_weight FLOAT DEFAULT 1.0,
   ranking_tags VARCHAR(255) DEFAULT '',
-  ranking_dimensions VARCHAR(500) DEFAULT ''
+  ranking_dimensions VARCHAR(500) DEFAULT '',
+  CONSTRAINT fk_submissions_submitter_user FOREIGN KEY (submitter_user_id) REFERENCES users(id),
+  CONSTRAINT fk_submissions_approved_user FOREIGN KEY (approved_by_user_id) REFERENCES users(id),
+  CONSTRAINT fk_submissions_rejected_user FOREIGN KEY (rejected_by_user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS submission_images (
@@ -223,6 +237,9 @@ CREATE TABLE IF NOT EXISTS app_ranking_settings (
 CREATE INDEX idx_apps_section ON apps(section);
 CREATE INDEX idx_apps_status ON apps(status);
 CREATE INDEX idx_apps_category ON apps(category);
+CREATE INDEX idx_apps_created_by_user_id ON apps(created_by_user_id);
+CREATE INDEX idx_apps_created_from_submission_id ON apps(created_from_submission_id);
+CREATE INDEX idx_apps_approved_by_user_id ON apps(approved_by_user_id);
 CREATE INDEX idx_auth_sessions_user_id ON auth_sessions(user_id);
 CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 CREATE INDEX idx_action_logs_actor_user_id ON action_logs(actor_user_id);
@@ -231,6 +248,9 @@ CREATE INDEX idx_action_logs_created_at ON action_logs(created_at);
 CREATE INDEX idx_rankings_type ON rankings(ranking_type);
 CREATE INDEX idx_rankings_app_id ON rankings(app_id);
 CREATE INDEX idx_submissions_status ON submissions(status);
+CREATE INDEX idx_submissions_submitter_user_id ON submissions(submitter_user_id);
+CREATE INDEX idx_submissions_approved_by_user_id ON submissions(approved_by_user_id);
+CREATE INDEX idx_submissions_rejected_by_user_id ON submissions(rejected_by_user_id);
 CREATE INDEX idx_historical_rankings_date ON historical_rankings(period_date);
 CREATE INDEX idx_historical_rankings_type ON historical_rankings(ranking_type);
 CREATE INDEX idx_app_dim_scores_app ON app_dimension_scores(app_id);
