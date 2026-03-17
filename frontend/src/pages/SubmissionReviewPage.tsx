@@ -3,7 +3,6 @@ import {
   fetchSubmissions,
   approveSubmissionAndCreateApp,
   rejectSubmission,
-  syncRankings,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
@@ -95,7 +94,7 @@ export default function SubmissionReviewPage() {
 
     try {
       setProcessing(true)
-      await approveSubmissionAndCreateApp(
+      const approveResult = await approveSubmissionAndCreateApp(
         id,
         useFormSettings
           ? {
@@ -109,8 +108,7 @@ export default function SubmissionReviewPage() {
             }
           : undefined
       )
-      await syncRankings() // 同步排行榜数据
-      alert('审核通过！应用已创建并同步到排行榜。')
+      alert(`审核通过！应用已创建并完成链路同步（run_id: ${approveResult.run_id}）。`)
       setSelectedSubmission(null)
       loadSubmissions() // 刷新列表
     } catch (err) {

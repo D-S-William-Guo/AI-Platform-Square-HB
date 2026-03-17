@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 
@@ -634,6 +635,95 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
         ).first()
         assert setting is None
         assert db.query(AppDimensionScore).filter(AppDimensionScore.app_id == app_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
+    unique = uuid.uuid4().hex[:8]
+    payload = {
+        'category': 'group',
+        'app_name': f'原子幂等测试应用-{unique}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    submit_resp = client.post('/api/submissions', json=payload)
+    assert submit_resp.status_code == 200
+    submission_id = submit_resp.json()['id']
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    db = SessionLocal()
+    try:
+        dimension = db.query(RankingDimension).filter(RankingDimension.is_active.is_(True)).first()
+        assert dimension is not None
+        dimension_id = dimension.id
+        config_id = f"atomic-idem-{unique}"
+        db.add(RankingConfig(
+            id=config_id,
+            name=f"原子幂等榜单-{unique}",
+            description="原子幂等测试",
+            dimensions_config=json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
+            calculation_method="composite",
+            is_active=True,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    req_payload = {
+        "ranking_config_id": config_id,
+        "is_enabled": True,
+        "weight_factor": 1.3,
+        "custom_tags": "幂等",
+        "dimension_scores": [{"dimension_id": dimension_id, "score": 87}],
+    }
+    first_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings/save',
+        headers=ADMIN_HEADERS,
+        json=req_payload,
+    )
+    assert first_resp.status_code == 200
+    second_resp = client.post(
+        f'/api/apps/{app_id}/ranking-settings/save',
+        headers=ADMIN_HEADERS,
+        json=req_payload,
+    )
+    assert second_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        setting_count = db.query(AppRankingSetting).filter(
+            AppRankingSetting.app_id == app_id,
+            AppRankingSetting.ranking_config_id == config_id,
+        ).count()
+        assert setting_count == 1
+        today = datetime.now().date()
+        score_count = db.query(AppDimensionScore).filter(
+            AppDimensionScore.app_id == app_id,
+            AppDimensionScore.dimension_id == dimension_id,
+            AppDimensionScore.period_date == today,
+        ).count()
+        assert score_count == 1
+        score_row = db.query(AppDimensionScore).filter(
+            AppDimensionScore.app_id == app_id,
+            AppDimensionScore.dimension_id == dimension_id,
+            AppDimensionScore.period_date == today,
+        ).first()
+        assert score_row is not None
+        assert score_row.score == 87
     finally:
         db.close()
 

@@ -230,6 +230,32 @@ def structured_error_detail(
         "field_errors": field_errors or [],
     }
 
+
+def load_single_dimension_score(
+    db: Session,
+    *,
+    app_id: int,
+    dimension_id: int,
+    period_date: date,
+) -> AppDimensionScore | None:
+    """读取同日维度分值并清理重复脏数据，仅保留最新一条。"""
+    records = (
+        db.query(AppDimensionScore)
+        .filter(
+            AppDimensionScore.app_id == app_id,
+            AppDimensionScore.dimension_id == dimension_id,
+            AppDimensionScore.period_date == period_date,
+        )
+        .order_by(AppDimensionScore.updated_at.desc(), AppDimensionScore.id.desc())
+        .all()
+    )
+    if not records:
+        return None
+    primary = records[0]
+    for stale in records[1:]:
+        db.delete(stale)
+    return primary
+
 def validate_submission_ranking_fields(
     ranking_weight: float,
     ranking_tags: str,
@@ -446,14 +472,11 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                     continue
 
                 # 保存维度评分
-                existing_score = (
-                    db.query(AppDimensionScore)
-                    .filter(
-                        AppDimensionScore.app_id == app.id,
-                        AppDimensionScore.dimension_id == dimension.id,
-                        AppDimensionScore.period_date == today
-                    )
-                    .first()
+                existing_score = load_single_dimension_score(
+                    db,
+                    app_id=app.id,
+                    dimension_id=dimension.id,
+                    period_date=today,
                 )
 
                 is_manual_score = bool(existing_score and (existing_score.calculation_detail or "").startswith("手动调整评分"))
@@ -1231,11 +1254,12 @@ def update_app_dimension_score_api(
     today = datetime.now().date()
     
     # 查找或创建评分记录
-    score_record = db.query(AppDimensionScore).filter(
-        AppDimensionScore.app_id == app_id,
-        AppDimensionScore.dimension_id == dimension_id,
-        AppDimensionScore.period_date == today
-    ).first()
+    score_record = load_single_dimension_score(
+        db,
+        app_id=app_id,
+        dimension_id=dimension_id,
+        period_date=today,
+    )
     before_score = score_record.score if score_record else None
 
     if score_record:
@@ -2518,14 +2542,11 @@ def save_app_ranking_setting_atomically(
         today = datetime.now().date()
         updated_dimensions = 0
         for item in payload.dimension_scores:
-            score_record = (
-                db.query(AppDimensionScore)
-                .filter(
-                    AppDimensionScore.app_id == app_id,
-                    AppDimensionScore.dimension_id == item.dimension_id,
-                    AppDimensionScore.period_date == today,
-                )
-                .first()
+            score_record = load_single_dimension_score(
+                db,
+                app_id=app_id,
+                dimension_id=item.dimension_id,
+                period_date=today,
             )
             dimension = active_dims[item.dimension_id]
             if score_record:
