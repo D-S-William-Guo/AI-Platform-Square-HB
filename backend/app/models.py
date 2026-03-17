@@ -235,9 +235,23 @@ class RankingAuditLog(Base):
 class AppDimensionScore(Base):
     """应用在各维度的评分数据"""
     __tablename__ = "app_dimension_scores"
+    __table_args__ = (
+        UniqueConstraint(
+            "app_id",
+            "ranking_config_id",
+            "dimension_id",
+            "period_date",
+            name="uq_app_dim_scores_app_config_dim_period",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    ranking_config_id: Mapped[str | None] = mapped_column(
+        ForeignKey("ranking_configs.id"),
+        nullable=True,
+        index=True,
+    )
     dimension_id: Mapped[int] = mapped_column(ForeignKey("ranking_dimensions.id"), nullable=False)
     dimension_name: Mapped[str] = mapped_column(String(100), nullable=False)
     score: Mapped[int] = mapped_column(Integer, default=0)  # 0-100分
@@ -249,6 +263,7 @@ class AppDimensionScore(Base):
 
     app = relationship("App")
     dimension = relationship("RankingDimension")
+    ranking_config = relationship("RankingConfig")
 
 
 class HistoricalRanking(Base):

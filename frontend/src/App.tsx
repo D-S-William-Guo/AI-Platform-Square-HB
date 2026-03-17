@@ -21,6 +21,7 @@ import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
 import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
+import MySubmissionsPage from './pages/MySubmissionsPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import LoginPage from './pages/LoginPage'
@@ -58,12 +59,7 @@ const defaultSubmission: SubmissionPayload = {
   expected_benefit: '',
   cover_image_url: '',
   detail_doc_url: '',
-  detail_doc_name: '',
-  // 排行榜相关字段
-  ranking_enabled: true,
-  ranking_weight: 1.0,
-  ranking_tags: '',
-  ranking_dimensions: ''
+  detail_doc_name: ''
 }
 
 const submissionStatusLabel: Record<Submission['status'], string> = {
@@ -124,9 +120,6 @@ const validationRules: Record<string, ValidationRule> = {
   problem_statement: { required: true, minLength: 10, maxLength: 255, message: '问题描述需在10-255个字符之间' },
   effectiveness_metric: { required: true, minLength: 2, maxLength: 120, message: '成效指标需在2-120个字符之间' },
   expected_benefit: { required: true, minLength: 10, maxLength: 300, message: '预期收益需在10-300个字符之间' },
-  ranking_weight: { required: false, min: 0.1, max: 10.0, message: '排行权重需在0.1-10.0之间' },
-  ranking_tags: { required: false, maxLength: 255, message: '排行标签不能超过255个字符' },
-  ranking_dimensions: { required: false, maxLength: 500, message: '适用维度不能超过500个字符' },
 }
 
 // 主页面组件
@@ -207,7 +200,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
           if (!isNaN(dimensionId)) {
             try {
               // 获取该维度的所有应用评分
-              const dimensionScores = await fetchDimensionScores(dimensionId)
+              const dimensionScores = await fetchDimensionScores(dimensionId, undefined, rankingType)
               // 创建应用ID到维度评分的映射
               const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
               
@@ -513,11 +506,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
       expected_benefit: managedSubmission.expected_benefit,
       cover_image_url: managedSubmission.cover_image_url || '',
       detail_doc_url: managedSubmission.detail_doc_url || '',
-      detail_doc_name: managedSubmission.detail_doc_name || '',
-      ranking_enabled: managedSubmission.ranking_enabled,
-      ranking_weight: managedSubmission.ranking_weight,
-      ranking_tags: managedSubmission.ranking_tags,
-      ranking_dimensions: managedSubmission.ranking_dimensions
+      detail_doc_name: managedSubmission.detail_doc_name || ''
     })
     setImagePreview(managedSubmission.cover_image_url ? resolveMediaUrl(managedSubmission.cover_image_url) : null)
     setDocumentMeta(
@@ -596,10 +585,10 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
           />
         </div>
         <div className="header-actions">
-          <button className="secondary" onClick={() => setShowSubmissionManage(true)}>
+          <Link to="/my-submissions" className="secondary">
             <span>📋</span>
-            <span>申报管理</span>
-          </button>
+            <span>我的申报</span>
+          </Link>
           <button className="primary" onClick={() => setShowSubmission(true)}>
             <span>+</span>
             <span>我要申报</span>
@@ -679,6 +668,10 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
             <Link to="/rule" className="quick-link">
               <span>📜</span>
               <span>榜单规则</span>
+            </Link>
+            <Link to="/my-submissions" className="quick-link">
+              <span>🧾</span>
+              <span>我的申报</span>
             </Link>
             {currentUser.role === 'admin' && (
               <Link to="/ranking-management" className="quick-link">
@@ -1313,84 +1306,6 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                 </div>
               </div>
 
-              {/* 排行榜参数配置 */}
-              <div className="form-section">
-                <h4 className="form-section-title">排行榜参数配置</h4>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">参与排行</label>
-                    <div className="checkbox-group">
-                      <input
-                        type="checkbox"
-                        id="ranking_enabled"
-                        name="ranking_enabled"
-                        checked={submission.ranking_enabled}
-                        onChange={(e) => setSubmission(prev => ({ ...prev, ranking_enabled: e.target.checked }))}
-                      />
-                      <label htmlFor="ranking_enabled">启用排行榜功能</label>
-                    </div>
-                    <p className="form-hint">启用后，应用将参与排行榜排名</p>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">排行权重</label>
-                    <input
-                      type="number"
-                      className={`form-input ${errors.ranking_weight ? 'error' : ''}`}
-                      placeholder="请输入权重值"
-                      min="0.1"
-                      max="10.0"
-                      step="0.1"
-                      value={submission.ranking_weight}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value) || 1.0
-                        setSubmission(prev => ({ ...prev, ranking_weight: value }))
-                        // 实时验证
-                        const error = validateField('ranking_weight', value)
-                        setErrors(prev => ({ ...prev, ranking_weight: error }))
-                      }}
-                    />
-                    {errors.ranking_weight && <span className="error-message">{errors.ranking_weight}</span>}
-                    <p className="form-hint">权重值越高，对排行榜排名的影响越大</p>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">排行标签</label>
-                  <input
-                    type="text"
-                    className={`form-input ${errors.ranking_tags ? 'error' : ''}`}
-                    placeholder="请输入标签，多个标签用逗号分隔"
-                    value={submission.ranking_tags}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSubmission(prev => ({ ...prev, ranking_tags: value }))
-                      // 实时验证
-                      const error = validateField('ranking_tags', value)
-                      setErrors(prev => ({ ...prev, ranking_tags: error }))
-                    }}
-                  />
-                  {errors.ranking_tags && <span className="error-message">{errors.ranking_tags}</span>}
-                  <p className="form-hint">标签将在排行榜中显示，有助于用户快速了解应用特点</p>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">适用维度</label>
-                  <input
-                    type="text"
-                    className={`form-input ${errors.ranking_dimensions ? 'error' : ''}`}
-                    placeholder="请输入维度名称，多个维度用逗号分隔"
-                    value={submission.ranking_dimensions}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setSubmission(prev => ({ ...prev, ranking_dimensions: value }))
-                      // 实时验证
-                      const error = validateField('ranking_dimensions', value)
-                      setErrors(prev => ({ ...prev, ranking_dimensions: error }))
-                    }}
-                  />
-                  {errors.ranking_dimensions && <span className="error-message">{errors.ranking_dimensions}</span>}
-                  <p className="form-hint">指定应用参与哪些维度的排名计算</p>
-                  <span className="char-count">{submission.ranking_dimensions.length}/500</span>
-                </div>
-              </div>
             </div>
 
             <div className="modal-footer">
@@ -1460,6 +1375,7 @@ function App() {
       <Route path="/" element={<HomePage currentUser={currentUser} onLogout={handleLogout} />} />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
+      <Route path="/my-submissions" element={<MySubmissionsPage />} />
       <Route
         path="/ranking-management"
         element={currentUser.role === 'admin' ? <RankingManagementPage /> : <Navigate to="/" replace />}

@@ -47,7 +47,7 @@ export default function HistoricalRankingPage() {
         if (!isNaN(dimensionId)) {
           try {
             // 获取该维度的所有应用评分
-            const dimensionScores = await fetchDimensionScores(dimensionId, selectedDate)
+            const dimensionScores = await fetchDimensionScores(dimensionId, selectedDate, rankingType)
             // 创建应用名称到维度评分的映射（历史榜单用app_name关联）
             const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
             

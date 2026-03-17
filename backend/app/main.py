@@ -182,6 +182,12 @@ def ensure_additive_schema_columns() -> None:
                 "sqlite": "DATETIME",
             },
         },
+        "app_dimension_scores": {
+            "ranking_config_id": {
+                "mysql": "VARCHAR(50) NULL",
+                "sqlite": "TEXT",
+            },
+        },
     }
     with engine.begin() as conn:
         inspector = inspect(conn)
@@ -196,6 +202,23 @@ def ensure_additive_schema_columns() -> None:
                 else:
                     col_def = defs["mysql"]
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("app_dimension_scores")}
+        if "uq_app_dim_scores_app_config_dim_period" not in existing_indexes:
+            if conn.dialect.name == "sqlite":
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_app_dim_scores_app_config_dim_period "
+                        "ON app_dimension_scores (app_id, ranking_config_id, dimension_id, period_date)"
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX uq_app_dim_scores_app_config_dim_period "
+                        "ON app_dimension_scores (app_id, ranking_config_id, dimension_id, period_date)"
+                    )
+                )
 
 
 def ensure_submission_manage_tokens() -> None:
@@ -257,9 +280,6 @@ def validate_submission_payload(payload: SubmissionCreate) -> None:
         raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
     if payload.data_level not in DATA_LEVEL_VALUES:
         raise HTTPException(status_code=422, detail="Invalid data_level")
-    validate_submission_ranking_fields(
-        payload.ranking_weight, payload.ranking_tags, payload.ranking_dimensions
-    )
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:
@@ -527,6 +547,7 @@ def load_single_dimension_score(
     db: Session,
     *,
     app_id: int,
+    ranking_config_id: str | None,
     dimension_id: int,
     period_date: date,
 ) -> AppDimensionScore | None:
@@ -535,6 +556,7 @@ def load_single_dimension_score(
         db.query(AppDimensionScore)
         .filter(
             AppDimensionScore.app_id == app_id,
+            AppDimensionScore.ranking_config_id == ranking_config_id,
             AppDimensionScore.dimension_id == dimension_id,
             AppDimensionScore.period_date == period_date,
         )
@@ -767,6 +789,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                 existing_score = load_single_dimension_score(
                     db,
                     app_id=app.id,
+                    ranking_config_id=config.id,
                     dimension_id=dimension.id,
                     period_date=today,
                 )
@@ -789,6 +812,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
                         db.add(
                             AppDimensionScore(
                                 app_id=app.id,
+                                ranking_config_id=config.id,
                                 dimension_id=dimension.id,
                                 dimension_name=dimension.name,
                                 score=dim_score,
@@ -934,6 +958,8 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
 def sync_after_chain_mutation(db: Session, trigger: str) -> tuple[int, str]:
     """链路节点发生增删改后，统一触发榜单重算并返回运行信息。"""
     try:
+        # SessionLocal 关闭了 autoflush，先显式 flush，避免同步阶段读不到本次变更。
+        db.flush()
         updated_count, run_id = sync_rankings_service(db)
         write_ranking_audit_log(
             db,
@@ -1399,7 +1425,7 @@ def list_submissions(
 def create_submission(
     payload: SubmissionCreate,
     request: Request,
-    auth_session: AuthSession | None = Depends(get_optional_auth_session),
+    auth_session: AuthSession = Depends(require_auth_session),
     db: Session = Depends(get_db),
 ):
     validate_submission_payload(payload)
@@ -1418,13 +1444,16 @@ def create_submission(
         raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
 
     submission_data = payload.model_dump()
-    # 收敛：ranking_dimensions 仅保留历史读兼容，不再作为可写输入。
+    # 收敛：申报阶段不再写入排行榜参数，保留历史字段仅做兼容读取。
+    submission_data["ranking_enabled"] = False
+    submission_data["ranking_weight"] = 1.0
+    submission_data["ranking_tags"] = ""
     submission_data["ranking_dimensions"] = ""
-    submitter = auth_session.user if auth_session else None
+    submitter = auth_session.user
     submission = Submission(
         **submission_data,
         manage_token=uuid.uuid4().hex,
-        submitter_user_id=(submitter.id if submitter else None),
+        submitter_user_id=submitter.id,
     )
     db.add(submission)
     try:
@@ -1446,6 +1475,102 @@ def create_submission(
     return submission
 
 
+@app.get(f"{settings.api_prefix}/submissions/mine", response_model=list[SubmissionOut])
+def list_my_submissions(
+    auth_session: AuthSession = Depends(require_auth_session),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户查看自己的申报记录。"""
+    return (
+        db.query(Submission)
+        .filter(Submission.submitter_user_id == auth_session.user.id)
+        .order_by(Submission.created_at.desc())
+        .all()
+    )
+
+
+@app.put(f"{settings.api_prefix}/submissions/{{submission_id}}/mine", response_model=SubmissionOut)
+def update_my_submission(
+    submission_id: int,
+    payload: SubmissionCreate,
+    request: Request,
+    auth_session: AuthSession = Depends(require_auth_session),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户修改本人申报（仅 pending）。"""
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.submitter_user_id != auth_session.user.id:
+        raise HTTPException(status_code=403, detail="无权限修改他人申报")
+    if submission.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
+
+    normalized_name = normalize_dedupe_text(payload.app_name)
+    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    duplicate = (
+        db.query(Submission)
+        .filter(
+            Submission.id != submission_id,
+            func.lower(func.trim(Submission.app_name)) == normalized_name,
+            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
+            Submission.status.in_(("pending", "approved")),
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
+
+    validate_submission_payload(payload)
+    update_fields = payload.model_dump()
+    update_fields["ranking_dimensions"] = ""
+    for key, value in update_fields.items():
+        setattr(submission, key, value)
+
+    write_action_log(
+        db,
+        action="submission.update_mine",
+        actor_user=auth_session.user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
+    )
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/mine/withdraw")
+def withdraw_my_submission(
+    submission_id: int,
+    request: Request,
+    auth_session: AuthSession = Depends(require_auth_session),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户撤回本人申报（仅 pending）。"""
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.submitter_user_id != auth_session.user.id:
+        raise HTTPException(status_code=403, detail="无权限撤回他人申报")
+    if submission.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核申报可撤回")
+
+    submission.status = "withdrawn"
+    write_action_log(
+        db,
+        action="submission.withdraw_mine",
+        actor_user=auth_session.user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"status={submission.status}",
+    )
+    db.commit()
+    return {"message": "申报已撤回", "submission_id": submission_id}
+
+
 @app.get(f"{settings.api_prefix}/submissions/self", response_model=SubmissionOut)
 def get_submission_self(
     manage_token: str = Query(..., min_length=16, max_length=128),
@@ -1465,6 +1590,7 @@ def update_submission_self(
     submission_id: int,
     payload: SubmissionSelfUpdate,
     request: Request,
+    auth_session: AuthSession = Depends(require_auth_session),
     db: Session = Depends(get_db)
 ):
     """
@@ -1473,7 +1599,11 @@ def update_submission_self(
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="申报不存在")
-    if submission.manage_token != payload.manage_token:
+    if submission.submitter_user_id is not None:
+        if submission.submitter_user_id != auth_session.user.id:
+            raise HTTPException(status_code=403, detail="无权限修改他人申报")
+    elif submission.manage_token != payload.manage_token:
+        # 历史兼容：旧匿名申报仍允许通过 manage_token 修改
         raise HTTPException(status_code=403, detail="管理令牌无效")
     if submission.status != "pending":
         raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
@@ -1502,15 +1632,10 @@ def update_submission_self(
     for key, value in update_fields.items():
         setattr(submission, key, value)
 
-    actor_user = (
-        db.query(User).filter(User.id == submission.submitter_user_id).first()
-        if submission.submitter_user_id
-        else None
-    )
     write_action_log(
         db,
         action="submission.update_self",
-        actor_user=actor_user,
+        actor_user=auth_session.user,
         resource_type="submission",
         resource_id=str(submission.id),
         request_id=request.headers.get("X-Request-Id", ""),
@@ -1526,6 +1651,7 @@ def withdraw_submission_self(
     submission_id: int,
     payload: SubmissionManageTokenPayload,
     request: Request,
+    auth_session: AuthSession = Depends(require_auth_session),
     db: Session = Depends(get_db)
 ):
     """
@@ -1534,21 +1660,19 @@ def withdraw_submission_self(
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="申报不存在")
-    if submission.manage_token != payload.manage_token:
+    if submission.submitter_user_id is not None:
+        if submission.submitter_user_id != auth_session.user.id:
+            raise HTTPException(status_code=403, detail="无权限撤回他人申报")
+    elif submission.manage_token != payload.manage_token:
         raise HTTPException(status_code=403, detail="管理令牌无效")
     if submission.status != "pending":
         raise HTTPException(status_code=400, detail="仅待审核申报可撤回")
 
     submission.status = "withdrawn"
-    actor_user = (
-        db.query(User).filter(User.id == submission.submitter_user_id).first()
-        if submission.submitter_user_id
-        else None
-    )
     write_action_log(
         db,
         action="submission.withdraw",
-        actor_user=actor_user,
+        actor_user=auth_session.user,
         resource_type="submission",
         resource_id=str(submission.id),
         request_id=request.headers.get("X-Request-Id", ""),
@@ -1588,6 +1712,7 @@ def get_ranking_dimensions(
 def list_dimension_scores(
     dimension_id: int,
     period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    ranking_config_id: str | None = Query(default=None, description="榜单配置ID"),
     db: Session = Depends(get_db)
 ):
     """
@@ -1595,6 +1720,8 @@ def list_dimension_scores(
     """
     try:
         query = db.query(AppDimensionScore).filter(AppDimensionScore.dimension_id == dimension_id)
+        if ranking_config_id is not None:
+            query = query.filter(AppDimensionScore.ranking_config_id == ranking_config_id.strip())
         if period_date:
             query = query.filter(AppDimensionScore.period_date == period_date)
         else:
@@ -1609,6 +1736,7 @@ def list_dimension_scores(
 def list_app_dimension_scores(
     app_id: int,
     period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
+    ranking_config_id: str | None = Query(default=None, description="榜单配置ID"),
     db: Session = Depends(get_db)
 ):
     """
@@ -1616,6 +1744,8 @@ def list_app_dimension_scores(
     """
     try:
         query = db.query(AppDimensionScore).filter(AppDimensionScore.app_id == app_id)
+        if ranking_config_id is not None:
+            query = query.filter(AppDimensionScore.ranking_config_id == ranking_config_id.strip())
         if period_date:
             query = query.filter(AppDimensionScore.period_date == period_date)
         else:
@@ -1666,7 +1796,8 @@ def update_app_dimension_score_api(
     dimension_id: int,
     payload: DimensionScoreUpdate | None = None,
     score: int | None = Query(default=None, ge=0, le=100),
-    _: None = Depends(require_admin_token),
+    ranking_config_id: str | None = Query(default=None, description="榜单配置ID"),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1683,6 +1814,11 @@ def update_app_dimension_score_api(
     resolved_score = payload.score if payload is not None else score
     if resolved_score is None:
         raise HTTPException(status_code=422, detail="score is required")
+    config_id = ranking_config_id.strip() if ranking_config_id else None
+    if config_id:
+        config = db.query(RankingConfig).filter(RankingConfig.id == config_id).first()
+        if not config:
+            raise HTTPException(status_code=404, detail="榜单配置不存在")
     
     today = datetime.now().date()
     
@@ -1690,6 +1826,7 @@ def update_app_dimension_score_api(
     score_record = load_single_dimension_score(
         db,
         app_id=app_id,
+        ranking_config_id=config_id,
         dimension_id=dimension_id,
         period_date=today,
     )
@@ -1703,6 +1840,7 @@ def update_app_dimension_score_api(
     else:
         score_record = AppDimensionScore(
             app_id=app_id,
+            ranking_config_id=config_id,
             dimension_id=dimension_id,
             dimension_name=dimension.name,
             period_date=today,
@@ -1715,9 +1853,9 @@ def update_app_dimension_score_api(
         db,
         action="dimension_score_manual_saved",
         ranking_type=None,
-        ranking_config_id=None,
+        ranking_config_id=config_id,
         period_date=today,
-        actor="system",
+        actor=admin_user.username if admin_user else "system",
         payload_summary=(
             f"app_id={app_id},dimension_id={dimension_id},"
             f"before={before_score},after={resolved_score}"
@@ -2406,8 +2544,6 @@ def approve_submission_and_create_app(
         if submission.status != "pending":
             raise HTTPException(status_code=400, detail="申报状态不是待审批")
 
-        validate_submission_ranking_fields(submission.ranking_weight, submission.ranking_tags, submission.ranking_dimensions)
-
         resolved_status = (payload.status if payload and payload.status else "available")
         if resolved_status not in APP_STATUS_VALUES:
             raise HTTPException(status_code=422, detail="Invalid status")
@@ -2477,9 +2613,9 @@ def approve_submission_and_create_app(
             created_from_submission_id=submission.id,
             approved_by_user_id=(admin_user.id if admin_user else None),
             approved_at=approved_at,
-            ranking_enabled=submission.ranking_enabled,
-            ranking_weight=submission.ranking_weight,
-            ranking_tags=submission.ranking_tags,
+            ranking_enabled=False,
+            ranking_weight=1.0,
+            ranking_tags="",
         )
 
         db.add(app)
@@ -2488,6 +2624,22 @@ def approve_submission_and_create_app(
         except IntegrityError:
             db.rollback()
             raise HTTPException(status_code=409, detail="检测到重复应用创建请求，已拒绝")
+
+        active_configs = (
+            db.query(RankingConfig)
+            .filter(RankingConfig.is_active.is_(True))
+            .all()
+        )
+        for config in active_configs:
+            db.add(
+                AppRankingSetting(
+                    app_id=app.id,
+                    ranking_config_id=config.id,
+                    is_enabled=False,
+                    weight_factor=1.0,
+                    custom_tags="",
+                )
+            )
 
         submission.status = "approved"
         submission.approved_at = approved_at
@@ -2600,9 +2752,9 @@ def create_group_app(
             created_from_submission_id=None,
             approved_by_user_id=(admin_user.id if admin_user else None),
             approved_at=datetime.utcnow(),
-            ranking_enabled=payload.ranking_enabled,
-            ranking_weight=payload.ranking_weight,
-            ranking_tags=payload.ranking_tags,
+            ranking_enabled=False,
+            ranking_weight=1.0,
+            ranking_tags="",
         )
         db.add(app)
         db.flush()
@@ -3238,6 +3390,7 @@ def save_app_ranking_setting_atomically(
             score_record = load_single_dimension_score(
                 db,
                 app_id=app_id,
+                ranking_config_id=config_id,
                 dimension_id=item.dimension_id,
                 period_date=today,
             )
@@ -3251,6 +3404,7 @@ def save_app_ranking_setting_atomically(
                 db.add(
                     AppDimensionScore(
                         app_id=app_id,
+                        ranking_config_id=config_id,
                         dimension_id=item.dimension_id,
                         dimension_name=dimension.name,
                         score=item.score,

@@ -22,6 +22,16 @@ def login_and_get_token(username: str, password: str) -> str:
     return resp.json()["access_token"]
 
 
+def auth_headers_for_user(username: str = "zhangsan", password: str | None = None) -> dict[str, str]:
+    actual_password = password or (settings.admin_default_password if username == "lisi" else settings.user_default_password)
+    token = login_and_get_token(username, actual_password)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def create_submission_as_user(payload: dict, username: str = "zhangsan"):
+    return client.post('/api/submissions', json=payload, headers=auth_headers_for_user(username))
+
+
 def test_health():
     resp = client.get('/api/health')
     assert resp.status_code == 200
@@ -360,7 +370,7 @@ def test_list_apps():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    seed_resp = client.post('/api/submissions', json=seed_payload)
+    seed_resp = create_submission_as_user(seed_payload)
     if seed_resp.status_code != 200:
         print("seed_status:", seed_resp.status_code)
         print("seed_body:", seed_resp.text)
@@ -405,10 +415,79 @@ def test_submission_flow():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    resp = client.post('/api/submissions', json=payload)
+    resp = create_submission_as_user(payload)
     assert resp.status_code == 200
     assert resp.json()['status'] == 'pending'
     assert resp.json()['manage_token']
+
+
+def test_submission_create_requires_login():
+    payload = {
+        'category': 'group',
+        'app_name': '未登录提交测试应用',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+    }
+    client.cookies.clear()
+    resp = client.post('/api/submissions', json=payload)
+    assert resp.status_code == 401
+
+
+def test_submission_mine_flow_with_owner_scope():
+    payload = {
+        'category': 'group',
+        'app_name': f'我的申报测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+    }
+    create_resp = create_submission_as_user(payload)
+    assert create_resp.status_code == 200
+    submission_id = create_resp.json()['id']
+
+    user_headers = auth_headers_for_user("zhangsan")
+    mine_resp = client.get('/api/submissions/mine', headers=user_headers)
+    assert mine_resp.status_code == 200
+    ids = {item['id'] for item in mine_resp.json()}
+    assert submission_id in ids
+
+    updated_name = f"{payload['app_name']}-更新"
+    update_resp = client.put(
+        f'/api/submissions/{submission_id}/mine',
+        headers=user_headers,
+        json={**payload, 'app_name': updated_name},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()['app_name'] == updated_name
+
+    admin_headers = auth_headers_for_user("lisi")
+    forbidden_resp = client.put(
+        f'/api/submissions/{submission_id}/mine',
+        headers=admin_headers,
+        json=payload,
+    )
+    assert forbidden_resp.status_code == 403
+
+    withdraw_resp = client.post(f'/api/submissions/{submission_id}/mine/withdraw', headers=user_headers)
+    assert withdraw_resp.status_code == 200
+
+    mine_after_resp = client.get('/api/submissions/mine', headers=user_headers)
+    assert mine_after_resp.status_code == 200
+    target = next(item for item in mine_after_resp.json() if item['id'] == submission_id)
+    assert target['status'] == 'withdrawn'
 
 
 def test_submission_self_manage_flow():
@@ -429,7 +508,7 @@ def test_submission_self_manage_flow():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    create_resp = client.post('/api/submissions', json=payload)
+    create_resp = create_submission_as_user(payload)
     assert create_resp.status_code == 200
     created = create_resp.json()
     submission_id = created['id']
@@ -442,6 +521,7 @@ def test_submission_self_manage_flow():
     assert self_resp.json()['id'] == submission_id
 
     updated_name = f"{payload['app_name']}-更新"
+    user_headers = auth_headers_for_user()
     update_resp = client.put(
         f'/api/submissions/{submission_id}/self',
         json={
@@ -449,6 +529,7 @@ def test_submission_self_manage_flow():
             'app_name': updated_name,
             'manage_token': manage_token,
         },
+        headers=user_headers,
     )
     assert update_resp.status_code == 200
     assert update_resp.json()['app_name'] == updated_name
@@ -456,6 +537,7 @@ def test_submission_self_manage_flow():
     withdraw_resp = client.post(
         f'/api/submissions/{submission_id}/withdraw',
         json={'manage_token': manage_token},
+        headers=user_headers,
     )
     assert withdraw_resp.status_code == 200
 
@@ -469,6 +551,7 @@ def test_submission_self_manage_flow():
             **payload,
             'manage_token': manage_token,
         },
+        headers=user_headers,
     )
     assert blocked_update_resp.status_code == 400
 
@@ -497,7 +580,7 @@ def test_reject_submission_changes_status_to_rejected():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    create_resp = client.post('/api/submissions', json=payload)
+    create_resp = create_submission_as_user(payload)
     assert create_resp.status_code == 200
     submission_id = create_resp.json()['id']
 
@@ -533,7 +616,7 @@ def test_approve_maps_detail_doc_fields_to_app():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
@@ -548,7 +631,7 @@ def test_approve_maps_detail_doc_fields_to_app():
     assert app_data['detail_doc_name'] == payload['detail_doc_name']
 
 
-def test_approve_creates_app_without_placeholder_ranking_setting():
+def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
@@ -584,8 +667,9 @@ def test_approve_creates_app_without_placeholder_ranking_setting():
         assert app.status == 'available'
         assert app.target_system == submission.embedded_system
 
-        setting = db.query(AppRankingSetting).filter(AppRankingSetting.app_id == app_id).first()
-        assert setting is None
+        settings_rows = db.query(AppRankingSetting).filter(AppRankingSetting.app_id == app_id).all()
+        assert len(settings_rows) >= 1
+        assert all(item.is_enabled is False for item in settings_rows)
     finally:
         db.close()
 
@@ -608,7 +692,7 @@ def test_update_app_dimension_score_accepts_json_body():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
@@ -616,8 +700,16 @@ def test_update_app_dimension_score_accepts_json_body():
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
+    db = SessionLocal()
+    try:
+        config = db.query(RankingConfig).filter(RankingConfig.is_active.is_(True)).order_by(RankingConfig.id.asc()).first()
+        assert config is not None
+        config_id = config.id
+    finally:
+        db.close()
+
     update_resp = client.put(
-        f'/api/apps/{app_id}/dimension-scores/1',
+        f'/api/apps/{app_id}/dimension-scores/1?ranking_config_id={config_id}',
         headers=ADMIN_HEADERS,
         json={'score': 88}
     )
@@ -648,7 +740,7 @@ def test_delete_ranking_config_cleans_downstream_records():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
@@ -723,7 +815,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
@@ -772,7 +864,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
     assert setting_resp.status_code == 200
 
     score_resp = client.put(
-        f'/api/apps/{app_id}/dimension-scores/{dimension_id}',
+        f'/api/apps/{app_id}/dimension-scores/{dimension_id}?ranking_config_id={config_id}',
         headers=ADMIN_HEADERS,
         json={'score': 90},
     )
@@ -824,7 +916,7 @@ def test_submission_ranking_dimensions_write_is_deprecated():
         'ranking_tags': '',
         'ranking_dimensions': 'legacy-dim-1,legacy-dim-2'
     }
-    resp = client.post('/api/submissions', json=payload)
+    resp = create_submission_as_user(payload)
     assert resp.status_code == 200
     assert resp.json()['ranking_dimensions'] == ''
 
@@ -849,7 +941,7 @@ def test_save_app_ranking_setting_atomic_success():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
     approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
@@ -911,7 +1003,7 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
     approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
@@ -982,7 +1074,7 @@ def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
         'ranking_tags': '',
         'ranking_dimensions': ''
     }
-    submit_resp = client.post('/api/submissions', json=payload)
+    submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
     approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
@@ -1037,12 +1129,14 @@ def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
         today = datetime.now().date()
         score_count = db.query(AppDimensionScore).filter(
             AppDimensionScore.app_id == app_id,
+            AppDimensionScore.ranking_config_id == config_id,
             AppDimensionScore.dimension_id == dimension_id,
             AppDimensionScore.period_date == today,
         ).count()
         assert score_count == 1
         score_row = db.query(AppDimensionScore).filter(
             AppDimensionScore.app_id == app_id,
+            AppDimensionScore.ranking_config_id == config_id,
             AppDimensionScore.dimension_id == dimension_id,
             AppDimensionScore.period_date == today,
         ).first()

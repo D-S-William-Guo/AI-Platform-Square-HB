@@ -162,11 +162,6 @@ class SubmissionCreate(BaseModel):
     cover_image_url: str = Field(default="", max_length=500)
     detail_doc_url: str = Field(default="", max_length=500)
     detail_doc_name: str = Field(default="", max_length=255)
-    # 排行榜相关字段
-    ranking_enabled: bool = Field(default=True)
-    ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
-    ranking_tags: str = Field(default="", max_length=255)
-    ranking_dimensions: str = Field(default="", max_length=500)
 
 
 class SubmissionOut(BaseModel):
@@ -299,6 +294,7 @@ class AppDimensionScoreOut(BaseModel):
     """应用维度评分输出"""
     id: int
     app_id: int
+    ranking_config_id: str | None = None
     dimension_id: int
     dimension_name: str
     score: int

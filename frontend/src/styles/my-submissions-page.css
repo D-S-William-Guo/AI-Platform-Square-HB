@@ -1,0 +1,132 @@
+/* ==================== 我的申报页面样式 ==================== */
+
+.my-submissions-page .page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.my-submissions-page .filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.my-submissions-page .filter-btn {
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.my-submissions-page .filter-btn.active {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: rgba(79, 124, 255, 0.08);
+}
+
+.my-submissions-page .submission-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.my-submissions-page .submission-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.my-submissions-page .submission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.my-submissions-page .submission-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.my-submissions-page .status-chip {
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.my-submissions-page .status-chip.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.my-submissions-page .status-chip.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.my-submissions-page .status-chip.rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.my-submissions-page .status-chip.withdrawn {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.my-submissions-page .submission-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.my-submissions-page .rejected-reason {
+  border-radius: var(--radius-md);
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.my-submissions-page .submission-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.my-submissions-page .submission-actions .secondary {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.my-submissions-page .submission-actions .secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.my-submissions-page .my-submission-edit {
+  width: min(900px, 94vw);
+}
+
+@media (max-width: 992px) {
+  .my-submissions-page .submission-list {
+    grid-template-columns: 1fr;
+  }
+}
+
