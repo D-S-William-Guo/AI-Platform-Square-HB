@@ -83,6 +83,10 @@ cp backend/.env.example backend/.env
 - `backend/.env` 是后端运行时真相源，至少要配置 `DATABASE_URL`。
 - 根目录 `.env` 仅用于覆盖 docker compose 中的 MySQL 默认账号。
 - 根目录 `.env.local` 会被 `make backend-dev`、`make frontend-dev`、`make test` 自动加载，适合本机调试。
+- 默认端口约定：
+  - `APP_PORT=80`：准生产单端口
+  - `BACKEND_DEV_PORT=8000`：后端开发端口
+  - `FRONTEND_DEV_PORT=5173`：前端开发端口
 
 ### 1) 安装依赖与虚拟环境
 
@@ -113,7 +117,7 @@ PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 # PYTHONPATH=. ../.venv/bin/python -m app.bootstrap seed-demo
 ```
 
-### 4) 启动前后端
+### 4) 开发模式启动前后端
 
 后端：
 ```bash
@@ -125,15 +129,15 @@ make backend-dev
 make frontend-dev
 ```
 
-访问：
-- 后端 API：`http://127.0.0.1:8000`
-- Swagger：`http://127.0.0.1:8000/docs`
-- 前端：`http://127.0.0.1:5173`
+开发访问地址：
+- 后端 API：`http://127.0.0.1:${BACKEND_DEV_PORT:-8000}`
+- Swagger：`http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/docs`
+- 前端：`http://127.0.0.1:${FRONTEND_DEV_PORT:-5173}`
 
 ### 5) 最小验证
 
 ```bash
-curl -sS http://127.0.0.1:8000/api/health
+curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 ```
 
 期望返回：`{"status":"ok"}`
@@ -148,6 +152,37 @@ curl -sS http://127.0.0.1:8000/api/health
 - 启动校验要求：`UPLOAD_DIR` 必须解析到 `STATIC_DIR/uploads`，否则服务将启动失败并提示配置错误（避免返回 `/static/uploads/...` 出现 404）。
 
 数据库迁移与初始化步骤统一维护在：`docs/db-migration-sop.md`。
+
+## 准生产部署（单机内网、单端口同源）
+
+目标形态：
+- 前端先构建成 `frontend/dist`
+- 后端同源托管前端静态文件和 `/api/*`
+- 对外只暴露一个端口：`APP_PORT`
+- 数据库连接远程 MySQL，首次部署按空库初始化处理
+
+推荐顺序：
+
+```bash
+cp backend/.env.example backend/.env
+# 把 DATABASE_URL 改成远程 MySQL
+# 把 ENVIRONMENT 改成 production
+# 把 ADMIN_TOKEN / USER_DEFAULT_PASSWORD / ADMIN_DEFAULT_PASSWORD 改成正式值
+
+cd backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make app-serve
+```
+
+准生产访问地址：
+- 应用首页：`http://<host>:${APP_PORT:-80}`
+- 健康检查：`http://<host>:${APP_PORT:-80}/api/health`
+
+说明：
+- `make app-serve` 会先构建前端，再启动后端单端口服务。
+- 若远程 MySQL 不是空库或不是本项目独占的新库，本次定版不负责自动识别和兼容，需先人工清库或迁移到新库。
 
 本地 0 门槛调试（推荐）：
 
@@ -535,4 +570,17 @@ cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 make backend-dev
 make frontend-dev
 make test
+```
+
+## 推荐使用 make 命令进行准生产启动
+
+```bash
+cp backend/.env.example backend/.env
+# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT, ADMIN_TOKEN
+make backend-install
+make frontend-install
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make app-serve
 ```

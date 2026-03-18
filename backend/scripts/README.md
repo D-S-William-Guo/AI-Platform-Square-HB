@@ -12,6 +12,8 @@
   - MySQL 环境诊断与后端测试入口。
 - `dev/bootstrap_venv.sh`
   - 在仓库根目录创建 `.venv` 并安装依赖。
+- `../../scripts/app_serve.sh`
+  - 构建前端并以单端口同源模式启动后端服务。
 
 ## 初始化命令
 
@@ -23,4 +25,11 @@ alembic upgrade head
 python -m app.bootstrap init-base
 # 仅开发/演示需要时：
 python -m app.bootstrap seed-demo
+```
+
+准生产单机启动：
+
+```bash
+cd ..
+make app-serve
 ```

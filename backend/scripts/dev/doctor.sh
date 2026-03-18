@@ -178,9 +178,10 @@ ${PY_CMD} -m pytest -q tests || fail "pytest failed"
 popd >/dev/null
 ok "pytest ok"
 
-section "8) Optional: port 8000 check (if you run uvicorn)"
+section "8) Optional: backend dev port check"
 if command -v ss >/dev/null 2>&1; then
-  ss -ltnp | grep -q ":8000" && warn "port 8000 is LISTENING (server running?)" || ok "port 8000 not listening"
+  BACKEND_DEV_PORT="${BACKEND_DEV_PORT:-8000}"
+  ss -ltnp | grep -q ":${BACKEND_DEV_PORT}" && warn "port ${BACKEND_DEV_PORT} is LISTENING (backend dev server running?)" || ok "port ${BACKEND_DEV_PORT} not listening"
 else
   warn "ss not available; skip port check"
 fi

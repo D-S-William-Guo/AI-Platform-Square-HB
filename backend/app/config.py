@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str
     test_database_url: str | None = None
+    app_host: str = "0.0.0.0"
+    app_port: int = 80
+    backend_dev_port: int = 8000
+    frontend_dev_port: int = 5173
     oa_rule_base_url: str = "https://oa.example.internal"
     static_dir: str = "static"
     upload_dir: str = "static/uploads"
@@ -32,6 +36,13 @@ class Settings(BaseSettings):
 
 
 def validate_settings(settings_obj: Settings) -> None:
+    for name, value in (
+        ("APP_PORT", settings_obj.app_port),
+        ("BACKEND_DEV_PORT", settings_obj.backend_dev_port),
+        ("FRONTEND_DEV_PORT", settings_obj.frontend_dev_port),
+    ):
+        if value < 1 or value > 65535:
+            raise ValueError(f"{name} must be between 1 and 65535")
     if not settings_obj.database_url:
         raise ValueError("DATABASE_URL must be set")
     if not settings_obj.database_url.startswith(MYSQL_URL_PREFIX):

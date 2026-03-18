@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import Body, Cookie, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy import func, or_
@@ -89,6 +90,7 @@ DEFAULT_RANKING_TAG = "推荐"
 STATIC_DIR = resolve_runtime_path(settings.static_dir)
 UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
 IMAGE_DIR = resolve_runtime_path(settings.image_dir)
+FRONTEND_DIST_DIR = (Path(__file__).resolve().parents[2] / "frontend" / "dist").resolve()
 
 
 logger = logging.getLogger(__name__)
@@ -111,6 +113,29 @@ def ensure_runtime_directories() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_frontend_asset(full_path: str) -> Path | None:
+    requested = full_path.strip("/")
+    if not requested:
+        return None
+
+    candidate = (FRONTEND_DIST_DIR / requested).resolve()
+    try:
+        candidate.relative_to(FRONTEND_DIST_DIR)
+    except ValueError:
+        return None
+
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def get_frontend_index_file() -> Path | None:
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.is_file():
+        return index_file
+    return None
 
 
 def normalize_dedupe_text(value: str) -> str:
@@ -3566,3 +3591,27 @@ def list_all_app_ranking_settings(
     
     settings_list = query.all()
     return settings_list
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend_index():
+    index_file = get_frontend_index_file()
+    if not index_file:
+        raise HTTPException(status_code=404, detail="Frontend build artifact is missing")
+    return FileResponse(index_file)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend_app(full_path: str):
+    normalized_path = full_path.strip("/")
+    if normalized_path == settings.api_prefix.strip("/") or normalized_path.startswith(f"{settings.api_prefix.strip('/')}/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    asset_path = resolve_frontend_asset(full_path)
+    if asset_path:
+        return FileResponse(asset_path)
+
+    index_file = get_frontend_index_file()
+    if not index_file:
+        raise HTTPException(status_code=404, detail="Frontend build artifact is missing")
+    return FileResponse(index_file)

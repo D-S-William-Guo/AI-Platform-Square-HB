@@ -6,6 +6,7 @@
 - 数据库迁移与初始化：`docs/db-migration-sop.md`
 - 本地开发环境、自检与 MySQL 测试：`docs/dev-setup.md`
 - Git 分支与 PR 规范：`docs/dev-workflow.md`
+- 准生产单机内网部署：`README.md` 中“准生产部署（单机内网、单端口同源）”
 
 ## Phase-4 PR-D 回归测试（口径锁定）
 

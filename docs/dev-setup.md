@@ -15,6 +15,7 @@
 - 后端以 **editable install（`pip install -e .`）** 的方式安装，避免依赖 `PYTHONPATH`
 - CI 与本地开发使用同一条导入路径规则：`import app` 必须稳定可用
 - 数据库只支持 MySQL，结构迁移统一走 Alembic
+- 准生产交付形态为“前端静态构建 + 后端单端口同源托管”
 
 ---
 
@@ -36,6 +37,15 @@ make db-up
 cd backend
 PYTHONPATH=. ../.venv/bin/alembic upgrade head
 PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+```
+
+开发调试端口可通过以下变量覆盖：
+
+```bash
+export APP_HOST=0.0.0.0
+export BACKEND_DEV_PORT=8000
+export FRONTEND_DEV_PORT=5173
+export VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_DEV_PORT}"
 ```
 
 ---
@@ -116,7 +126,8 @@ PYTHONPATH="$(pwd)" python -m pytest -q tests
 
 1. `bash backend/scripts/dev/doctor.sh`（或 Windows `doctor.ps1`）
 2. `python -m pytest -q tests`（doctor 已包含，可略）
-3. push 分支 → 开 PR → 等 CI 绿 → squash merge
+3. `npm run build`（确认前端构建可用于单端口同源部署）
+4. push 分支 → 开 PR → 等 CI 绿 → squash merge
 
 ---
 

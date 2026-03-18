@@ -37,7 +37,7 @@ make backend-dev
 
 新开终端：
 ```bash
-curl -sS http://127.0.0.1:8000/api/health
+curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 ```
 期望返回：`{"status":"ok"}`。
 
