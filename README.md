@@ -6,7 +6,7 @@
 
 - 前端：React + TypeScript + Vite
 - 后端：Python FastAPI + SQLAlchemy
-- 数据库：MySQL 8.0 + Alembic
+- 数据库：MySQL 5.7 + Alembic
 
 ## Governance Snapshot
 
@@ -114,6 +114,8 @@ make db-up
 
 本地默认通过 Docker Compose 暴露 `127.0.0.1:13306`。
 如果部署环境是“本机应用 + 远程 MySQL 服务”，只需要把 `backend/.env` 中的 `DATABASE_URL` / `TEST_DATABASE_URL` 改成远程地址。
+当前项目本地与 CI 统一以 MySQL 5.7 为准。
+如果你本机之前用的是 MySQL 8.0，本次切换到 5.7 时必须执行一次 `docker compose down -v`，然后重新 `make db-up`、`alembic upgrade head`、`python -m app.bootstrap init-base`。
 
 ### 3) 执行迁移与基础初始化
 

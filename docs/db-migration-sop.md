@@ -1,6 +1,7 @@
 # 数据库迁移 SOP（MySQL Only）
 
 > 真相源固定为 `HistoricalRanking`。本项目数据库基线已收敛为 MySQL + Alembic，旧的多数据库兼容路径已下线。
+> 当前本地开发、CI、远程部署口径统一按 MySQL 5.7 验证。
 
 ## 1. 标准执行顺序
 
@@ -33,6 +34,11 @@
    ```bash
    docker compose up -d mysql
    ```
+   如果你本机之前使用的是 MySQL 8.0 数据卷，先执行：
+   ```bash
+   docker compose down -v
+   ```
+   然后再重新 `docker compose up -d mysql`。MySQL 8.0 与 5.7 不应复用同一数据目录。
 3. 迁移并初始化：
    ```bash
    cd backend
