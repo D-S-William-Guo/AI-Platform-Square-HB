@@ -153,6 +153,45 @@ curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 
 数据库迁移与初始化步骤统一维护在：`docs/db-migration-sop.md`。
 
+### 本地开发最短命令清单
+
+首次完整启动：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+make db-up
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make backend-dev
+```
+
+新开一个终端：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-dev
+```
+
+如果本机已经装过依赖并初始化过数据库，日常启动最短就是：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make db-up
+make backend-dev
+```
+
+新开一个终端：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-dev
+```
+
 ## 准生产部署（单机内网、单端口同源）
 
 目标形态：
@@ -183,6 +222,51 @@ make app-serve
 说明：
 - `make app-serve` 会先构建前端，再启动后端单端口服务。
 - 若远程 MySQL 不是空库或不是本项目独占的新库，本次定版不负责自动识别和兼容，需先人工清库或迁移到新库。
+
+### 准生产单机内网最短命令清单
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+```
+
+编辑 `backend/.env`，至少确认：
+- `DATABASE_URL=mysql+pymysql://...` 指向远程 MySQL
+- `ENVIRONMENT=production`
+- `APP_HOST=0.0.0.0`
+- `APP_PORT=80`
+- `USER_DEFAULT_PASSWORD=...`
+- `ADMIN_DEFAULT_PASSWORD=...`
+
+首次部署初始化：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB/backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+```
+
+如需演示数据，再执行：
+
+```bash
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap seed-demo
+```
+
+回到仓库根目录启动：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make app-serve
+```
+
+部署后验证：
+
+```bash
+curl -sS "http://<主机地址>:${APP_PORT:-80}/api/health"
+```
 
 本地 0 门槛调试（推荐）：
 

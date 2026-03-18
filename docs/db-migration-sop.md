@@ -39,6 +39,28 @@
    - `make backend-dev`
    - `make frontend-dev`
 
+最短命令清单：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+make db-up
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make backend-dev
+```
+
+新开一个终端：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-dev
+```
+
 ### 2.2 远程 MySQL
 
 1. 将 `DATABASE_URL` 指向远程 MySQL 服务。
@@ -56,6 +78,26 @@
 5. 验证：
    - `http://<host>:${APP_PORT:-80}`
    - `http://<host>:${APP_PORT:-80}/api/health`
+
+最短命令清单：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+```
+
+编辑 `backend/.env` 后执行：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB/backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make app-serve
+```
 
 ## 2.3 端口规则
 

@@ -48,6 +48,19 @@ export FRONTEND_DEV_PORT=5173
 export VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_DEV_PORT}"
 ```
 
+最短命令清单：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+bash backend/scripts/dev/bootstrap_venv.sh
+cp backend/.env.example backend/.env
+make db-up
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make backend-dev
+```
+
 ---
 
 ## 3. 快速开始（Windows / PowerShell）
