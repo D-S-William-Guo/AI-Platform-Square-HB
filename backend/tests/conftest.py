@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-# Ensure DATABASE_URL is set before any test module imports `app.main`.
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+# Force test database before any test module imports `app.main`.
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_test_db():

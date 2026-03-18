@@ -159,14 +159,11 @@ class SubmissionCreate(BaseModel):
     effectiveness_metric: str = Field(min_length=2, max_length=120)
     data_level: str
     expected_benefit: str = Field(min_length=10, max_length=300)
+    monthly_calls: float = Field(default=0.0, ge=0)
+    difficulty: str = Field(default="Medium", max_length=20)
     cover_image_url: str = Field(default="", max_length=500)
     detail_doc_url: str = Field(default="", max_length=500)
     detail_doc_name: str = Field(default="", max_length=255)
-    # 排行榜相关字段
-    ranking_enabled: bool = Field(default=True)
-    ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
-    ranking_tags: str = Field(default="", max_length=255)
-    ranking_dimensions: str = Field(default="", max_length=500)
 
 
 class SubmissionOut(BaseModel):
@@ -184,6 +181,8 @@ class SubmissionOut(BaseModel):
     effectiveness_metric: str
     data_level: str
     expected_benefit: str
+    monthly_calls: float
+    difficulty: str
     status: str
     submitter_user_id: int | None = None
     approved_by_user_id: int | None = None
@@ -299,6 +298,7 @@ class AppDimensionScoreOut(BaseModel):
     """应用维度评分输出"""
     id: int
     app_id: int
+    ranking_config_id: str | None = None
     dimension_id: int
     dimension_name: str
     score: int
@@ -358,6 +358,10 @@ class GroupAppCreate(BaseModel):
     ranking_enabled: bool = Field(default=True)
     ranking_weight: float = Field(default=1.0, ge=0.1, le=10.0)
     ranking_tags: str = Field(default="", max_length=255)
+
+
+class AdminAppStatusUpdate(BaseModel):
+    status: str = Field(..., min_length=1, max_length=20)
 
 
 # ==================== 三层架构排行榜系统 Schemas ====================

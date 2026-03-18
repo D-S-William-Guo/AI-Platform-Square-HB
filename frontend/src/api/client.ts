@@ -151,6 +151,11 @@ export async function fetchSubmissionSelf(manageToken: string) {
   return data
 }
 
+export async function fetchMySubmissions() {
+  const { data } = await client.get<Submission[]>('/api/submissions/mine')
+  return data
+}
+
 export async function updateSubmissionSelf(
   submissionId: number,
   payload: SubmissionPayload & { manage_token: string }
@@ -159,10 +164,20 @@ export async function updateSubmissionSelf(
   return data
 }
 
+export async function updateMySubmission(submissionId: number, payload: SubmissionPayload) {
+  const { data } = await client.put<Submission>(`/api/submissions/${submissionId}/mine`, payload)
+  return data
+}
+
 export async function withdrawSubmissionSelf(submissionId: number, manageToken: string) {
   const { data } = await client.post(`/api/submissions/${submissionId}/withdraw`, {
     manage_token: manageToken
   })
+  return data
+}
+
+export async function withdrawMySubmission(submissionId: number) {
+  const { data } = await client.post(`/api/submissions/${submissionId}/mine/withdraw`)
   return data
 }
 
@@ -324,10 +339,10 @@ export async function approveSubmissionAndCreateApp(
   return data
 }
 
-export async function rejectSubmission(submissionId: number, reason?: string) {
+export async function rejectSubmission(submissionId: number, reason: string) {
   const { data } = await client.post(
     `/api/submissions/${submissionId}/reject`,
-    { reason: reason || '' },
+    { reason },
     {
       headers: getRequiredAdminAuthHeaders()
     }
@@ -356,20 +371,22 @@ export async function fetchAvailableRankingDates(ranking_type: 'excellent' | 'tr
 // 应用维度评分 API
 export async function fetchAppDimensionScores(
   appId: number,
-  period_date?: string
+  period_date?: string,
+  ranking_config_id?: string
 ) {
   const { data } = await client.get<any[]>(`/api/apps/${appId}/dimension-scores`, {
-    params: { period_date }
+    params: { period_date, ranking_config_id }
   })
   return data
 }
 
 export async function fetchDimensionScores(
   dimensionId: number,
-  period_date?: string
+  period_date?: string,
+  ranking_config_id?: string
 ) {
   const { data } = await client.get<any[]>(`/api/ranking-dimensions/${dimensionId}/scores`, {
-    params: { period_date }
+    params: { period_date, ranking_config_id }
   })
   return data
 }
@@ -393,9 +410,11 @@ export async function updateAppRankingParams(
 export async function updateAppDimensionScore(
   appId: number,
   dimensionId: number,
-  score: number
+  score: number,
+  ranking_config_id?: string
 ) {
   const { data } = await client.put(`/api/apps/${appId}/dimension-scores/${dimensionId}`, { score }, {
+    params: ranking_config_id ? { ranking_config_id } : {},
     headers: getRequiredAdminAuthHeaders()
   })
   return data
@@ -430,6 +449,30 @@ export async function createGroupApp(
   const { data } = await client.post('/api/admin/group-apps', payload, {
     headers: getRequiredAdminAuthHeaders()
   })
+  return data
+}
+
+export async function fetchAdminApps(params?: {
+  section?: 'group' | 'province'
+  status?: 'available' | 'approval' | 'beta' | 'offline'
+  q?: string
+}) {
+  const { data } = await client.get<AppItem[]>('/api/admin/apps', {
+    params: params || {},
+    headers: getRequiredAdminAuthHeaders()
+  })
+  return data
+}
+
+export async function updateAdminAppStatus(
+  appId: number,
+  status: 'available' | 'approval' | 'beta' | 'offline'
+) {
+  const { data } = await client.put(
+    `/api/admin/apps/${appId}/status`,
+    { status },
+    { headers: getRequiredAdminAuthHeaders() }
+  )
   return data
 }
 

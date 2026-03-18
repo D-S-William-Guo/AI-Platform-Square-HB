@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   effectiveness_metric VARCHAR(120) NOT NULL,
   data_level VARCHAR(10) NOT NULL,
   expected_benefit VARCHAR(300) NOT NULL,
+  monthly_calls FLOAT DEFAULT 0.0,
+  difficulty VARCHAR(20) DEFAULT 'Medium',
   status VARCHAR(20) DEFAULT 'pending',
   submitter_user_id INT DEFAULT NULL,
   approved_by_user_id INT DEFAULT NULL,
@@ -187,6 +189,7 @@ CREATE TABLE IF NOT EXISTS ranking_logs (
 CREATE TABLE IF NOT EXISTS app_dimension_scores (
   id INT AUTO_INCREMENT PRIMARY KEY,
   app_id INT NOT NULL,
+  ranking_config_id VARCHAR(50) DEFAULT NULL,
   dimension_id INT NOT NULL,
   dimension_name VARCHAR(100) NOT NULL,
   score INT DEFAULT 0,
@@ -196,6 +199,7 @@ CREATE TABLE IF NOT EXISTS app_dimension_scores (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_app_dim_scores_app FOREIGN KEY (app_id) REFERENCES apps(id),
+  CONSTRAINT fk_app_dim_scores_config FOREIGN KEY (ranking_config_id) REFERENCES ranking_configs(id),
   CONSTRAINT fk_app_dim_scores_dim FOREIGN KEY (dimension_id) REFERENCES ranking_dimensions(id)
 );
 
@@ -254,5 +258,8 @@ CREATE INDEX idx_submissions_rejected_by_user_id ON submissions(rejected_by_user
 CREATE INDEX idx_historical_rankings_date ON historical_rankings(period_date);
 CREATE INDEX idx_historical_rankings_type ON historical_rankings(ranking_type);
 CREATE INDEX idx_app_dim_scores_app ON app_dimension_scores(app_id);
+CREATE INDEX idx_app_dim_scores_config ON app_dimension_scores(ranking_config_id);
 CREATE INDEX idx_app_dim_scores_date ON app_dimension_scores(period_date);
+CREATE UNIQUE INDEX uq_app_dim_scores_app_config_dim_period
+ON app_dimension_scores(app_id, ranking_config_id, dimension_id, period_date);
 CREATE UNIQUE INDEX idx_ranking_dimensions_name ON ranking_dimensions(name);

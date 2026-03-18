@@ -155,6 +155,8 @@ class Submission(Base):
     effectiveness_metric: Mapped[str] = mapped_column(String(120), nullable=False)
     data_level: Mapped[str] = mapped_column(String(10), nullable=False)
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
+    monthly_calls: Mapped[float] = mapped_column(Float, default=0.0)
+    difficulty: Mapped[str] = mapped_column(String(20), default="Medium")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     submitter_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
@@ -235,9 +237,23 @@ class RankingAuditLog(Base):
 class AppDimensionScore(Base):
     """应用在各维度的评分数据"""
     __tablename__ = "app_dimension_scores"
+    __table_args__ = (
+        UniqueConstraint(
+            "app_id",
+            "ranking_config_id",
+            "dimension_id",
+            "period_date",
+            name="uq_app_dim_scores_app_config_dim_period",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    ranking_config_id: Mapped[str | None] = mapped_column(
+        ForeignKey("ranking_configs.id"),
+        nullable=True,
+        index=True,
+    )
     dimension_id: Mapped[int] = mapped_column(ForeignKey("ranking_dimensions.id"), nullable=False)
     dimension_name: Mapped[str] = mapped_column(String(100), nullable=False)
     score: Mapped[int] = mapped_column(Integer, default=0)  # 0-100分
@@ -249,6 +265,7 @@ class AppDimensionScore(Base):
 
     app = relationship("App")
     dimension = relationship("RankingDimension")
+    ranking_config = relationship("RankingConfig")
 
 
 class HistoricalRanking(Base):

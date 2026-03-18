@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { RankingDimension, AppItem } from '../types'
 import {
   fetchRankingDimensions,
@@ -16,6 +16,9 @@ import {
   fetchAppDimensionScores,
   deleteAppRankingSetting,
   saveAppRankingSetting,
+  createGroupApp,
+  fetchAdminApps,
+  updateAdminAppStatus,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
@@ -49,6 +52,8 @@ interface DimensionConfig {
   dim_id: number
   weight: number
 }
+
+const APP_CATEGORY_OPTIONS = ['办公类', '业务前台', '运维后台', '企业管理'] as const
 
 function resolveAdminError(err: unknown, fallback: string): string {
   if (isMissingAdminTokenError(err)) {
@@ -100,6 +105,7 @@ const RankingManagementPage = () => {
 
   // 应用参与管理状态
   const [apps, setApps] = useState<AppItem[]>([])
+  const [adminApps, setAdminApps] = useState<AppItem[]>([])
   const [appSettings, setAppSettings] = useState<Record<number, AppRankingSettingItem[]>>({})
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<AppItem | null>(null)
   const [editingAppSetting, setEditingAppSetting] = useState<AppRankingSettingItem | null>(null)
@@ -118,7 +124,12 @@ const RankingManagementPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'configs' | 'app-settings' | 'dimensions' | 'logs'>('configs')
+  const [activeTab, setActiveTab] = useState<'configs' | 'app-settings' | 'app-management' | 'group-apps' | 'dimensions' | 'logs'>('configs')
+  const [appManagementMessage, setAppManagementMessage] = useState<string | null>(null)
+  const [statusUpdatingAppId, setStatusUpdatingAppId] = useState<number | null>(null)
+  const [manageSectionFilter, setManageSectionFilter] = useState<'all' | 'group' | 'province'>('all')
+  const [manageStatusFilter, setManageStatusFilter] = useState<'all' | 'available' | 'approval' | 'beta' | 'offline'>('all')
+  const [manageKeyword, setManageKeyword] = useState('')
 
   // 维度表单状态
   const [showDimensionModal, setShowDimensionModal] = useState(false)
@@ -130,6 +141,28 @@ const RankingManagementPage = () => {
     weight: 1.0,
     is_active: true
   })
+  const [groupAppSubmitting, setGroupAppSubmitting] = useState(false)
+  const [groupAppMessage, setGroupAppMessage] = useState<string | null>(null)
+  const [groupAppForm, setGroupAppForm] = useState({
+    name: '',
+    org: '',
+    category: '办公类',
+    description: '',
+    status: 'available',
+    monthly_calls: 0,
+    api_open: false,
+    difficulty: 'Low',
+    contact_name: '',
+    highlight: '',
+    access_mode: 'direct',
+    access_url: '',
+    target_system: '',
+    target_users: '',
+    problem_statement: '',
+    effectiveness_type: 'efficiency_gain',
+    effectiveness_metric: '',
+    cover_image_url: ''
+  })
 
   useEffect(() => {
     loadData()
@@ -139,16 +172,18 @@ const RankingManagementPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const [dimensionsData, logsData, appsData, configsData] = await Promise.all([
+      const [dimensionsData, logsData, appsData, configsData, adminAppsData] = await Promise.all([
         fetchRankingDimensions(),
         fetchRankingAuditLogs(),
         fetchApps(),
-        fetchRankingConfigs()
+        fetchRankingConfigs(),
+        fetchAdminApps()
       ])
       setDimensions(dimensionsData)
       setLogs(logsData)
       setApps(appsData.filter(app => app.section === 'province'))
       setRankingConfigs(configsData)
+      setAdminApps(adminAppsData)
 
       // 加载所有应用榜单设置
       const allSettings = await fetchAllAppRankingSettings()
@@ -170,6 +205,36 @@ const RankingManagementPage = () => {
       setLoading(false)
     }
   }
+
+  const loadDimensionScoresForConfig = async (appId: number, rankingConfigId: string) => {
+    setLoadingDimensionScores(true)
+    try {
+      const scoreData = await fetchAppDimensionScores(appId, undefined, rankingConfigId || undefined)
+      const scoreMap: Record<number, number> = {}
+      for (const item of scoreData) {
+        if (typeof item.dimension_id === 'number') {
+          scoreMap[item.dimension_id] = Number(item.score || 0)
+        }
+      }
+      setDimensionScores(scoreMap)
+    } catch (err) {
+      console.error('Failed to fetch app dimension scores:', err)
+      setDimensionScores({})
+    } finally {
+      setLoadingDimensionScores(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showAppSettingModal || !selectedAppForConfig) {
+      return
+    }
+    if (!appSettingForm.ranking_config_id) {
+      setDimensionScores({})
+      return
+    }
+    loadDimensionScoresForConfig(selectedAppForConfig.id, appSettingForm.ranking_config_id)
+  }, [showAppSettingModal, selectedAppForConfig, appSettingForm.ranking_config_id])
 
   // ==================== 榜单配置管理 ====================
 
@@ -322,9 +387,10 @@ const RankingManagementPage = () => {
     }
   }
 
-  const openAppSettingModal = async (app: AppItem, existingSetting?: AppRankingSettingItem) => {
+  const openAppSettingModal = (app: AppItem, existingSetting?: AppRankingSettingItem) => {
     setSelectedAppForConfig(app)
     setEditingAppSetting(existingSetting || null)
+    const defaultConfigId = existingSetting?.ranking_config_id || rankingConfigs[0]?.id || ''
     if (existingSetting) {
       setAppSettingForm({
         ranking_config_id: existingSetting.ranking_config_id,
@@ -334,30 +400,14 @@ const RankingManagementPage = () => {
       })
     } else {
       setAppSettingForm({
-        ranking_config_id: rankingConfigs[0]?.id || '',
+        ranking_config_id: defaultConfigId,
         is_enabled: true,
         weight_factor: 1.0,
         custom_tags: ''
       })
     }
 
-    setLoadingDimensionScores(true)
-    try {
-      const scoreData = await fetchAppDimensionScores(app.id)
-      const scoreMap: Record<number, number> = {}
-      for (const item of scoreData) {
-        if (typeof item.dimension_id === 'number') {
-          scoreMap[item.dimension_id] = Number(item.score || 0)
-        }
-      }
-      setDimensionScores(scoreMap)
-    } catch (err) {
-      console.error('Failed to fetch app dimension scores:', err)
-      setDimensionScores({})
-    } finally {
-      setLoadingDimensionScores(false)
-    }
-
+    setDimensionScores({})
     setShowAppSettingModal(true)
   }
 
@@ -414,6 +464,71 @@ const RankingManagementPage = () => {
     setEditingDimension(null)
   }
 
+  // ==================== 集团应用录入 ====================
+
+  const resetGroupAppForm = () => {
+    setGroupAppForm({
+      name: '',
+      org: '',
+      category: '办公类',
+      description: '',
+      status: 'available',
+      monthly_calls: 0,
+      api_open: false,
+      difficulty: 'Low',
+      contact_name: '',
+      highlight: '',
+      access_mode: 'direct',
+      access_url: '',
+      target_system: '',
+      target_users: '',
+      problem_statement: '',
+      effectiveness_type: 'efficiency_gain',
+      effectiveness_metric: '',
+      cover_image_url: ''
+    })
+  }
+
+  const handleSaveGroupApp = async () => {
+    const name = groupAppForm.name.trim()
+    const org = groupAppForm.org.trim()
+    const category = groupAppForm.category.trim()
+    const description = groupAppForm.description.trim()
+    if (!name || !org || !category || !description) {
+      setError('请先填写集团应用录入的必填项')
+      return
+    }
+
+    try {
+      setGroupAppSubmitting(true)
+      setGroupAppMessage(null)
+      setError(null)
+      await createGroupApp({
+        ...groupAppForm,
+        name,
+        org,
+        category,
+        description,
+        monthly_calls: Number(groupAppForm.monthly_calls || 0),
+        access_url: groupAppForm.access_url.trim(),
+        target_system: groupAppForm.target_system.trim(),
+        target_users: groupAppForm.target_users.trim(),
+        problem_statement: groupAppForm.problem_statement.trim(),
+        effectiveness_metric: groupAppForm.effectiveness_metric.trim(),
+        cover_image_url: groupAppForm.cover_image_url.trim(),
+        contact_name: groupAppForm.contact_name.trim(),
+        highlight: groupAppForm.highlight.trim()
+      })
+      setGroupAppMessage('集团应用录入成功')
+      resetGroupAppForm()
+      await loadData()
+    } catch (err) {
+      setError(resolveAdminError(err, '集团应用录入失败'))
+    } finally {
+      setGroupAppSubmitting(false)
+    }
+  }
+
   // ==================== 排行榜同步 ====================
 
   const handleSyncRankings = async () => {
@@ -428,6 +543,43 @@ const RankingManagementPage = () => {
       setSyncMessage(resolveAdminError(err, '发布失败，请重试'))
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const filteredAdminApps = useMemo(() => {
+    return adminApps.filter((app) => {
+      if (manageSectionFilter !== 'all' && app.section !== manageSectionFilter) {
+        return false
+      }
+      if (manageStatusFilter !== 'all' && app.status !== manageStatusFilter) {
+        return false
+      }
+      if (manageKeyword.trim()) {
+        const kw = manageKeyword.trim().toLowerCase()
+        const haystack = `${app.name} ${app.org} ${app.category}`.toLowerCase()
+        if (!haystack.includes(kw)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [adminApps, manageSectionFilter, manageStatusFilter, manageKeyword])
+
+  const handleUpdateAppStatus = async (app: AppItem, nextStatus: 'available' | 'approval' | 'beta' | 'offline') => {
+    const actionText = nextStatus === 'offline' ? '下架' : '上架'
+    if (!confirm(`确定要将应用「${app.name}」${actionText}为 ${nextStatus} 吗？`)) {
+      return
+    }
+    try {
+      setStatusUpdatingAppId(app.id)
+      setAppManagementMessage(null)
+      await updateAdminAppStatus(app.id, nextStatus)
+      setAppManagementMessage(`应用「${app.name}」状态已更新为 ${nextStatus}`)
+      await loadData()
+    } catch (err) {
+      setError(resolveAdminError(err, '更新应用状态失败'))
+    } finally {
+      setStatusUpdatingAppId(null)
     }
   }
 
@@ -497,6 +649,20 @@ const RankingManagementPage = () => {
             >
               <span>📱</span>
               <span>应用参与</span>
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'app-management' ? 'active' : ''}`}
+              onClick={() => setActiveTab('app-management')}
+            >
+              <span>🗂️</span>
+              <span>应用管理</span>
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'group-apps' ? 'active' : ''}`}
+              onClick={() => setActiveTab('group-apps')}
+            >
+              <span>🏢</span>
+              <span>集团应用录入</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'dimensions' ? 'active' : ''}`}
@@ -706,6 +872,341 @@ const RankingManagementPage = () => {
                   )}
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === 'app-management' && (
+            <section className="app-management-section">
+              <div className="section-header">
+                <h2>应用上下架管理</h2>
+                <button className="secondary-button" onClick={loadData} disabled={loading}>
+                  刷新
+                </button>
+              </div>
+              <p className="section-note">
+                下架后应用不在首页展示；省内应用下架后将自动失去当前榜单参与资格（历史榜单保留）。
+              </p>
+
+              {appManagementMessage ? (
+                <div className="sync-message success">{appManagementMessage}</div>
+              ) : null}
+
+              <div className="app-management-filters">
+                <select
+                  value={manageSectionFilter}
+                  onChange={(e) => setManageSectionFilter(e.target.value as 'all' | 'group' | 'province')}
+                >
+                  <option value="all">全部分区</option>
+                  <option value="province">省内应用</option>
+                  <option value="group">集团应用</option>
+                </select>
+                <select
+                  value={manageStatusFilter}
+                  onChange={(e) => setManageStatusFilter(e.target.value as 'all' | 'available' | 'approval' | 'beta' | 'offline')}
+                >
+                  <option value="all">全部状态</option>
+                  <option value="available">可用</option>
+                  <option value="approval">需申请</option>
+                  <option value="beta">试运行</option>
+                  <option value="offline">已下线</option>
+                </select>
+                <input
+                  type="text"
+                  value={manageKeyword}
+                  onChange={(e) => setManageKeyword(e.target.value)}
+                  placeholder="搜索应用名/单位/分类"
+                />
+              </div>
+
+              {loading ? (
+                <div className="loading">加载中...</div>
+              ) : (
+                <div className="app-management-list">
+                  {filteredAdminApps.length === 0 ? (
+                    <div className="empty-state">
+                      <span>🗂️</span>
+                      <p>暂无匹配应用</p>
+                    </div>
+                  ) : (
+                    <table className="app-management-table">
+                      <thead>
+                        <tr>
+                          <th>应用名称</th>
+                          <th>分区</th>
+                          <th>分类</th>
+                          <th>状态</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredAdminApps.map((app) => (
+                          <tr key={app.id}>
+                            <td>
+                              <div className="app-name">{app.name}</div>
+                              <div className="app-org">{app.org}</div>
+                            </td>
+                            <td>{app.section === 'province' ? '省内应用' : '集团应用'}</td>
+                            <td>{app.category}</td>
+                            <td>
+                              <span className={`status-chip ${app.status}`}>{app.status}</span>
+                            </td>
+                            <td>
+                              {app.status === 'offline' ? (
+                                <button
+                                  className="edit-button secondary"
+                                  disabled={statusUpdatingAppId === app.id}
+                                  onClick={() => handleUpdateAppStatus(app, 'available')}
+                                >
+                                  {statusUpdatingAppId === app.id ? '处理中...' : '重新上架'}
+                                </button>
+                              ) : (
+                                <button
+                                  className="delete-button"
+                                  disabled={statusUpdatingAppId === app.id}
+                                  onClick={() => handleUpdateAppStatus(app, 'offline')}
+                                >
+                                  {statusUpdatingAppId === app.id ? '处理中...' : '下架'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 集团应用录入 */}
+          {activeTab === 'group-apps' && (
+            <section className="group-app-section">
+              <div className="section-header">
+                <h2>集团应用录入</h2>
+                <button className="primary-button" onClick={handleSaveGroupApp} disabled={groupAppSubmitting}>
+                  {groupAppSubmitting ? '保存中...' : '保存集团应用'}
+                </button>
+              </div>
+              <p className="section-note">
+                集团应用与省内应用保持同构字段，但仅管理员录入，不进入省内申报审核链路。
+              </p>
+
+              {groupAppMessage && (
+                <div className="sync-message success">{groupAppMessage}</div>
+              )}
+
+              <form className="group-app-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-name">应用名称 *</label>
+                    <input
+                      id="group-name"
+                      type="text"
+                      value={groupAppForm.name}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="请输入集团应用名称"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-org">所属单位 *</label>
+                    <input
+                      id="group-org"
+                      type="text"
+                      value={groupAppForm.org}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, org: e.target.value }))}
+                      placeholder="请输入所属单位"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-category">分类 *</label>
+                    <select
+                      id="group-category"
+                      value={groupAppForm.category}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, category: e.target.value }))}
+                    >
+                      {APP_CATEGORY_OPTIONS.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-status">状态</label>
+                    <select
+                      id="group-status"
+                      value={groupAppForm.status}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, status: e.target.value }))}
+                    >
+                      <option value="available">可用</option>
+                      <option value="beta">试运行</option>
+                      <option value="approval">需申请</option>
+                      <option value="offline">已下线</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="group-description">应用描述 *</label>
+                  <textarea
+                    id="group-description"
+                    rows={4}
+                    value={groupAppForm.description}
+                    onChange={(e) => setGroupAppForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="请输入应用描述（不少于10字）"
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-access-mode">接入方式</label>
+                    <select
+                      id="group-access-mode"
+                      value={groupAppForm.access_mode}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, access_mode: e.target.value }))}
+                    >
+                      <option value="direct">直接接入</option>
+                      <option value="profile">介绍页跳转</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-access-url">访问地址</label>
+                    <input
+                      id="group-access-url"
+                      type="text"
+                      value={groupAppForm.access_url}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, access_url: e.target.value }))}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-monthly-calls">月调用量</label>
+                    <input
+                      id="group-monthly-calls"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={groupAppForm.monthly_calls}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, monthly_calls: Number(e.target.value || 0) }))}
+                    />
+                  </div>
+                  <div className="form-group checkbox-group">
+                    <input
+                      id="group-api-open"
+                      type="checkbox"
+                      checked={groupAppForm.api_open}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, api_open: e.target.checked }))}
+                    />
+                    <label htmlFor="group-api-open">开放API</label>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-target-system">接入系统</label>
+                    <input
+                      id="group-target-system"
+                      type="text"
+                      value={groupAppForm.target_system}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, target_system: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-target-users">适用人群</label>
+                    <input
+                      id="group-target-users"
+                      type="text"
+                      value={groupAppForm.target_users}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, target_users: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-effectiveness-type">成效类型</label>
+                    <select
+                      id="group-effectiveness-type"
+                      value={groupAppForm.effectiveness_type}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, effectiveness_type: e.target.value }))}
+                    >
+                      <option value="cost_reduction">降本</option>
+                      <option value="efficiency_gain">增效</option>
+                      <option value="perception_uplift">感知提升</option>
+                      <option value="revenue_growth">拉动收入</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-effectiveness-metric">成效指标</label>
+                    <input
+                      id="group-effectiveness-metric"
+                      type="text"
+                      value={groupAppForm.effectiveness_metric}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, effectiveness_metric: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="group-problem">解决问题</label>
+                  <textarea
+                    id="group-problem"
+                    rows={3}
+                    value={groupAppForm.problem_statement}
+                    onChange={(e) => setGroupAppForm(prev => ({ ...prev, problem_statement: e.target.value }))}
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-contact-name">联系人</label>
+                    <input
+                      id="group-contact-name"
+                      type="text"
+                      value={groupAppForm.contact_name}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, contact_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-difficulty">接入难度</label>
+                    <select
+                      id="group-difficulty"
+                      value={groupAppForm.difficulty}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, difficulty: e.target.value }))}
+                    >
+                      <option value="Low">低</option>
+                      <option value="Medium">中</option>
+                      <option value="High">高</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="group-highlight">亮点标签</label>
+                    <input
+                      id="group-highlight"
+                      type="text"
+                      value={groupAppForm.highlight}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, highlight: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="group-cover-url">封面图 URL</label>
+                    <input
+                      id="group-cover-url"
+                      type="text"
+                      value={groupAppForm.cover_image_url}
+                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, cover_image_url: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </form>
             </section>
           )}
 

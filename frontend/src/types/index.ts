@@ -34,6 +34,7 @@ export type AppItem = {
 }
 
 export type RankingItem = {
+  ranking_config_id?: string | null
   position: number
   tag: string
   score: number
@@ -42,6 +43,7 @@ export type RankingItem = {
   value_dimension: ValueDimension
   usage_30d: number
   declared_at: string
+  updated_at?: string | null
   app: AppItem
   dimensionScore?: number  // 用于维度筛选排序
 }
@@ -103,13 +105,22 @@ export type Submission = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
+  monthly_calls: number
+  difficulty: 'Low' | 'Medium' | 'High'
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  submitter_user_id: number | null
+  approved_by_user_id: number | null
+  approved_at: string | null
+  rejected_by_user_id: number | null
+  rejected_at: string | null
+  rejected_reason: string
   manage_token: string
   cover_image_id: number | null
   cover_image_url: string
   detail_doc_url: string
   detail_doc_name: string
   created_at: string
+  updated_at: string | null
   // 排行榜相关字段
   ranking_enabled: boolean
   ranking_weight: number
@@ -131,14 +142,11 @@ export type SubmissionPayload = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
+  monthly_calls: number
+  difficulty: 'Low' | 'Medium' | 'High'
   cover_image_url: string
   detail_doc_url: string
   detail_doc_name: string
-  // 排行榜相关字段
-  ranking_enabled: boolean
-  ranking_weight: number
-  ranking_tags: string
-  ranking_dimensions: string
 }
 
 export type ImageUploadResponse = {
@@ -184,6 +192,7 @@ export type RankingDimension = {
 export type AppDimensionScore = {
   id: number
   app_id: number
+  ranking_config_id: string | null
   dimension_id: number
   dimension_name: string
   score: number

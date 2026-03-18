@@ -85,6 +85,8 @@ div.page.ranking-management-page div.page-content {
 /* 内容区域通用样式 */
 .ranking-management-page .config-section,
 .ranking-management-page .app-settings-section,
+.ranking-management-page .app-management-section,
+.ranking-management-page .group-app-section,
 .ranking-management-page .dimension-section,
 .ranking-management-page .logs-section {
   background: var(--card-bg);
@@ -99,6 +101,7 @@ div.page.ranking-management-page div.page-content {
 /* 内容列表容器统一样式 */
 .ranking-management-page .config-list,
 .ranking-management-page .app-settings-list,
+.ranking-management-page .app-management-list,
 .ranking-management-page .dimension-list,
 .ranking-management-page .logs-list {
   width: 100%;
@@ -448,6 +451,105 @@ div.page.ranking-management-page div.page-content {
   color: white;
 }
 
+/* ==================== 应用管理 Tab ==================== */
+
+.ranking-management-page .app-management-filters {
+  display: grid;
+  grid-template-columns: 180px 180px 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ranking-management-page .app-management-filters select,
+.ranking-management-page .app-management-filters input {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  background: var(--card-bg);
+}
+
+.ranking-management-page .app-management-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.ranking-management-page .app-management-table th {
+  background: var(--bg-color);
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.ranking-management-page .app-management-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.ranking-management-page .app-management-table tr:hover {
+  background: var(--bg-color);
+}
+
+.ranking-management-page .app-management-table .edit-button,
+.ranking-management-page .app-management-table .delete-button {
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ranking-management-page .app-management-table .edit-button {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.ranking-management-page .app-management-table .delete-button {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.ranking-management-page .app-management-table .edit-button:disabled,
+.ranking-management-page .app-management-table .delete-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ranking-management-page .status-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ranking-management-page .status-chip.available {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.ranking-management-page .status-chip.approval {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.ranking-management-page .status-chip.beta {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.ranking-management-page .status-chip.offline {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
 /* ==================== 评价维度 Tab ==================== */
 
 .ranking-management-page .dimension-table {
@@ -752,6 +854,7 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .config-form,
 .ranking-management-page .app-setting-form,
+.ranking-management-page .group-app-form,
 .ranking-management-page .dimension-form {
   display: flex;
   flex-direction: column;
@@ -759,7 +862,8 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .config-form .form-row,
-.ranking-management-page .app-setting-form .form-row {
+.ranking-management-page .app-setting-form .form-row,
+.ranking-management-page .group-app-form .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
@@ -767,6 +871,7 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .config-form .form-group,
 .ranking-management-page .app-setting-form .form-group,
+.ranking-management-page .group-app-form .form-group,
 .ranking-management-page .dimension-form .form-group {
   display: flex;
   flex-direction: column;
@@ -775,6 +880,7 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .config-form .form-group label,
 .ranking-management-page .app-setting-form .form-group label,
+.ranking-management-page .group-app-form .form-group label,
 .ranking-management-page .dimension-form .form-group label {
   font-size: 14px;
   font-weight: 600;
@@ -792,6 +898,9 @@ div.page.ranking-management-page div.page-content {
 .ranking-management-page .config-form .form-group textarea,
 .ranking-management-page .app-setting-form .form-group input,
 .ranking-management-page .app-setting-form .form-group select,
+.ranking-management-page .group-app-form .form-group input,
+.ranking-management-page .group-app-form .form-group select,
+.ranking-management-page .group-app-form .form-group textarea,
 .ranking-management-page .dimension-form .form-group input,
 .ranking-management-page .dimension-form .form-group textarea {
   padding: 12px 16px;
@@ -808,6 +917,9 @@ div.page.ranking-management-page div.page-content {
 .ranking-management-page .config-form .form-group textarea:focus,
 .ranking-management-page .app-setting-form .form-group input:focus,
 .ranking-management-page .app-setting-form .form-group select:focus,
+.ranking-management-page .group-app-form .form-group input:focus,
+.ranking-management-page .group-app-form .form-group select:focus,
+.ranking-management-page .group-app-form .form-group textarea:focus,
 .ranking-management-page .dimension-form .form-group input:focus,
 .ranking-management-page .dimension-form .form-group textarea:focus {
   outline: none;
@@ -816,14 +928,16 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .config-form .checkbox-group,
-.ranking-management-page .app-setting-form .checkbox-group {
+.ranking-management-page .app-setting-form .checkbox-group,
+.ranking-management-page .group-app-form .checkbox-group {
   flex-direction: row;
   align-items: center;
   gap: 10px;
 }
 
 .ranking-management-page .config-form .checkbox-group input,
-.ranking-management-page .app-setting-form .checkbox-group input {
+.ranking-management-page .app-setting-form .checkbox-group input,
+.ranking-management-page .group-app-form .checkbox-group input {
   width: auto;
 }
 
@@ -948,7 +1062,12 @@ div.page.ranking-management-page div.page-content {
   }
 
   .ranking-management-page .config-form .form-row,
-  .ranking-management-page .app-setting-form .form-row {
+  .ranking-management-page .app-setting-form .form-row,
+  .ranking-management-page .group-app-form .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ranking-management-page .app-management-filters {
     grid-template-columns: 1fr;
   }
 

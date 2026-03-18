@@ -55,6 +55,10 @@ export default function SubmissionReviewPage() {
   })
   const [processing, setProcessing] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'withdrawn'>('all')
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejectTargetId, setRejectTargetId] = useState<number | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectError, setRejectError] = useState<string | null>(null)
 
   const loadSubmissions = useCallback(async () => {
     try {
@@ -78,8 +82,8 @@ export default function SubmissionReviewPage() {
     setSelectedSubmission(submission)
     setApprovalForm({
       status: 'available',
-      monthly_calls: 0,
-      difficulty: 'Medium',
+      monthly_calls: submission.monthly_calls ?? 0,
+      difficulty: submission.difficulty ?? 'Medium',
       target_users: '',
       target_system: submission.embedded_system || '',
       access_mode: 'profile',
@@ -119,14 +123,32 @@ export default function SubmissionReviewPage() {
     }
   }
 
-  const handleReject = async (id: number) => {
-    if (!confirm('确定要拒绝此申报吗？')) {
+  const openRejectModal = (id: number) => {
+    setRejectTargetId(id)
+    setRejectReason('')
+    setRejectError(null)
+    setShowRejectModal(true)
+  }
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false)
+    setRejectTargetId(null)
+    setRejectReason('')
+    setRejectError(null)
+  }
+
+  const submitReject = async () => {
+    if (!rejectTargetId) return
+    const normalizedReason = rejectReason.trim()
+    if (normalizedReason.length < 2) {
+      setRejectError('拒绝原因至少 2 个字符')
       return
     }
     try {
       setProcessing(true)
-      await rejectSubmission(id)
+      await rejectSubmission(rejectTargetId, normalizedReason)
       alert('已拒绝该申报。')
+      closeRejectModal()
       setSelectedSubmission(null)
       loadSubmissions()
     } catch (err) {
@@ -289,6 +311,12 @@ export default function SubmissionReviewPage() {
                     <span className="info-label">数据级别：</span>
                     <span className="info-value">{submission.data_level}</span>
                   </div>
+                  {submission.status === 'rejected' && submission.rejected_reason ? (
+                    <div className="info-row full-width">
+                      <span className="info-label">拒绝原因：</span>
+                      <span className="info-value rejected-reason">{submission.rejected_reason}</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="submission-preview">
@@ -311,7 +339,7 @@ export default function SubmissionReviewPage() {
                       className="btn-secondary"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleReject(submission.id)
+                        openRejectModal(submission.id)
                       }}
                       disabled={processing}
                     >
@@ -388,6 +416,15 @@ export default function SubmissionReviewPage() {
                   <p className="detail-value">{selectedSubmission.problem_statement}</p>
                 </div>
               </div>
+
+              {selectedSubmission.status === 'rejected' && selectedSubmission.rejected_reason ? (
+                <div className="detail-section">
+                  <h4>拒绝原因</h4>
+                  <div className="detail-item full-width">
+                    <p className="detail-value rejected-reason">{selectedSubmission.rejected_reason}</p>
+                  </div>
+                </div>
+              ) : null}
 
               {selectedSubmission.status === 'pending' && (
                 <div className="detail-section">
@@ -513,7 +550,7 @@ export default function SubmissionReviewPage() {
                 <>
                   <button
                     className="btn-secondary"
-                    onClick={() => handleReject(selectedSubmission.id)}
+                    onClick={() => openRejectModal(selectedSubmission.id)}
                     disabled={processing}
                   >
                     拒绝
@@ -529,6 +566,42 @@ export default function SubmissionReviewPage() {
               )}
               <button className="btn-secondary" onClick={() => setSelectedSubmission(null)}>
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRejectModal && (
+        <div className="modal-overlay" onClick={closeRejectModal}>
+          <div className="modal-container reject-reason-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">填写拒绝原因</h3>
+              <button className="modal-close" onClick={closeRejectModal}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-item full-width">
+                <span className="detail-label">拒绝原因（必填）</span>
+                <textarea
+                  className="form-input"
+                  value={rejectReason}
+                  onChange={(e) => {
+                    setRejectReason(e.target.value)
+                    if (rejectError) setRejectError(null)
+                  }}
+                  placeholder="请填写拒绝原因，至少 2 个字符"
+                  rows={4}
+                  maxLength={255}
+                />
+                {rejectError ? <span className="reject-error">{rejectError}</span> : null}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeRejectModal} disabled={processing}>
+                取消
+              </button>
+              <button className="btn-primary" onClick={submitReject} disabled={processing}>
+                {processing ? '处理中...' : '确认拒绝'}
               </button>
             </div>
           </div>

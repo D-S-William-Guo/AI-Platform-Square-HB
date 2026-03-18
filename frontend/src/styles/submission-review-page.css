@@ -229,6 +229,10 @@
   gap: 8px;
 }
 
+.submission-review-page .info-row.full-width {
+  grid-column: 1 / -1;
+}
+
 .submission-review-page .info-label {
   font-size: 13px;
   color: var(--text-muted);
@@ -370,6 +374,22 @@
   font-size: 14px;
   color: var(--text-primary);
   background: var(--card-bg);
+}
+
+.submission-review-page .rejected-reason {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.submission-review-page .reject-reason-modal {
+  max-width: 520px;
+  width: 92%;
+}
+
+.submission-review-page .reject-error {
+  margin-top: 6px;
+  color: #dc2626;
+  font-size: 12px;
 }
 
 .submission-review-page .cover-image {
