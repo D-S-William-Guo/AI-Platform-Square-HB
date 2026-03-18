@@ -2,17 +2,19 @@
 set -euo pipefail
 
 # Load repository-local environment variables for development.
-# The file is intentionally gitignored so local machines can diverge.
+# `.env` is primarily used by docker compose; `.env.local` is the user override.
 load_local_env() {
   local root_dir="$1"
-  local env_file="$root_dir/.env.local"
+  local env_file
 
-  if [ ! -f "$env_file" ]; then
-    return 0
-  fi
+  for env_file in "$root_dir/.env" "$root_dir/.env.local"; do
+    if [ ! -f "$env_file" ]; then
+      continue
+    fi
 
-  # shellcheck disable=SC1090
-  set -a
-  source "$env_file"
-  set +a
+    # shellcheck disable=SC1090
+    set -a
+    source "$env_file"
+    set +a
+  done
 }

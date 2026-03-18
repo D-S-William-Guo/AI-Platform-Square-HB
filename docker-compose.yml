@@ -1,10 +1,7 @@
-version: '3.9'
 services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_app_square}

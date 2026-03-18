@@ -11,8 +11,10 @@
 ## 1. 约定与原则（必须读一遍）
 
 - 后端目录为 `backend/`，Python 包为 `app/`
+- 仓库统一使用根目录 `.venv`
 - 后端以 **editable install（`pip install -e .`）** 的方式安装，避免依赖 `PYTHONPATH`
 - CI 与本地开发使用同一条导入路径规则：`import app` 必须稳定可用
+- 数据库只支持 MySQL，结构迁移统一走 Alembic
 
 ---
 
@@ -25,6 +27,16 @@ bash backend/scripts/dev/bootstrap_venv.sh
 ```
 
 > 该脚本会创建/复用 venv，并安装依赖与 editable 包。
+
+首次完成后，继续执行：
+
+```bash
+cp backend/.env.example backend/.env
+make db-up
+cd backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+```
 
 ---
 
@@ -64,7 +76,7 @@ powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1
 - 是否在 venv 中（提示项）
 - `import app` 是否成功（核心）
 - 依赖健康度（`pip check`）
-- 测试数据库初始化（SQLite）
+- 测试数据库迁移与初始化（MySQL）
 - `python -m pytest -q tests` 是否通过
 
 ---
@@ -77,11 +89,10 @@ powershell -ExecutionPolicy Bypass -File backend\scripts\dev\doctor.ps1
 
 **解决**（二选一，推荐 A）：
 
-**A. 推荐：在 `backend/` 里执行 editable install**
+**A. 推荐：在仓库根目录执行标准安装**
 
 ```bash
-cd backend
-python -m pip install -e .
+make backend-install
 ```
 
 **B. 临时：用 PYTHONPATH**（仅用于救急，不建议长期依赖）

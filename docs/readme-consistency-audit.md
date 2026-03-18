@@ -1,5 +1,7 @@
 # README 一致性审计（修正版）
 
+> 说明：本文件保留为历史审计记录。当前 README 已在 MySQL-only 收敛后重写，若与本文结论有冲突，请以根目录 `README.md` 为准。
+
 > 审计范围：仅核对 README 中与 Batch0/Batch1/Batch2 相关叙事是否与当前代码与治理文档一致；不修改 README 正文。
 >
 > 证据来源：`README.md`、`docs/governance-audit.md`、`docs/governance-fixes.md`、`docs/ranking-source-of-truth.md`、`backend/app/main.py`、`backend/app/models.py`。

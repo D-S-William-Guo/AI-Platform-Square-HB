@@ -25,7 +25,7 @@ frontend-build:
 	bash scripts/frontend_build.sh
 
 db-up:
-	docker compose up -d
+	docker compose up -d mysql
 
 db-down:
 	docker compose down

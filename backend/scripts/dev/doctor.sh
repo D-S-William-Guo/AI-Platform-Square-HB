@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage:
 #   bash backend/scripts/dev/doctor.sh
 # Optional env:
-#   DATABASE_URL=sqlite:///./test.db
+#   TEST_DATABASE_URL=mysql+pymysql://ai_app_user:ai_app_password@127.0.0.1:13306/ai_app_square_test?charset=utf8mb4
 #   DEV_VENV=/path/to/venv   (optional override)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -19,9 +19,10 @@ fail () { echo "❌ $*"; exit 1; }
 # Prefer venv python:
 # 1) explicit DEV_VENV
 # 2) current activated VIRTUAL_ENV
-# 3) repo local backend/.venv
-# 4) standardized BigData venv (ai-platform-square-hb)
-# 5) fallback python/python3 from PATH
+# 3) repo local .venv
+# 4) legacy backend/.venv
+# 5) standardized BigData venv (ai-platform-square-hb)
+# 6) fallback python/python3 from PATH
 PY_CMD=""
 
 pick_venv_py() {
@@ -41,17 +42,22 @@ if [[ -z "${PY_CMD}" ]]; then
   pick_venv_py "${VIRTUAL_ENV:-}" || true
 fi
 
-# 3) backend/.venv
+# 3) repo local .venv
+if [[ -z "${PY_CMD}" ]]; then
+  pick_venv_py "${ROOT_DIR}/.venv" || true
+fi
+
+# 4) legacy backend/.venv
 if [[ -z "${PY_CMD}" ]]; then
   pick_venv_py "${BACKEND_DIR}/.venv" || true
 fi
 
-# 4) BigData standardized venv
+# 5) BigData standardized venv
 if [[ -z "${PY_CMD}" ]]; then
   pick_venv_py "/home/ctyun/BigData/.venvs/ai-platform-square-hb" || true
 fi
 
-# 5) fallback system python
+# 6) fallback system python
 if [[ -z "${PY_CMD}" ]]; then
   if command -v python >/dev/null 2>&1; then
     PY_CMD="$(command -v python)"
@@ -61,6 +67,13 @@ if [[ -z "${PY_CMD}" ]]; then
     fail "python not found in PATH"
   fi
 fi
+
+MYSQL_USER="${MYSQL_USER:-ai_app_user}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:-ai_app_password}"
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-password}"
+export MYSQL_ROOT_PASSWORD
+export TEST_DATABASE_URL="${TEST_DATABASE_URL:-mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@127.0.0.1:13306/ai_app_square_test?charset=utf8mb4}"
+export DATABASE_URL="${DATABASE_URL:-$TEST_DATABASE_URL}"
 
 section "0) Location sanity"
 echo "ROOT_DIR   = ${ROOT_DIR}"
@@ -96,16 +109,67 @@ section "5) PYTHONPATH (should be empty/irrelevant now)"
 echo "PYTHONPATH=${PYTHONPATH:-<empty>}"
 warn "If you still rely on PYTHONPATH to run tests, editable install has not fully replaced it."
 
-section "6) Database sanity (sqlite default for tests)"
-export DATABASE_URL="${DATABASE_URL:-sqlite:///./test.db}"
+section "6) Database sanity (MySQL only)"
 echo "DATABASE_URL=${DATABASE_URL}"
+
+if [[ "$DATABASE_URL" == *"127.0.0.1:13306"* ]] || [[ "$DATABASE_URL" == *"localhost:13306"* ]]; then
+  (cd "${ROOT_DIR}" && docker compose up -d mysql)
+fi
+
 pushd "${BACKEND_DIR}" >/dev/null
 ${PY_CMD} - <<'PY'
-from app.database import Base, engine
-Base.metadata.create_all(bind=engine)
-print("db tables ensured")
+import os
+import time
+
+import pymysql
+from sqlalchemy.engine import make_url
+
+url = make_url(os.environ["DATABASE_URL"])
+root_password = os.environ["MYSQL_ROOT_PASSWORD"]
+last_error = None
+
+for _ in range(60):
+    try:
+        connection = pymysql.connect(
+            host=url.host or "127.0.0.1",
+            port=url.port or 3306,
+            user="root",
+            password=root_password,
+            charset="utf8mb4",
+            autocommit=True,
+        )
+        break
+    except Exception as exc:
+        last_error = exc
+        time.sleep(1)
+else:
+    raise SystemExit(f"mysql did not become ready in time: {last_error}")
+
+database_name = (url.database or "").replace("`", "``")
+with connection.cursor() as cursor:
+    cursor.execute(
+        f"CREATE DATABASE IF NOT EXISTS `{database_name}` "
+        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    )
+    if url.username and url.username != "root":
+        username = url.username.replace("\\", "\\\\").replace("'", "''")
+        password = (url.password or "").replace("\\", "\\\\").replace("'", "''")
+        for host in ("%", "localhost"):
+            escaped_host = host.replace("\\", "\\\\").replace("'", "''")
+            cursor.execute(
+                f"CREATE USER IF NOT EXISTS '{username}'@'{escaped_host}' "
+                f"IDENTIFIED BY '{password}'"
+            )
+            cursor.execute(
+                f"GRANT ALL PRIVILEGES ON `{database_name}`.* "
+                f"TO '{username}'@'{escaped_host}'"
+            )
+        cursor.execute("FLUSH PRIVILEGES")
+connection.close()
 PY
-ok "db tables ensured"
+${PY_CMD} -m alembic upgrade head
+${PY_CMD} -m app.bootstrap init-base
+ok "db migrated and base bootstrap complete"
 popd >/dev/null
 
 section "7) Pytest quick run"

@@ -5,7 +5,7 @@
 - Branch: fix/phase4-pr-a-migrations-align
 - Commit: 2a11391
 - Summary: 对齐数据库基础结构与 Phase-4 后续能力的模型基线。
-- Verified: 001 初始化可执行。
+- Verified: 旧阶段的初始化链路可执行；当前仓库已统一迁移到 MySQL Alembic baseline。
 
 ### PR-B
 - PR: #44
@@ -18,7 +18,7 @@
 - PR: #46
 - Branch: chore/phase4-pr-c-audit-coverage
 - Commit: 9e577f3
-- Summary: 补齐 HistoricalRanking 最小审计覆盖并落地 003 迁移。
+- Summary: 补齐 HistoricalRanking 最小审计覆盖并完成当时阶段迁移。
 - Verified: 审计记录可写。
 
 ### PR-D

@@ -10,4 +10,4 @@
 
 ## Verification
 - 检查文档中 PR 号、分支名、commit、Summary、Verified 均已出现。
-- 检查 README 已明确 `001+002+003` 顺序与三项能力一句话说明。
+- 检查 README 已明确当前 MySQL + Alembic + bootstrap 初始化顺序与三项能力一句话说明。

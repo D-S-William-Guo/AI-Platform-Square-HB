@@ -1,10 +1,15 @@
 # Docs README
 
-审计覆盖与数据库初始化顺序请以根目录 `README.md` 为准（含 001 + 002 + 003 迁移说明）。
+当前文档入口请按下面顺序阅读：
+
+- 项目启动、部署与当前能力总览：`README.md`
+- 数据库迁移与初始化：`docs/db-migration-sop.md`
+- 本地开发环境、自检与 MySQL 测试：`docs/dev-setup.md`
+- Git 分支与 PR 规范：`docs/dev-workflow.md`
 
 ## Phase-4 PR-D 回归测试（口径锁定）
 
-在仓库根目录执行：`PYTHONPATH=backend pytest -q backend/tests/test_ranking_consistency.py backend/tests/test_phase4_regression_lock.py`。
+在仓库根目录执行：`cd backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/test_ranking_consistency.py tests/test_phase4_regression_lock.py`。
 ## Phase-4 结项
 
 - 结项说明：`docs/phase4-closure.md`（Scope / Artifacts / Verification）。

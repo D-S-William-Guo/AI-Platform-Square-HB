@@ -62,13 +62,14 @@ git push origin fix/<topic>
 
 > 快照分支 `snapshot/*` 仅用于存档，不进入 PR；例如 `snapshot/feature-optimization-001` 属历史问题分支，禁止作为合并目标。
 
-## 3. 数据库切换方式（SQLite / MySQL）
+## 3. 数据库运行方式（MySQL Only）
 
-迁移执行顺序、不可跳步原则、SQLite/MySQL 最小验证步骤统一维护在：[docs/db-migration-sop.md](db-migration-sop.md)。
+迁移执行顺序、初始化命令与本地/远程 MySQL 最小验证步骤统一维护在：[docs/db-migration-sop.md](db-migration-sop.md)。
 
 本文件仅保留入口：
 - 后端读取 `backend/.env` 的 `DATABASE_URL`；
-- 默认值在 `backend/app/config.py` 中为 SQLite。
+- 测试使用 `TEST_DATABASE_URL`；
+- 结构迁移统一执行 `alembic upgrade head`。
 
 ## 4. 业务数据演示规则
 

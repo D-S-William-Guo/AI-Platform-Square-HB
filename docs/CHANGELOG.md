@@ -79,7 +79,7 @@
 
 - 前端：React + TypeScript + Vite
 - 后端：Python FastAPI + SQLAlchemy
-- 数据库：SQLite（本地）/ MySQL（生产）
+- 数据库：MySQL
 
 ## [1.0.0] - 2024-12-11
 
@@ -108,7 +108,7 @@
 
 - 前端：React + TypeScript + Vite
 - 后端：Python FastAPI + SQLAlchemy
-- 数据库：SQLite
+- 数据库：MySQL
 
 ---
 

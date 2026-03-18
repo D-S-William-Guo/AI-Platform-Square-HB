@@ -1,35 +1,26 @@
-# Scripts 目录
+# Backend Scripts
 
-此目录包含开发调试用的脚本工具，用于数据检查、修复和验证。
+当前脚本集只保留 MySQL / ORM 主链路相关工具。
 
-## 文件说明
+## 保留脚本
 
-### 数据库初始化
-- `init_db.py` - 初始化数据库表结构
+- `dedupe_data.py`
+  - 基于 SQLAlchemy 的数据去重工具。
+- `test_sync.py`
+  - 针对本地运行中的 HTTP 接口做简单同步调试。
+- `dev/doctor.sh`
+  - MySQL 环境诊断与后端测试入口。
+- `dev/bootstrap_venv.sh`
+  - 在仓库根目录创建 `.venv` 并安装依赖。
 
-### 数据检查脚本
-- `check_data.py` - 检查申报和应用数据
-- `check_db.py` - 检查数据库表结构
-- `check_ranking.py` - 检查排行榜日期字段
-- `check_dimensions.py` - 检查排行榜维度配置
-- `check_trend_ranking.py` - 检查趋势榜数据
-- `verify_data.py` - 数据完整性验证报告
+## 初始化命令
 
-### 数据修复脚本
-- `fix_rankings.py` - 修复排行榜数据重复问题
-- `fix_declared_at.py` - 修复 declared_at 日期格式
-- `fix_and_sync.py` - 修复趋势榜并同步到历史榜单
-- `dedupe_data.py` - 去重 submissions/apps/rankings（默认 dry-run，`--apply` 执行）
-
-### 调试测试脚本
-- `debug_sync.py` - 调试同步问题
-- `test_sync.py` - 测试同步 API
-
-## 使用方式
+数据库初始化不再通过脚本直接建表，统一改为：
 
 ```bash
-cd backend/scripts
-python check_data.py
+cd backend
+alembic upgrade head
+python -m app.bootstrap init-base
+# 仅开发/演示需要时：
+python -m app.bootstrap seed-demo
 ```
-
-**注意**: 这些脚本仅用于开发和调试，生产环境请勿使用。

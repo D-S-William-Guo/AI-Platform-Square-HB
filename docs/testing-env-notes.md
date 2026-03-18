@@ -1,5 +1,7 @@
 # 依赖安装与测试环境说明
 
+> 说明：本文件保留网络/镜像受限场景的补充说明。当前项目默认测试基线已经切换为 MySQL + Alembic，请优先以 `README.md`、`docs/dev-setup.md` 与 `scripts/backend_test.sh` 为准。
+
 ## 当前现象
 
 - `pip install -r backend/requirements.txt` 通过代理拉取 PyPI 时返回 403。
@@ -22,10 +24,13 @@
 3. **容器化统一构建**
    - 使用公司允许的基础镜像，镜像内预置依赖
 
-## 当前已完成的“离线可做验证”
+## 当前标准验证链路
 
-- Python 语法编译检查：`python -m py_compile backend/app/*.py backend/tests/test_api.py`
-- 代码结构与接口定义检查：通过文件级审阅确认
+- 后端测试：`make backend-test`
+- 前端安装：`make frontend-install`
+- 前端开发：`make frontend-dev`
+- 数据库迁移：`cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head`
+- 基础初始化：`cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base`
 
 
 ## 如何放开访问（GitHub / PyPI / npm）

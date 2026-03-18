@@ -24,7 +24,7 @@
   - Linux：`backend/scripts/dev/doctor.sh`
   - Windows：`backend/scripts/dev/doctor.ps1`
 - 测试：`backend/tests/*`
-- 迁移：`backend/migrations/001_init.sql`、`002_add_run_id...sql`、`003_add_ranking_audit_logs.sql`
+- 迁移：当前已收敛为 `backend/alembic/` 下的 Alembic revision
 
 ### C. frontend
 
@@ -92,7 +92,7 @@
 - 风险：
   - 文档演进时容易出现顺序不一致；阅读路径冗长，团队成员执行步骤不统一。
 - 最小修复建议（单 PR 可完成）：
-  1. 新增 `docs/db-migration-sop.md`，明确唯一执行顺序与环境矩阵（SQLite/MySQL）。
+  1. 新增 `docs/db-migration-sop.md`，明确唯一执行顺序与 MySQL 迁移入口。
   2. README 仅保留“短入口 + 链接”，删除重复块。
   3. `docs/dev-workflow.md` 改为引用该 SOP 文件，避免多处维护。
 

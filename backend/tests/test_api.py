@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.config import settings
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission
 
 
@@ -656,8 +656,6 @@ def test_reject_submission_requires_non_empty_reason():
 
 
 def test_approve_maps_detail_doc_fields_to_app():
-    Base.metadata.create_all(bind=engine)
-
     payload = {
         'category': '办公类',
         'app_name': '文档映射测试应用',
@@ -725,8 +723,6 @@ def test_approve_uses_submission_monthly_calls_and_difficulty_by_default():
 
 
 def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
-    Base.metadata.create_all(bind=engine)
-
     db = SessionLocal()
     try:
         submission = Submission(
@@ -755,6 +751,8 @@ def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
         assert approve_resp.status_code == 200
         app_id = approve_resp.json()['app_id']
 
+        # Reset the transaction snapshot so MySQL can see rows committed by the API request.
+        db.rollback()
         app = db.query(App).filter(App.id == app_id).first()
         assert app is not None
         assert app.status == 'available'
@@ -1097,7 +1095,6 @@ def test_admin_endpoint_requires_token():
 
 
 def test_admin_endpoint_accepts_valid_token():
-    Base.metadata.create_all(bind=engine)
     client.cookies.clear()
     resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
     assert resp.status_code == 200
