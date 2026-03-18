@@ -360,7 +360,7 @@ def require_auth_session(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> AuthSession:
     token = extract_bearer_token(authorization) or auth_cookie_token
-    if not token or token == settings.admin_token:
+    if not token:
         raise HTTPException(status_code=401, detail="请先登录")
     session = load_active_session(db, token)
     if not session:
@@ -374,7 +374,7 @@ def get_optional_auth_session(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> AuthSession | None:
     token = extract_bearer_token(authorization) or auth_cookie_token
-    if not token or token == settings.admin_token:
+    if not token:
         return None
     session = load_active_session(db, token)
     if not session:
@@ -389,28 +389,20 @@ def require_admin_token(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> User | None:
     bearer_token = extract_bearer_token(authorization)
-    has_any_credential = bool(x_admin_token or bearer_token or auth_cookie_token)
-
     if x_admin_token:
-        if x_admin_token != settings.admin_token:
-            raise HTTPException(status_code=403, detail="无权限访问")
-        return None
-
-    if bearer_token == settings.admin_token:
-        return None
+        raise HTTPException(status_code=401, detail="X-Admin-Token 已下线，请使用管理员登录态")
 
     for candidate in (bearer_token, auth_cookie_token):
-        if not candidate or candidate == settings.admin_token:
+        if not candidate:
             continue
         session = load_active_session(db, candidate)
         if session:
             if session.user.role != "admin":
                 raise HTTPException(status_code=403, detail="无权限访问")
             return session.user
+        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
 
-    if has_any_credential:
-        raise HTTPException(status_code=403, detail="无权限访问")
-    raise HTTPException(status_code=401, detail="缺少管理员令牌")
+    raise HTTPException(status_code=401, detail="请先登录管理员账号")
 
 def write_ranking_audit_log(
     db: Session,

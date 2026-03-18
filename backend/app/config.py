@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     upload_dir: str = "static/uploads"
     image_dir: str = "static/images"
     environment: str = "development"
-    admin_token: str = "admin-secret-token"
     auth_cookie_name: str = "AI_APP_AUTH"
     auth_session_ttl_hours: int = 12
     user_default_password: str = "ChangeMe_User_123!"
@@ -49,8 +48,6 @@ def validate_settings(settings_obj: Settings) -> None:
         raise ValueError("DATABASE_URL must use the mysql+pymysql:// scheme")
     if settings_obj.test_database_url and not settings_obj.test_database_url.startswith(MYSQL_URL_PREFIX):
         raise ValueError("TEST_DATABASE_URL must use the mysql+pymysql:// scheme")
-    if settings_obj.environment.lower() in {"prod", "production"} and settings_obj.admin_token == "admin-secret-token":
-        raise ValueError("ADMIN_TOKEN must be set to a non-default value in production")
     if settings_obj.environment.lower() in {"prod", "production"}:
         if settings_obj.user_default_password == "ChangeMe_User_123!":
             raise ValueError("USER_DEFAULT_PASSWORD must be changed in production")

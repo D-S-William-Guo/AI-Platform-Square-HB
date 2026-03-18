@@ -6,30 +6,18 @@ from app.config import Settings, validate_settings
 MYSQL_URL = "mysql+pymysql://tester:secret@127.0.0.1:3306/ai_app_square?charset=utf8mb4"
 
 
-def test_validate_settings_allows_default_token_in_development():
+def test_validate_settings_allows_default_passwords_in_development():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="development",
-        admin_token="admin-secret-token",
     )
     validate_settings(settings)
-
-
-def test_validate_settings_rejects_default_token_in_production():
-    settings = Settings(
-        database_url=MYSQL_URL,
-        environment="production",
-        admin_token="admin-secret-token",
-    )
-    with pytest.raises(ValueError, match="ADMIN_TOKEN must be set to a non-default value"):
-        validate_settings(settings)
 
 
 def test_validate_settings_rejects_default_user_password_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        admin_token="prod-token",
         user_default_password="ChangeMe_User_123!",
         admin_default_password="safe-admin-password",
     )
@@ -41,7 +29,6 @@ def test_validate_settings_rejects_default_admin_password_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        admin_token="prod-token",
         user_default_password="safe-user-password",
         admin_default_password="ChangeMe_Admin_123!",
     )
@@ -61,7 +48,6 @@ def test_validate_settings_rejects_non_mysql_database_url():
     settings = Settings(
         database_url="postgresql://legacy:legacy@127.0.0.1:5432/legacy",
         environment="development",
-        admin_token="dev-token",
     )
 
     with pytest.raises(ValueError, match="mysql\\+pymysql"):

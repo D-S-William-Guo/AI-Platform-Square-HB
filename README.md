@@ -167,7 +167,7 @@ curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 cp backend/.env.example backend/.env
 # 把 DATABASE_URL 改成远程 MySQL
 # 把 ENVIRONMENT 改成 production
-# 把 ADMIN_TOKEN / USER_DEFAULT_PASSWORD / ADMIN_DEFAULT_PASSWORD 改成正式值
+# 把 USER_DEFAULT_PASSWORD / ADMIN_DEFAULT_PASSWORD 改成正式值
 
 cd backend
 PYTHONPATH=. ../.venv/bin/alembic upgrade head
@@ -192,9 +192,7 @@ cp .env.local.example .env.local
 
 > `make backend-dev` / `make frontend-dev` / `make test` 会自动加载仓库根目录 `.env.local`。  
 > 该文件已在 `.gitignore` 中忽略，不会提交到 GitHub。  
-> 前端管理接口会从 `VITE_ADMIN_TOKEN`（优先）或浏览器 `localStorage` 的 `ADMIN_TOKEN` / `admin_token` 读取，并通过 `X-Admin-Token` 请求头发送。
->
-> 生产环境请勿使用 `VITE_ADMIN_TOKEN` 存放真实管理员密钥（前端变量会暴露）。后端在 `ENVIRONMENT=production` 且 `ADMIN_TOKEN` 仍为默认值时会拒绝启动。
+> 管理接口只接受管理员登录态，不再支持 `X-Admin-Token`、`ADMIN_TOKEN`、`VITE_ADMIN_TOKEN` 之类旁路令牌。
 
 ## 登录与权限（第一阶段）
 
@@ -205,9 +203,7 @@ cp .env.local.example .env.local
 - 初始化基础数据后会提供两个默认账号（可通过环境变量修改默认密码）：
   - 普通用户：`zhangsan`（张三）
   - 管理员：`lisi`（李四）
-- 管理接口已支持两种鉴权方式并存（平滑过渡）：
-  - 新方式：`Authorization: Bearer <session_token>`（管理员登录态）
-  - 兼容方式：`X-Admin-Token: <ADMIN_TOKEN>`
+- 管理接口只接受：`Authorization: Bearer <session_token>`（管理员登录态）
 - 前端访问控制：
   - 未登录用户会被重定向到登录页，不能直接进入首页。
   - 普通用户可访问展示能力；管理员可额外访问“申报审核/排行榜管理”。
@@ -576,7 +572,7 @@ make test
 
 ```bash
 cp backend/.env.example backend/.env
-# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT, ADMIN_TOKEN
+# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT
 make backend-install
 make frontend-install
 cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
