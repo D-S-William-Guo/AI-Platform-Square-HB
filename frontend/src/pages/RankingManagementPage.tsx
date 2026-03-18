@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { RankingDimension, AppItem } from '../types'
 import {
   fetchRankingDimensions,
@@ -17,6 +17,8 @@ import {
   deleteAppRankingSetting,
   saveAppRankingSetting,
   createGroupApp,
+  fetchAdminApps,
+  updateAdminAppStatus,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
@@ -50,6 +52,8 @@ interface DimensionConfig {
   dim_id: number
   weight: number
 }
+
+const APP_CATEGORY_OPTIONS = ['办公类', '业务前台', '运维后台', '企业管理'] as const
 
 function resolveAdminError(err: unknown, fallback: string): string {
   if (isMissingAdminTokenError(err)) {
@@ -101,6 +105,7 @@ const RankingManagementPage = () => {
 
   // 应用参与管理状态
   const [apps, setApps] = useState<AppItem[]>([])
+  const [adminApps, setAdminApps] = useState<AppItem[]>([])
   const [appSettings, setAppSettings] = useState<Record<number, AppRankingSettingItem[]>>({})
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<AppItem | null>(null)
   const [editingAppSetting, setEditingAppSetting] = useState<AppRankingSettingItem | null>(null)
@@ -119,7 +124,12 @@ const RankingManagementPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'configs' | 'app-settings' | 'group-apps' | 'dimensions' | 'logs'>('configs')
+  const [activeTab, setActiveTab] = useState<'configs' | 'app-settings' | 'app-management' | 'group-apps' | 'dimensions' | 'logs'>('configs')
+  const [appManagementMessage, setAppManagementMessage] = useState<string | null>(null)
+  const [statusUpdatingAppId, setStatusUpdatingAppId] = useState<number | null>(null)
+  const [manageSectionFilter, setManageSectionFilter] = useState<'all' | 'group' | 'province'>('all')
+  const [manageStatusFilter, setManageStatusFilter] = useState<'all' | 'available' | 'approval' | 'beta' | 'offline'>('all')
+  const [manageKeyword, setManageKeyword] = useState('')
 
   // 维度表单状态
   const [showDimensionModal, setShowDimensionModal] = useState(false)
@@ -162,16 +172,18 @@ const RankingManagementPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const [dimensionsData, logsData, appsData, configsData] = await Promise.all([
+      const [dimensionsData, logsData, appsData, configsData, adminAppsData] = await Promise.all([
         fetchRankingDimensions(),
         fetchRankingAuditLogs(),
         fetchApps(),
-        fetchRankingConfigs()
+        fetchRankingConfigs(),
+        fetchAdminApps()
       ])
       setDimensions(dimensionsData)
       setLogs(logsData)
       setApps(appsData.filter(app => app.section === 'province'))
       setRankingConfigs(configsData)
+      setAdminApps(adminAppsData)
 
       // 加载所有应用榜单设置
       const allSettings = await fetchAllAppRankingSettings()
@@ -534,6 +546,43 @@ const RankingManagementPage = () => {
     }
   }
 
+  const filteredAdminApps = useMemo(() => {
+    return adminApps.filter((app) => {
+      if (manageSectionFilter !== 'all' && app.section !== manageSectionFilter) {
+        return false
+      }
+      if (manageStatusFilter !== 'all' && app.status !== manageStatusFilter) {
+        return false
+      }
+      if (manageKeyword.trim()) {
+        const kw = manageKeyword.trim().toLowerCase()
+        const haystack = `${app.name} ${app.org} ${app.category}`.toLowerCase()
+        if (!haystack.includes(kw)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [adminApps, manageSectionFilter, manageStatusFilter, manageKeyword])
+
+  const handleUpdateAppStatus = async (app: AppItem, nextStatus: 'available' | 'approval' | 'beta' | 'offline') => {
+    const actionText = nextStatus === 'offline' ? '下架' : '上架'
+    if (!confirm(`确定要将应用「${app.name}」${actionText}为 ${nextStatus} 吗？`)) {
+      return
+    }
+    try {
+      setStatusUpdatingAppId(app.id)
+      setAppManagementMessage(null)
+      await updateAdminAppStatus(app.id, nextStatus)
+      setAppManagementMessage(`应用「${app.name}」状态已更新为 ${nextStatus}`)
+      await loadData()
+    } catch (err) {
+      setError(resolveAdminError(err, '更新应用状态失败'))
+    } finally {
+      setStatusUpdatingAppId(null)
+    }
+  }
+
   const selectedConfigDimensions = (() => {
     const activeDimensions = dimensions.filter(d => d.is_active)
     if (!appSettingForm.ranking_config_id) {
@@ -600,6 +649,13 @@ const RankingManagementPage = () => {
             >
               <span>📱</span>
               <span>应用参与</span>
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'app-management' ? 'active' : ''}`}
+              onClick={() => setActiveTab('app-management')}
+            >
+              <span>🗂️</span>
+              <span>应用管理</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'group-apps' ? 'active' : ''}`}
@@ -819,6 +875,110 @@ const RankingManagementPage = () => {
             </section>
           )}
 
+          {activeTab === 'app-management' && (
+            <section className="app-management-section">
+              <div className="section-header">
+                <h2>应用上下架管理</h2>
+                <button className="secondary-button" onClick={loadData} disabled={loading}>
+                  刷新
+                </button>
+              </div>
+              <p className="section-note">
+                下架后应用不在首页展示；省内应用下架后将自动失去当前榜单参与资格（历史榜单保留）。
+              </p>
+
+              {appManagementMessage ? (
+                <div className="sync-message success">{appManagementMessage}</div>
+              ) : null}
+
+              <div className="app-management-filters">
+                <select
+                  value={manageSectionFilter}
+                  onChange={(e) => setManageSectionFilter(e.target.value as 'all' | 'group' | 'province')}
+                >
+                  <option value="all">全部分区</option>
+                  <option value="province">省内应用</option>
+                  <option value="group">集团应用</option>
+                </select>
+                <select
+                  value={manageStatusFilter}
+                  onChange={(e) => setManageStatusFilter(e.target.value as 'all' | 'available' | 'approval' | 'beta' | 'offline')}
+                >
+                  <option value="all">全部状态</option>
+                  <option value="available">可用</option>
+                  <option value="approval">需申请</option>
+                  <option value="beta">试运行</option>
+                  <option value="offline">已下线</option>
+                </select>
+                <input
+                  type="text"
+                  value={manageKeyword}
+                  onChange={(e) => setManageKeyword(e.target.value)}
+                  placeholder="搜索应用名/单位/分类"
+                />
+              </div>
+
+              {loading ? (
+                <div className="loading">加载中...</div>
+              ) : (
+                <div className="app-management-list">
+                  {filteredAdminApps.length === 0 ? (
+                    <div className="empty-state">
+                      <span>🗂️</span>
+                      <p>暂无匹配应用</p>
+                    </div>
+                  ) : (
+                    <table className="app-management-table">
+                      <thead>
+                        <tr>
+                          <th>应用名称</th>
+                          <th>分区</th>
+                          <th>分类</th>
+                          <th>状态</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredAdminApps.map((app) => (
+                          <tr key={app.id}>
+                            <td>
+                              <div className="app-name">{app.name}</div>
+                              <div className="app-org">{app.org}</div>
+                            </td>
+                            <td>{app.section === 'province' ? '省内应用' : '集团应用'}</td>
+                            <td>{app.category}</td>
+                            <td>
+                              <span className={`status-chip ${app.status}`}>{app.status}</span>
+                            </td>
+                            <td>
+                              {app.status === 'offline' ? (
+                                <button
+                                  className="edit-button secondary"
+                                  disabled={statusUpdatingAppId === app.id}
+                                  onClick={() => handleUpdateAppStatus(app, 'available')}
+                                >
+                                  {statusUpdatingAppId === app.id ? '处理中...' : '重新上架'}
+                                </button>
+                              ) : (
+                                <button
+                                  className="delete-button"
+                                  disabled={statusUpdatingAppId === app.id}
+                                  onClick={() => handleUpdateAppStatus(app, 'offline')}
+                                >
+                                  {statusUpdatingAppId === app.id ? '处理中...' : '下架'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* 集团应用录入 */}
           {activeTab === 'group-apps' && (
             <section className="group-app-section">
@@ -863,13 +1023,15 @@ const RankingManagementPage = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label htmlFor="group-category">分类 *</label>
-                    <input
+                    <select
                       id="group-category"
-                      type="text"
                       value={groupAppForm.category}
                       onChange={(e) => setGroupAppForm(prev => ({ ...prev, category: e.target.value }))}
-                      placeholder="如：办公类/客服类"
-                    />
+                    >
+                      {APP_CATEGORY_OPTIONS.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label htmlFor="group-status">状态</label>

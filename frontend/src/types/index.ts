@@ -105,6 +105,8 @@ export type Submission = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
+  monthly_calls: number
+  difficulty: 'Low' | 'Medium' | 'High'
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
   submitter_user_id: number | null
   approved_by_user_id: number | null
@@ -140,6 +142,8 @@ export type SubmissionPayload = {
   effectiveness_metric: string
   data_level: 'L1' | 'L2' | 'L3' | 'L4'
   expected_benefit: string
+  monthly_calls: number
+  difficulty: 'Low' | 'Medium' | 'High'
   cover_image_url: string
   detail_doc_url: string
   detail_doc_name: string

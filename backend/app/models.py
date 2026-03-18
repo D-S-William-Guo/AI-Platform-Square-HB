@@ -155,6 +155,8 @@ class Submission(Base):
     effectiveness_metric: Mapped[str] = mapped_column(String(120), nullable=False)
     data_level: Mapped[str] = mapped_column(String(10), nullable=False)
     expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
+    monthly_calls: Mapped[float] = mapped_column(Float, default=0.0)
+    difficulty: Mapped[str] = mapped_column(String(20), default="Medium")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     submitter_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

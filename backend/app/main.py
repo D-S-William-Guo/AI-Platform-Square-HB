@@ -75,11 +75,14 @@ from .schemas import (
     UserImportResponse,
     UserRoleUpdatePayload,
     UserStatusUpdatePayload,
+    AdminAppStatusUpdate,
 )
 from .seed import seed_data
 from .venv_utils import venv_reader
 
 APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
+APP_CATEGORY_VALUES = {"办公类", "业务前台", "运维后台", "企业管理"}
+APP_DIFFICULTY_VALUES = {"Low", "Medium", "High"}
 METRIC_TYPES = {"composite", "growth_rate", "likes"}
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
 DATA_LEVEL_VALUES = {"L1", "L2", "L3", "L4"}
@@ -181,6 +184,14 @@ def ensure_additive_schema_columns() -> None:
                 "mysql": "DATETIME NULL",
                 "sqlite": "DATETIME",
             },
+            "monthly_calls": {
+                "mysql": "FLOAT DEFAULT 0.0",
+                "sqlite": "REAL DEFAULT 0.0",
+            },
+            "difficulty": {
+                "mysql": "VARCHAR(20) DEFAULT 'Medium'",
+                "sqlite": "TEXT DEFAULT 'Medium'",
+            },
         },
         "app_dimension_scores": {
             "ranking_config_id": {
@@ -280,6 +291,23 @@ def validate_submission_payload(payload: SubmissionCreate) -> None:
         raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
     if payload.data_level not in DATA_LEVEL_VALUES:
         raise HTTPException(status_code=422, detail="Invalid data_level")
+    if payload.category not in APP_CATEGORY_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid category")
+    if payload.difficulty not in APP_DIFFICULTY_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid difficulty")
+
+
+def validate_group_app_payload(payload: GroupAppCreate) -> None:
+    if payload.category not in APP_CATEGORY_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid category")
+    if payload.status not in APP_STATUS_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid status")
+    if payload.difficulty not in APP_DIFFICULTY_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid difficulty")
+    if payload.access_mode not in {"direct", "profile"}:
+        raise HTTPException(status_code=422, detail="Invalid access_mode")
+    if payload.effectiveness_type not in VALUE_DIMENSIONS:
+        raise HTTPException(status_code=422, detail="Invalid effectiveness_type")
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:
@@ -770,7 +798,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
         app_scores = []
         for setting in app_settings:
             app = setting.app
-            if not app or app.section != "province":
+            if not app or app.section != "province" or app.status == "offline":
                 continue
 
             # 维度分值来源收敛规则：
@@ -1118,6 +1146,9 @@ def list_apps(
         if status not in APP_STATUS_VALUES:
             raise HTTPException(status_code=422, detail="Invalid status")
         query = query.filter(App.status == status)
+    else:
+        # 对外列表默认隐藏下架应用；管理端请使用 /api/admin/apps。
+        query = query.filter(App.status != "offline")
     if category and category != "全部":
         query = query.filter(App.category == category)
     if q:
@@ -1128,15 +1159,40 @@ def list_apps(
     except SQLAlchemyError:
         # 数据库表结构可能不完整，回退到 SQL 查询并补齐兼容字段。
         try:
-            result = db.execute(text("""
-                SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
-                       api_open, difficulty, contact_name, highlight, access_mode, access_url,
-                       detail_doc_url, detail_doc_name,
-                       target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
-                       cover_image_url
-                FROM apps
-                ORDER BY id
-            """))
+            clauses = []
+            params: dict[str, object] = {}
+            if section:
+                clauses.append("section = :section")
+                params["section"] = section
+            if status:
+                clauses.append("status = :status")
+                params["status"] = status
+            else:
+                clauses.append("status <> :offline_status")
+                params["offline_status"] = "offline"
+            if category and category != "全部":
+                clauses.append("category = :category")
+                params["category"] = category
+            if q:
+                clauses.append("(name LIKE :keyword OR description LIKE :keyword)")
+                params["keyword"] = f"%{q}%"
+
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            result = db.execute(
+                text(
+                    f"""
+                    SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
+                           api_open, difficulty, contact_name, highlight, access_mode, access_url,
+                           detail_doc_url, detail_doc_name,
+                           target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
+                           cover_image_url
+                    FROM apps
+                    {where_sql}
+                    ORDER BY id
+                    """
+                ),
+                params,
+            )
             apps = []
             for row in result:
                 apps.append({
@@ -1686,6 +1742,8 @@ def withdraw_submission_self(
 def list_enums():
     return {
         "app_status": sorted(APP_STATUS_VALUES),
+        "app_category": sorted(APP_CATEGORY_VALUES),
+        "app_difficulty": sorted(APP_DIFFICULTY_VALUES),
         "ranking_metric_type": sorted(METRIC_TYPES),
         "value_dimension": sorted(VALUE_DIMENSIONS),
         "data_level": sorted(DATA_LEVEL_VALUES),
@@ -1771,6 +1829,8 @@ def update_app_ranking_params(
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
+    if app.section == "province" and app.status == "offline":
+        raise HTTPException(status_code=409, detail="省内下架应用不可参与榜单")
 
     if ranking_weight is not None and (ranking_weight < 0.1 or ranking_weight > 10.0):
         raise HTTPException(status_code=422, detail="ranking_weight must be between 0.1 and 10.0")
@@ -1806,6 +1866,8 @@ def update_app_dimension_score_api(
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
+    if app.section == "province" and app.status == "offline":
+        raise HTTPException(status_code=409, detail="省内下架应用不可参与榜单评分")
     
     dimension = db.query(RankingDimension).filter(RankingDimension.id == dimension_id).first()
     if not dimension:
@@ -2551,6 +2613,18 @@ def approve_submission_and_create_app(
         resolved_access_mode = (payload.access_mode if payload and payload.access_mode else "profile")
         if resolved_access_mode not in {"direct", "profile"}:
             raise HTTPException(status_code=422, detail="Invalid access_mode")
+        resolved_monthly_calls = (
+            payload.monthly_calls
+            if payload and payload.monthly_calls is not None
+            else submission.monthly_calls
+        )
+        resolved_difficulty = (
+            payload.difficulty.strip()
+            if payload and payload.difficulty
+            else (submission.difficulty or "Medium")
+        )
+        if resolved_difficulty not in APP_DIFFICULTY_VALUES:
+            raise HTTPException(status_code=422, detail="Invalid difficulty")
 
         normalized_name = normalize_dedupe_text(submission.app_name)
         normalized_unit = normalize_dedupe_text(submission.unit_name)
@@ -2585,10 +2659,10 @@ def approve_submission_and_create_app(
             category=submission.category,
             description=submission.scenario,
             status=resolved_status,
-            monthly_calls=payload.monthly_calls if payload and payload.monthly_calls is not None else 0.0,
+            monthly_calls=resolved_monthly_calls if resolved_monthly_calls is not None else 0.0,
             release_date=datetime.now().date(),
             api_open=True,
-            difficulty=(payload.difficulty.strip() if payload and payload.difficulty else "Medium"),
+            difficulty=resolved_difficulty,
             contact_name=submission.contact,
             highlight="",
             access_mode=resolved_access_mode,
@@ -2683,6 +2757,26 @@ def reject_submission(
     """
     拒绝申报
     """
+    normalized_reason = (reason or "").strip()
+    if len(normalized_reason) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=structured_error_detail(
+                code="validation_error",
+                message="拒绝原因至少 2 个字符",
+                field_errors=[{"field": "reason", "message": "拒绝原因不能为空"}],
+            ),
+        )
+    if len(normalized_reason) > 255:
+        raise HTTPException(
+            status_code=422,
+            detail=structured_error_detail(
+                code="validation_error",
+                message="拒绝原因长度超限",
+                field_errors=[{"field": "reason", "message": "拒绝原因最多 255 个字符"}],
+            ),
+        )
+
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
         raise HTTPException(status_code=404, detail="申报不存在")
@@ -2690,7 +2784,7 @@ def reject_submission(
         raise HTTPException(status_code=400, detail="仅待审核申报可拒绝")
 
     submission.status = "rejected"
-    submission.rejected_reason = (reason or "").strip()
+    submission.rejected_reason = normalized_reason
     submission.rejected_at = datetime.utcnow()
     submission.rejected_by_user_id = admin_user.id if admin_user else None
     submission.approved_at = None
@@ -2725,6 +2819,7 @@ def create_group_app(
     集团应用为系统内置，通过此接口直接录入，不走申报流程
     """
     try:
+        validate_group_app_payload(payload)
         app = App(
             name=payload.name,
             org=payload.org,
@@ -2770,9 +2865,101 @@ def create_group_app(
         db.commit()
         db.refresh(app)
         return app
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"创建集团应用失败: {str(e)}")
+
+
+@app.get(f"{settings.api_prefix}/admin/apps", response_model=list[AppDetail])
+def admin_list_apps(
+    section: str | None = Query(default=None, description="group/province"),
+    status: str | None = Query(default=None, description="available/approval/beta/offline"),
+    q: str | None = Query(default=None, description="按名称或描述搜索"),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    query = db.query(App)
+    if section:
+        if section not in {"group", "province"}:
+            raise HTTPException(status_code=422, detail="Invalid section")
+        query = query.filter(App.section == section)
+    if status:
+        if status not in APP_STATUS_VALUES:
+            raise HTTPException(status_code=422, detail="Invalid status")
+        query = query.filter(App.status == status)
+    if q:
+        query = query.filter(App.name.contains(q) | App.description.contains(q))
+    return query.order_by(App.id).all()
+
+
+@app.put(f"{settings.api_prefix}/admin/apps/{{app_id}}/status")
+def admin_update_app_status(
+    app_id: int,
+    payload: AdminAppStatusUpdate,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    new_status = payload.status.strip()
+    if new_status not in APP_STATUS_VALUES:
+        raise HTTPException(status_code=422, detail="Invalid status")
+
+    old_status = app.status
+    disabled_settings = 0
+    app.status = new_status
+
+    # 省内应用下架后自动失去参与资格（历史快照保留，新榜单不再可选）。
+    if app.section == "province" and new_status == "offline":
+        disabled_settings = (
+            db.query(AppRankingSetting)
+            .filter(
+                AppRankingSetting.app_id == app.id,
+                AppRankingSetting.is_enabled.is_(True),
+            )
+            .update(
+                {
+                    AppRankingSetting.is_enabled: False,
+                    AppRankingSetting.updated_at: datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
+        )
+
+    write_action_log(
+        db,
+        action="app.status_updated",
+        actor_user=admin_user,
+        resource_type="app",
+        resource_id=str(app.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=(
+            f"section={app.section},old={old_status},new={new_status},"
+            f"disabled_settings={disabled_settings}"
+        ),
+    )
+
+    synced = 0
+    run_id = ""
+    if app.section == "province":
+        synced, run_id = sync_after_chain_mutation(db, "app_status_updated")
+    else:
+        db.commit()
+    db.refresh(app)
+    return {
+        "message": "应用状态已更新",
+        "app_id": app.id,
+        "old_status": old_status,
+        "new_status": app.status,
+        "disabled_settings": disabled_settings,
+        "synced": synced,
+        "run_id": run_id,
+    }
 
 
 # Image upload configuration
@@ -3282,6 +3469,8 @@ def save_app_ranking_setting_atomically(
         app = db.query(App).filter(App.id == app_id).first()
         if not app:
             raise HTTPException(status_code=404, detail="应用不存在")
+        if app.section == "province" and app.status == "offline":
+            raise HTTPException(status_code=409, detail="省内下架应用不可新增、保存或启用榜单参与")
 
         config_id = payload.ranking_config_id.strip()
         if not config_id:
@@ -3462,6 +3651,8 @@ def create_app_ranking_setting(
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
+    if app.section == "province" and app.status == "offline":
+        raise HTTPException(status_code=409, detail="省内下架应用不可新增榜单参与")
     
     # 检查榜单配置是否存在
     config = db.query(RankingConfig).filter(RankingConfig.id == payload.ranking_config_id).first()
@@ -3514,6 +3705,10 @@ def update_app_ranking_setting(
     """
     更新应用榜单设置
     """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
     setting = (
         db.query(AppRankingSetting)
         .filter(
@@ -3524,6 +3719,16 @@ def update_app_ranking_setting(
     )
     if not setting:
         raise HTTPException(status_code=404, detail="榜单设置不存在")
+
+    if app.section == "province" and app.status == "offline":
+        only_disable = (
+            payload.is_enabled is False
+            and payload.ranking_config_id is None
+            and payload.weight_factor is None
+            and payload.custom_tags is None
+        )
+        if not only_disable:
+            raise HTTPException(status_code=409, detail="省内下架应用不可新增、保存或启用榜单参与")
 
     before_snapshot = _serialize_setting_snapshot(setting)
     if payload.ranking_config_id is not None and payload.ranking_config_id != setting.ranking_config_id:

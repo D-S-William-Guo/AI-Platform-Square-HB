@@ -339,10 +339,10 @@ export async function approveSubmissionAndCreateApp(
   return data
 }
 
-export async function rejectSubmission(submissionId: number, reason?: string) {
+export async function rejectSubmission(submissionId: number, reason: string) {
   const { data } = await client.post(
     `/api/submissions/${submissionId}/reject`,
-    { reason: reason || '' },
+    { reason },
     {
       headers: getRequiredAdminAuthHeaders()
     }
@@ -449,6 +449,30 @@ export async function createGroupApp(
   const { data } = await client.post('/api/admin/group-apps', payload, {
     headers: getRequiredAdminAuthHeaders()
   })
+  return data
+}
+
+export async function fetchAdminApps(params?: {
+  section?: 'group' | 'province'
+  status?: 'available' | 'approval' | 'beta' | 'offline'
+  q?: string
+}) {
+  const { data } = await client.get<AppItem[]>('/api/admin/apps', {
+    params: params || {},
+    headers: getRequiredAdminAuthHeaders()
+  })
+  return data
+}
+
+export async function updateAdminAppStatus(
+  appId: number,
+  status: 'available' | 'approval' | 'beta' | 'offline'
+) {
+  const { data } = await client.put(
+    `/api/admin/apps/${appId}/status`,
+    { status },
+    { headers: getRequiredAdminAuthHeaders() }
+  )
   return data
 }
 

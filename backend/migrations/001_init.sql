@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   effectiveness_metric VARCHAR(120) NOT NULL,
   data_level VARCHAR(10) NOT NULL,
   expected_benefit VARCHAR(300) NOT NULL,
+  monthly_calls FLOAT DEFAULT 0.0,
+  difficulty VARCHAR(20) DEFAULT 'Medium',
   status VARCHAR(20) DEFAULT 'pending',
   submitter_user_id INT DEFAULT NULL,
   approved_by_user_id INT DEFAULT NULL,

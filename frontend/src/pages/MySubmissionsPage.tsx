@@ -17,6 +17,8 @@ const defaultForm: SubmissionPayload = {
   effectiveness_metric: '',
   data_level: 'L2',
   expected_benefit: '',
+  monthly_calls: 0,
+  difficulty: 'Medium',
   cover_image_url: '',
   detail_doc_url: '',
   detail_doc_name: '',
@@ -87,6 +89,8 @@ export default function MySubmissionsPage() {
       effectiveness_metric: target.effectiveness_metric,
       data_level: target.data_level,
       expected_benefit: target.expected_benefit,
+      monthly_calls: target.monthly_calls ?? 0,
+      difficulty: target.difficulty ?? 'Medium',
       cover_image_url: target.cover_image_url || '',
       detail_doc_url: target.detail_doc_url || '',
       detail_doc_name: target.detail_doc_name || '',
@@ -280,6 +284,31 @@ export default function MySubmissionsPage() {
                   <label className="form-label">成效指标</label>
                   <input className="form-input" value={form.effectiveness_metric} onChange={(e) => setForm((prev) => ({ ...prev, effectiveness_metric: e.target.value }))} />
                 </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">月调用量（k）</label>
+                    <input
+                      className="form-input"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.monthly_calls}
+                      onChange={(e) => setForm((prev) => ({ ...prev, monthly_calls: Math.max(0, Number(e.target.value || 0)) }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">接入难度</label>
+                    <select
+                      className="form-select"
+                      value={form.difficulty}
+                      onChange={(e) => setForm((prev) => ({ ...prev, difficulty: e.target.value as SubmissionPayload['difficulty'] }))}
+                    >
+                      <option value="Low">低</option>
+                      <option value="Medium">中</option>
+                      <option value="High">高</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="form-group">
                   <label className="form-label">预期收益</label>
                   <textarea className="form-textarea" value={form.expected_benefit} onChange={(e) => setForm((prev) => ({ ...prev, expected_benefit: e.target.value }))} />
@@ -310,4 +339,3 @@ export default function MySubmissionsPage() {
     </div>
   )
 }
-

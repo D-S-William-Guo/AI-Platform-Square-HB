@@ -57,6 +57,8 @@ const defaultSubmission: SubmissionPayload = {
   effectiveness_metric: '',
   data_level: 'L2',
   expected_benefit: '',
+  monthly_calls: 0,
+  difficulty: 'Medium',
   cover_image_url: '',
   detail_doc_url: '',
   detail_doc_name: ''
@@ -120,6 +122,7 @@ const validationRules: Record<string, ValidationRule> = {
   problem_statement: { required: true, minLength: 10, maxLength: 255, message: '问题描述需在10-255个字符之间' },
   effectiveness_metric: { required: true, minLength: 2, maxLength: 120, message: '成效指标需在2-120个字符之间' },
   expected_benefit: { required: true, minLength: 10, maxLength: 300, message: '预期收益需在10-300个字符之间' },
+  monthly_calls: { min: 0, max: 1000000, message: '月调用量必须为非负数' },
 }
 
 // 主页面组件
@@ -504,6 +507,8 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
       effectiveness_metric: managedSubmission.effectiveness_metric,
       data_level: managedSubmission.data_level,
       expected_benefit: managedSubmission.expected_benefit,
+      monthly_calls: managedSubmission.monthly_calls ?? 0,
+      difficulty: managedSubmission.difficulty ?? 'Medium',
       cover_image_url: managedSubmission.cover_image_url || '',
       detail_doc_url: managedSubmission.detail_doc_url || '',
       detail_doc_name: managedSubmission.detail_doc_name || ''
@@ -1206,6 +1211,33 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                       <option value="业务前台">业务前台</option>
                       <option value="运维后台">运维后台</option>
                       <option value="企业管理">企业管理</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">月调用量（k）</label>
+                    <input
+                      className={`form-input ${errors.monthly_calls ? 'error' : ''}`}
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={submission.monthly_calls}
+                      onChange={(e) => handleFieldChange('monthly_calls', Math.max(0, Number(e.target.value || 0)))}
+                    />
+                    {errors.monthly_calls && <span className="error-message">{errors.monthly_calls}</span>}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">接入难度</label>
+                    <select
+                      className="form-select"
+                      value={submission.difficulty}
+                      onChange={(e) => handleFieldChange('difficulty', e.target.value as SubmissionPayload['difficulty'])}
+                    >
+                      <option value="Low">低</option>
+                      <option value="Medium">中</option>
+                      <option value="High">高</option>
                     </select>
                   </div>
                 </div>
