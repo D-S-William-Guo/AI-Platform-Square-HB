@@ -6,12 +6,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.config import settings
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission
 
 
 client = TestClient(app)
-ADMIN_HEADERS = {'X-Admin-Token': settings.admin_token}
 DEFAULT_USER_LOGIN = {"username": "zhangsan", "password": settings.user_default_password}
 
 
@@ -69,6 +68,11 @@ def test_admin_api_supports_admin_session_token():
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
     client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+
+
+def test_admin_api_rejects_legacy_x_admin_token_header():
+    resp = client.get("/api/submissions", headers={"X-Admin-Token": "legacy-token"})
+    assert resp.status_code == 401
 
 
 def test_admin_api_rejects_non_admin_session_token():
@@ -221,7 +225,7 @@ def test_reject_submission_records_admin_and_reason():
 
 
 def test_admin_list_users_contains_seeded_accounts():
-    resp = client.get('/api/admin/users', headers=ADMIN_HEADERS)
+    resp = client.get('/api/admin/users', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
     data = resp.json()
     usernames = {item['username'] for item in data}
@@ -344,7 +348,7 @@ def test_external_user_sync_requires_and_validates_sync_token():
         assert ok_resp.json()["source"] == "external-system"
         assert ok_resp.json()["created"] >= 1
 
-        users = client.get('/api/admin/users?q=zhaoliu', headers=ADMIN_HEADERS).json()
+        users = client.get('/api/admin/users?q=zhaoliu', headers=auth_headers_for_user("lisi")).json()
         row = next(item for item in users if item["username"] == "zhaoliu")
         assert row["role"] == "user"
         assert row["department"] == "集成系统"
@@ -387,7 +391,7 @@ def test_public_apps_default_excludes_offline_but_supports_explicit_filter():
     app_name = f"下架过滤测试应用-{uuid.uuid4().hex[:8]}"
     create_resp = client.post(
         "/api/admin/group-apps",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "name": app_name,
             "org": "测试单位",
@@ -411,7 +415,7 @@ def test_public_apps_default_excludes_offline_but_supports_explicit_filter():
     assert offline_resp.status_code == 200
     assert any(item["name"] == app_name for item in offline_resp.json())
 
-    admin_offline_resp = client.get("/api/admin/apps?section=group&status=offline", headers=ADMIN_HEADERS)
+    admin_offline_resp = client.get("/api/admin/apps?section=group&status=offline", headers=auth_headers_for_user("lisi"))
     assert admin_offline_resp.status_code == 200
     assert any(item["name"] == app_name for item in admin_offline_resp.json())
 
@@ -617,10 +621,10 @@ def test_reject_submission_changes_status_to_rejected():
     assert create_resp.status_code == 200
     submission_id = create_resp.json()['id']
 
-    reject_resp = client.post(f'/api/submissions/{submission_id}/reject', headers=ADMIN_HEADERS, json={'reason': '资料不完整'})
+    reject_resp = client.post(f'/api/submissions/{submission_id}/reject', headers=auth_headers_for_user("lisi"), json={'reason': '资料不完整'})
     assert reject_resp.status_code == 200
 
-    list_resp = client.get('/api/submissions', headers=ADMIN_HEADERS)
+    list_resp = client.get('/api/submissions', headers=auth_headers_for_user("lisi"))
     assert list_resp.status_code == 200
     target = next(item for item in list_resp.json() if item['id'] == submission_id)
     assert target['status'] == 'rejected'
@@ -646,7 +650,7 @@ def test_reject_submission_requires_non_empty_reason():
 
     reject_resp = client.post(
         f'/api/submissions/{submission_id}/reject',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={'reason': ' '},
     )
     assert reject_resp.status_code == 422
@@ -656,8 +660,6 @@ def test_reject_submission_requires_non_empty_reason():
 
 
 def test_approve_maps_detail_doc_fields_to_app():
-    Base.metadata.create_all(bind=engine)
-
     payload = {
         'category': '办公类',
         'app_name': '文档映射测试应用',
@@ -682,7 +684,7 @@ def test_approve_maps_detail_doc_fields_to_app():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -713,7 +715,7 @@ def test_approve_uses_submission_monthly_calls_and_difficulty_by_default():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -725,8 +727,6 @@ def test_approve_uses_submission_monthly_calls_and_difficulty_by_default():
 
 
 def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
-    Base.metadata.create_all(bind=engine)
-
     db = SessionLocal()
     try:
         submission = Submission(
@@ -751,10 +751,12 @@ def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
         db.commit()
         db.refresh(submission)
 
-        approve_resp = client.post(f"/api/submissions/{submission.id}/approve-and-create-app", headers=ADMIN_HEADERS)
+        approve_resp = client.post(f"/api/submissions/{submission.id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
         assert approve_resp.status_code == 200
         app_id = approve_resp.json()['app_id']
 
+        # Reset the transaction snapshot so MySQL can see rows committed by the API request.
+        db.rollback()
         app = db.query(App).filter(App.id == app_id).first()
         assert app is not None
         assert app.status == 'available'
@@ -770,7 +772,7 @@ def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
 def test_create_group_app_rejects_invalid_category():
     resp = client.post(
         "/api/admin/group-apps",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "name": f"非法分类集团应用-{uuid.uuid4().hex[:8]}",
             "org": "测试单位",
@@ -806,7 +808,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -823,7 +825,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
 
     enable_resp = client.post(
         f"/api/apps/{app_id}/ranking-settings/save",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -836,7 +838,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
 
     offline_resp = client.put(
         f"/api/admin/apps/{app_id}/status",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={"status": "offline"},
     )
     assert offline_resp.status_code == 200
@@ -855,7 +857,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
 
     blocked_save_resp = client.post(
         f"/api/apps/{app_id}/ranking-settings/save",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -868,7 +870,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
 
     blocked_create_resp = client.post(
         f"/api/apps/{app_id}/ranking-settings",
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -901,7 +903,7 @@ def test_update_app_dimension_score_accepts_json_body():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -915,7 +917,7 @@ def test_update_app_dimension_score_accepts_json_body():
 
     update_resp = client.put(
         f'/api/apps/{app_id}/dimension-scores/1?ranking_config_id={config_id}',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={'score': 88}
     )
     assert update_resp.status_code == 200
@@ -949,13 +951,13 @@ def test_delete_ranking_config_cleans_downstream_records():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
     config_resp = client.post(
         '/api/ranking-configs',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "id": config_id,
             "name": f"测试榜单-{unique_suffix}",
@@ -969,7 +971,7 @@ def test_delete_ranking_config_cleans_downstream_records():
 
     setting_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -987,7 +989,7 @@ def test_delete_ranking_config_cleans_downstream_records():
     finally:
         db.close()
 
-    delete_resp = client.delete(f'/api/ranking-configs/{config_id}', headers=ADMIN_HEADERS)
+    delete_resp = client.delete(f'/api/ranking-configs/{config_id}', headers=auth_headers_for_user("lisi"))
     assert delete_resp.status_code == 200
 
     db = SessionLocal()
@@ -1024,13 +1026,13 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
 
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
     dim_resp = client.post(
         '/api/ranking-dimensions',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "name": f"删维度测试-{unique_suffix}",
             "description": "用于测试删除维度联动",
@@ -1044,7 +1046,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
 
     config_resp = client.post(
         '/api/ranking-configs',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "id": config_id,
             "name": f"维度联动榜单-{unique_suffix}",
@@ -1058,7 +1060,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
 
     setting_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -1070,12 +1072,12 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
 
     score_resp = client.put(
         f'/api/apps/{app_id}/dimension-scores/{dimension_id}?ranking_config_id={config_id}',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={'score': 90},
     )
     assert score_resp.status_code == 200
 
-    delete_dim_resp = client.delete(f'/api/ranking-dimensions/{dimension_id}', headers=ADMIN_HEADERS)
+    delete_dim_resp = client.delete(f'/api/ranking-dimensions/{dimension_id}', headers=auth_headers_for_user("lisi"))
     assert delete_dim_resp.status_code == 200
 
     db = SessionLocal()
@@ -1097,9 +1099,8 @@ def test_admin_endpoint_requires_token():
 
 
 def test_admin_endpoint_accepts_valid_token():
-    Base.metadata.create_all(bind=engine)
     client.cookies.clear()
-    resp = client.post('/api/rankings/sync', headers=ADMIN_HEADERS)
+    resp = client.post('/api/rankings/sync', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
 
 
@@ -1149,7 +1150,7 @@ def test_save_app_ranking_setting_atomic_success():
     submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -1173,7 +1174,7 @@ def test_save_app_ranking_setting_atomic_success():
 
     save_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings/save',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -1211,7 +1212,7 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
     submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -1235,7 +1236,7 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
 
     save_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings/save',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "ranking_config_id": config_id,
             "is_enabled": True,
@@ -1282,7 +1283,7 @@ def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
     submit_resp = create_submission_as_user(payload)
     assert submit_resp.status_code == 200
     submission_id = submit_resp.json()['id']
-    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=ADMIN_HEADERS)
+    approve_resp = client.post(f"/api/submissions/{submission_id}/approve-and-create-app", headers=auth_headers_for_user("lisi"))
     assert approve_resp.status_code == 200
     app_id = approve_resp.json()['app_id']
 
@@ -1313,13 +1314,13 @@ def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
     }
     first_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings/save',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json=req_payload,
     )
     assert first_resp.status_code == 200
     second_resp = client.post(
         f'/api/apps/{app_id}/ranking-settings/save',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json=req_payload,
     )
     assert second_resp.status_code == 200
@@ -1366,7 +1367,7 @@ def test_publish_rankings_precheck_requires_enabled_participant():
 
     create_resp = client.post(
         '/api/ranking-configs',
-        headers=ADMIN_HEADERS,
+        headers=auth_headers_for_user("lisi"),
         json={
             "id": config_id,
             "name": f"发布预检榜单-{unique}",
@@ -1378,7 +1379,7 @@ def test_publish_rankings_precheck_requires_enabled_participant():
     )
     assert create_resp.status_code == 200
 
-    publish_resp = client.post('/api/rankings/publish', headers=ADMIN_HEADERS)
+    publish_resp = client.post('/api/rankings/publish', headers=auth_headers_for_user("lisi"))
     assert publish_resp.status_code == 409
     detail = publish_resp.json()["detail"]
     assert detail["code"] == "publish_precheck_failed"

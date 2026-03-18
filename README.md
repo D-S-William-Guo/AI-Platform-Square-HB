@@ -6,7 +6,7 @@
 
 - 前端：React + TypeScript + Vite
 - 后端：Python FastAPI + SQLAlchemy
-- 数据库：MySQL（生产建议）/ SQLite（本地快速启动默认）
+- 数据库：MySQL 5.7 + Alembic
 
 ## Governance Snapshot
 
@@ -58,7 +58,7 @@ AI-Platform-Square-HB/
 │   │   ├── main.py    # FastAPI主应用
 │   │   ├── models.py  # SQLAlchemy数据模型
 │   │   └── schemas.py # Pydantic数据验证
-│   ├── migrations/    # 数据库迁移脚本
+│   ├── alembic/       # Alembic 迁移脚本
 │   └── requirements.txt
 ├── docs/              # 项目文档
 │   ├── ai-app-square-requirement-prompt.md
@@ -69,83 +69,223 @@ AI-Platform-Square-HB/
 
 ## 快速启动
 
-### 0) 准备本地环境变量
+### 0) 准备环境变量
 
 ```bash
-cp .env.example .env
 cp backend/.env.example backend/.env
+# 如需覆盖 docker compose 的默认账号，再额外复制：
+# cp .env.example .env
 ```
 
-> `.env` 提供 docker-compose MySQL 默认账号，`backend/.env` 控制后端数据库连接。
+环境文件治理规则：
+- `backend/.env` 是唯一应用配置源，后端运行、前端开发端口、测试数据库、准生产单端口部署都从这里读取。
+- 根目录 `.env` 仅用于覆盖 docker compose 中的 MySQL 默认账号。
+- 根目录 `.env.local` 已废止；当前脚本发现它存在会直接退出，并提示把应用变量迁移到 `backend/.env`。
+- 所有 `*.example` 都只是模板，不会自动生效。
+- 默认端口约定：
+  - `APP_PORT=80`：准生产单端口
+  - `BACKEND_DEV_PORT=8000`：后端开发端口
+  - `FRONTEND_DEV_PORT=5173`：前端开发端口
 
-### 1) 后端
+环境文件一览：
+
+| 文件 | 角色 | 是否自动生效 |
+| --- | --- | --- |
+| `backend/.env` | 唯一应用配置源 | 是 |
+| `backend/.env.example` | 应用配置模板 | 否 |
+| `.env` | Docker Compose MySQL 覆盖文件 | 仅对 Compose / 依赖 Compose 变量的脚本生效 |
+| `.env.example` | Docker Compose MySQL 模板 | 否 |
+
+### 1) 安装依赖与虚拟环境
+
+```bash
+make venv
+make backend-install
+make frontend-install
+```
+
+当前仓库统一使用根目录 `.venv`，不再使用 `backend/.venv`。
+
+### 2) 启动 MySQL
+
+```bash
+make db-up
+```
+
+本地默认通过 Docker Compose 暴露 `127.0.0.1:13306`。
+如果部署环境是“本机应用 + 远程 MySQL 服务”，只需要把 `backend/.env` 中的 `DATABASE_URL` / `TEST_DATABASE_URL` 改成远程地址。
+当前项目本地与 CI 统一以 MySQL 5.7 为准。
+如果你本机之前用的是 MySQL 8.0，本次切换到 5.7 时必须执行一次 `docker compose down -v`，然后重新 `make db-up`、`alembic upgrade head`、`python -m app.bootstrap init-base`。
+
+### 3) 执行迁移与基础初始化
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+# 仅开发/演示需要时：
+# PYTHONPATH=. ../.venv/bin/python -m app.bootstrap seed-demo
 ```
 
-后端目录相关配置（可选，均有默认值）：
-- `STATIC_DIR`（默认：`static`）
-- `UPLOAD_DIR`（默认：`static/uploads`）
-- `IMAGE_DIR`（默认：`static/images`）
-- 以上相对路径统一以 `backend/` 目录为基准解析（与启动时 cwd 无关），也可配置为绝对路径。
+### 4) 开发模式启动前后端
 
-### 后端最小验证（建议）
+后端：
+```bash
+make backend-dev
+```
+
+前端：
+```bash
+make frontend-dev
+```
+
+开发访问地址：
+- 后端 API：`http://127.0.0.1:${BACKEND_DEV_PORT:-8000}`
+- Swagger：`http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/docs`
+- 前端：`http://127.0.0.1:${FRONTEND_DEV_PORT:-5173}`
+
+### 5) 最小验证
 
 ```bash
-curl -sS http://127.0.0.1:8000/api/health
+curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 ```
 
 期望返回：`{"status":"ok"}`
 
-后端目录相关配置（可选，均有默认值）：
+后端运行配置：
+- `DATABASE_URL`（必填，仅支持 `mysql+pymysql://...`）
+- `TEST_DATABASE_URL`（测试专用，建议独立库）
 - `STATIC_DIR`（默认：`static`）
 - `UPLOAD_DIR`（默认：`static/uploads`）
 - `IMAGE_DIR`（默认：`static/images`）
 - 以上相对路径统一以 `backend/` 目录为基准解析（与启动时 cwd 无关），也可配置为绝对路径。
 - 启动校验要求：`UPLOAD_DIR` 必须解析到 `STATIC_DIR/uploads`，否则服务将启动失败并提示配置错误（避免返回 `/static/uploads/...` 出现 404）。
 
-### 后端最小验证（建议）
+数据库迁移与初始化步骤统一维护在：`docs/db-migration-sop.md`。
+
+### 本地开发最短命令清单
+
+首次完整启动：
 
 ```bash
-curl -sS http://127.0.0.1:8000/api/health
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+make db-up
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make backend-dev
 ```
 
-期望返回：`{"status":"ok"}`
-
-### 1.5) 使用 Docker Compose 启动 MySQL
+新开一个终端：
 
 ```bash
-docker compose up -d mysql
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-dev
 ```
 
-迁移执行顺序、不可跳步原则、SQLite/MySQL 验证步骤统一维护在：`docs/db-migration-sop.md`。
-
-### 2) 前端
+如果本机已经装过依赖并初始化过数据库，日常启动最短就是：
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make db-up
+make backend-dev
 ```
 
-访问：`http://localhost:5173`
-
-本地 0 门槛调试（推荐）：
+新开一个终端：
 
 ```bash
-cp .env.local.example .env.local
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-dev
 ```
 
-> `make backend-dev` / `make frontend-dev` / `make test` 会自动加载仓库根目录 `.env.local`。  
-> 该文件已在 `.gitignore` 中忽略，不会提交到 GitHub。  
-> 前端管理接口会从 `VITE_ADMIN_TOKEN`（优先）或浏览器 `localStorage` 的 `ADMIN_TOKEN` / `admin_token` 读取，并通过 `X-Admin-Token` 请求头发送。
->
-> 生产环境请勿使用 `VITE_ADMIN_TOKEN` 存放真实管理员密钥（前端变量会暴露）。后端在 `ENVIRONMENT=production` 且 `ADMIN_TOKEN` 仍为默认值时会拒绝启动。
+## 准生产部署（单机内网、单端口同源）
+
+目标形态：
+- 前端先构建成 `frontend/dist`
+- 后端同源托管前端静态文件和 `/api/*`
+- 对外只暴露一个端口：`APP_PORT`
+- 数据库连接远程 MySQL，首次部署按空库初始化处理
+
+推荐顺序：
+
+```bash
+cp backend/.env.example backend/.env
+# 把 DATABASE_URL 改成远程 MySQL
+# 把 ENVIRONMENT 改成 production
+# 把 USER_DEFAULT_PASSWORD / ADMIN_DEFAULT_PASSWORD 改成正式值
+
+cd backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make app-serve
+```
+
+准生产访问地址：
+- 应用首页：`http://<host>:${APP_PORT:-80}`
+- 健康检查：`http://<host>:${APP_PORT:-80}/api/health`
+
+说明：
+- `make app-serve` 会先构建前端，再启动后端单端口服务。
+- 若远程 MySQL 不是空库或不是本项目独占的新库，本次定版不负责自动识别和兼容，需先人工清库或迁移到新库。
+
+### 准生产单机内网最短命令清单
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make venv
+make backend-install
+make frontend-install
+cp backend/.env.example backend/.env
+```
+
+编辑 `backend/.env`，至少确认：
+- `DATABASE_URL=mysql+pymysql://...` 指向远程 MySQL
+- `ENVIRONMENT=production`
+- `APP_HOST=0.0.0.0`
+- `APP_PORT=80`
+- `USER_DEFAULT_PASSWORD=...`
+- `ADMIN_DEFAULT_PASSWORD=...`
+
+首次部署初始化：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB/backend
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+```
+
+如需演示数据，再执行：
+
+```bash
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap seed-demo
+```
+
+回到仓库根目录启动：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make app-serve
+```
+
+部署后验证：
+
+```bash
+curl -sS "http://<主机地址>:${APP_PORT:-80}/api/health"
+```
+
+旧 `.env.local` 迁移说明：
+
+1. 把仍需保留的应用变量移动到 `backend/.env`。
+2. 根目录 `.env` 只保留 `MYSQL_ROOT_PASSWORD`、`MYSQL_DATABASE`、`MYSQL_USER`、`MYSQL_PASSWORD`。
+3. 删除根目录 `.env.local`。
+
+> 当前 `make backend-dev` / `make frontend-dev` / `make backend-test` / `make app-serve` / `make frontend-build` 发现根目录 `.env.local` 时会直接退出，避免多入口覆盖。  
+> 管理接口只接受管理员登录态，不再支持 `X-Admin-Token`、`ADMIN_TOKEN`、`VITE_ADMIN_TOKEN` 之类旁路令牌。
 
 ## 登录与权限（第一阶段）
 
@@ -153,12 +293,10 @@ cp .env.local.example .env.local
   - `POST /api/auth/login`
   - `GET /api/auth/me`
   - `POST /api/auth/logout`
-- 默认会在启动时种子两个账号（可通过环境变量修改默认密码）：
+- 初始化基础数据后会提供两个默认账号（可通过环境变量修改默认密码）：
   - 普通用户：`zhangsan`（张三）
   - 管理员：`lisi`（李四）
-- 管理接口已支持两种鉴权方式并存（平滑过渡）：
-  - 新方式：`Authorization: Bearer <session_token>`（管理员登录态）
-  - 兼容方式：`X-Admin-Token: <ADMIN_TOKEN>`
+- 管理接口只接受：`Authorization: Bearer <session_token>`（管理员登录态）
 - 前端访问控制：
   - 未登录用户会被重定向到登录页，不能直接进入首页。
   - 普通用户可访问展示能力；管理员可额外访问“申报审核/排行榜管理”。
@@ -358,56 +496,55 @@ npm run verify:styles
 ### 2. 应用申报流程
 
 ```
-用户申报 → 管理员审核 → 应用上架 → 参与排行
+用户申报 → 管理员审核 → 创建省内 App → 单独配置是否参评
 ```
 
 - 支持图片上传和预览
 - 表单验证（必填项、格式、长度）
-- 申报状态跟踪
+- 申报状态跟踪与审批审计
+- 审批通过时自动创建 `AppRankingSetting`，默认 `is_enabled=false`
 
 ### 3. 排行榜管理
 
-#### 5个排行维度
-
-| 维度 | 权重 | 计算方法 |
-|------|------|---------|
-| 用户满意度 | 3.0 | 基于月调用量计算 |
-| 业务价值 | 2.5 | 基于成效类型计算 |
-| 技术创新性 | 2.0 | 基于难度等级计算 |
-| 使用活跃度 | 1.5 | 基于月调用量计算 |
-| 稳定性和安全性 | 1.0 | 基于应用状态计算 |
-
-#### 榜单类型
-
-- **优秀应用榜**：综合评分排名
-- **趋势榜**：增长趋势排名
-
-#### 配置方式
-
-- 以应用为单位配置榜单参数
-- 支持优秀榜和趋势榜分开配置
-- 可手动调整维度评分
-- 实时同步排行榜数据
+- 榜单类型与维度均由后台配置管理，不再把固定规则写死在文档中。
+- 榜单配置由 `RankingConfig` 管理。
+- 应用是否参与某个榜单由 `AppRankingSetting` 决定。
+- 维度分数由 `AppDimensionScore` 存储。
+- 对外展示真相源为 `HistoricalRanking` 快照；读取默认取指定日期的最新 `run_id`。
 
 ### 4. 历史榜单
 
-- 每日自动保存榜单快照
-- 支持按日期查询历史排名
-- 支持按维度筛选历史数据
+- 通过 `/api/rankings/sync` 发布快照
+- 支持按日期与 `run_id` 回放
+- 支持历史榜单查询与可用日期查询
 
 ## 后端 API
+
+### 鉴权与用户
+- `POST /api/auth/login` - 登录
+- `GET /api/auth/me` - 当前登录用户
+- `POST /api/auth/logout` - 登出
+- `GET /api/admin/users` - 用户列表
+- `PUT /api/admin/users/{id}/role` - 调整角色
+- `PUT /api/admin/users/{id}/status` - 启停用户
 
 ### 应用管理
 - `GET /api/apps` - 应用列表（支持 section/status/category/q 过滤）
 - `GET /api/apps/{id}` - 应用详情
 - `PUT /api/apps/{id}/ranking-params` - 更新应用排行参数
 - `PUT /api/apps/{id}/dimension-scores/{dimension_id}` - 更新维度评分
+- `POST /api/apps/{app_id}/ranking-settings` - 创建应用参评配置
+- `POST /api/apps/{app_id}/ranking-settings/save` - 原子保存参评设置与维度分数
 
 ### 榜单管理
 - `GET /api/rankings` - 当前榜单数据
 - `GET /api/rankings/historical` - 历史榜单查询
 - `GET /api/rankings/available-dates` - 可用历史日期
 - `POST /api/rankings/sync` - 同步排行榜数据
+- `GET /api/ranking-configs` - 榜单配置列表
+- `POST /api/ranking-configs` - 创建榜单配置
+- `PUT /api/ranking-configs/{id}` - 更新榜单配置
+- `DELETE /api/ranking-configs/{id}` - 删除榜单配置
 
 ### 排行维度
 - `GET /api/ranking-dimensions` - 维度列表
@@ -432,13 +569,17 @@ npm run verify:styles
 
 | 表 | 说明 | 主要字段 |
 | --- | --- | --- |
-| `apps` | 应用基础信息 | name, org, section, category, status, monthly_calls, ranking_enabled, ranking_weight |
-| `rankings` | 当前榜单 | ranking_type, position, app_id, tag, score, value_dimension |
-| `historical_rankings` | 历史榜单 | period_date, ranking_type, position, app_id, score |
+| `apps` | 应用基础信息 | name, org, section, category, status, monthly_calls, approved_at |
+| `ranking_configs` | 榜单配置 | id, name, dimensions_config, calculation_method, is_active |
+| `app_ranking_settings` | 应用参评配置 | app_id, ranking_config_id, is_enabled, weight_factor, custom_tags |
+| `rankings` | 当前榜单 | ranking_config_id, ranking_type, position, app_id, tag, score |
+| `historical_rankings` | 历史榜单快照 | period_date, run_id, ranking_config_id, position, app_id, score |
 | `ranking_dimensions` | 排行维度 | name, description, calculation_method, weight, is_active |
-| `app_dimension_scores` | 维度评分 | app_id, dimension_id, period_date, score |
-| `submissions` | 申报记录 | app_name, unit_name, status, created_at |
+| `app_dimension_scores` | 维度评分 | app_id, ranking_config_id, dimension_id, period_date, score |
+| `submissions` | 申报记录 | app_name, unit_name, status, approved_at, approved_by_user_id |
 | `submission_images` | 申报图片 | submission_id, image_url, thumbnail_url |
+| `users` / `auth_sessions` | 用户与会话 | username, role, token_jti, expires_at |
+| `action_logs` | 审计日志 | actor_user_id, action, resource_type, resource_id |
 
 ## 前端页面
 
@@ -474,29 +615,31 @@ npm run verify:styles
 
 ## 项目状态
 
-当前版本：v2.0
+当前版本：v2.1
 
 ### 已实现功能
 
 - ✅ 应用展示（集团/省内/榜单）
 - ✅ 应用申报（完整表单+图片上传）
 - ✅ 申报审核（通过/拒绝）
-- ✅ 排行榜管理（5维度+双榜单）
-- ✅ 历史榜单查询
+- ✅ 登录、会话鉴权与管理员能力
+- ✅ 配置化榜单管理（榜单配置 / 维度 / 应用参评设置）
+- ✅ 历史榜单快照与 `run_id` 回放
 - ✅ 搜索和筛选
 - ✅ 响应式布局
+- ✅ MySQL Only + Alembic + 显式 bootstrap 初始化
 
 ### 待优化项
 
 - [ ] 性能优化（大数据量分页）
 - [ ] 缓存策略
 - [ ] 更丰富的图表展示
-- [ ] 用户权限管理
+- [ ] 更细粒度的 RBAC
 
 ## 联系方式
 
 - 项目邮箱：aiapps@hebei.cn
-- 最近更新时间：2026-02-10
+- 最近更新时间：2026-03-18
 
 ## 开发文档
 - Backend 环境与自检：docs/dev-setup.md
@@ -506,11 +649,27 @@ npm run verify:styles
 ## 推荐使用 make 命令进行本地开发与验证
 
 ```bash
-make doctor
+cp backend/.env.example backend/.env
 make db-up
+make venv
 make backend-install
-make backend-dev
 make frontend-install
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+make backend-dev
 make frontend-dev
 make test
+```
+
+## 推荐使用 make 命令进行准生产启动
+
+```bash
+cp backend/.env.example backend/.env
+# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT
+make backend-install
+make frontend-install
+cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make app-serve
 ```

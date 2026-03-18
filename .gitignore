@@ -34,7 +34,6 @@ yarn-error.log*
 
 # Database
 *.db
-*.sqlite3
 
 # OS
 Thumbs.db

@@ -9,3 +9,4 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 "$VENV_DIR/bin/pip" install -r "$ROOT_DIR/backend/requirements.txt"
+"$VENV_DIR/bin/pip" install -e "$ROOT_DIR/backend"

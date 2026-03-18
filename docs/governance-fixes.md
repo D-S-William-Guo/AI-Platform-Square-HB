@@ -23,16 +23,21 @@
 
 ### 验证方式
 ```bash
+cd /workspace/AI-Platform-Square-HB
+make venv
+make backend-install
+cp backend/.env.example backend/.env
+make db-up
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=. ../.venv/bin/alembic upgrade head
+PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
+cd ..
+make backend-dev
 ```
 
 新开终端：
 ```bash
-curl -sS http://127.0.0.1:8000/api/health
+curl -sS "http://127.0.0.1:${BACKEND_DEV_PORT:-8000}/api/health"
 ```
 期望返回：`{"status":"ok"}`。
 
@@ -91,7 +96,7 @@ PY
 ### 验证步骤
 ```bash
 cd /workspace/AI-Platform-Square-HB/backend
-PYTHONPATH=. pytest -q tests/test_ranking_consistency.py tests/test_api.py::test_health
+PYTHONPATH=. ../.venv/bin/pytest -q tests/test_ranking_consistency.py tests/test_api.py::test_health
 ```
 
 ### 回滚方式

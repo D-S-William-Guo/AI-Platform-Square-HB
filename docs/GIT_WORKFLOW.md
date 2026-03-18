@@ -9,11 +9,12 @@
 
 ### 开发分支
 - `snapshot/*` - 问题现场快照，仅存档，不进入 PR
-- `feature/*` - 新功能开发
+- `feat/*` - 新功能开发
 - `fix/*` - Bug 修复
-- `port/*` - 迁移/拆分变更
 - `docs/*` - 文档更新
+- `port/*` - 迁移/拆分变更
 - `refactor/*` - 代码重构
+- `hotfix/*` - 紧急修复
 
 ## 工作流程
 
@@ -26,7 +27,7 @@
 # 从 main 分支创建新分支
 git checkout main
 git pull origin main
-git checkout -b feature/new-feature
+git checkout -b feat/new-feature
 ```
 
 ### 2. 开发过程中
@@ -37,20 +38,21 @@ git add .
 git commit -m "feat: 添加新功能"
 
 # 推送到远程
-git push origin feature/new-feature
+git push origin feat/new-feature
 ```
 
-### 3. 创建 Pull Request（必须通过 GitHub Web 界面）
+### 3. 创建 Pull Request
 
 **禁止直接合并到 main！**
 
-1. 打开 GitHub 仓库页面
-2. 点击 "Pull requests" → "New pull request"
-3. 选择源分支和目标分支
-4. 填写 PR 描述（使用模板）
-5. 创建 PR
-6. 自我审查代码
-7. 确认无误后合并
+可任选其一：
+
+1. GitHub Web 页面创建 PR
+2. 使用 GitHub CLI：
+
+```bash
+gh pr create --base main --head feat/new-feature --fill
+```
 
 ### 4. 合并后清理
 
@@ -60,10 +62,10 @@ git checkout main
 git pull origin main
 
 # 删除本地分支
-git branch -d feature/new-feature
+git branch -d feat/new-feature
 
 # 删除远程分支
-git push origin --delete feature/new-feature
+git push origin --delete feat/new-feature
 ```
 
 ## 提交信息规范

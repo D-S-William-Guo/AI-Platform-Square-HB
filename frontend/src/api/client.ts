@@ -23,7 +23,7 @@ export class MissingAdminTokenError extends Error {
   code = MISSING_ADMIN_TOKEN_ERROR_CODE
 
   constructor() {
-    super('Missing admin auth. Login as an admin user or configure legacy ADMIN_TOKEN.')
+    super('Missing admin auth. Login as an admin user.')
     this.name = 'MissingAdminTokenError'
   }
 }
@@ -37,7 +37,7 @@ export function isMissingAdminTokenError(error: unknown): boolean {
 }
 
 export function getAdminTokenSetupHint(): string {
-  return '请先登录管理员账号。开发调试场景下，也可临时配置 .env.local 的 ADMIN_TOKEN / VITE_ADMIN_TOKEN。'
+  return '请先登录管理员账号。'
 }
 
 export function getAuthToken() {
@@ -64,24 +64,8 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// Admin API token source (priority):
-// 1) Logged-in user token
-// 2) Vite env: VITE_ADMIN_TOKEN
-// 3) localStorage: ADMIN_TOKEN / admin_token
 function getAdminToken() {
-  const authToken = getAuthToken().trim()
-  if (authToken) return authToken
-
-  const envToken = (import.meta as ImportMeta & { env?: { VITE_ADMIN_TOKEN?: string } }).env?.VITE_ADMIN_TOKEN || ''
-  if (envToken) return envToken
-
-  if (typeof window !== 'undefined') {
-    return window.localStorage.getItem('ADMIN_TOKEN')
-      || window.localStorage.getItem('admin_token')
-      || ''
-  }
-
-  return ''
+  return getAuthToken().trim()
 }
 
 function getRequiredAdminAuthHeaders() {
@@ -89,10 +73,7 @@ function getRequiredAdminAuthHeaders() {
   if (!adminToken) {
     throw new MissingAdminTokenError()
   }
-  if (getAuthToken().trim()) {
-    return { Authorization: `Bearer ${adminToken}` }
-  }
-  return { 'X-Admin-Token': adminToken }
+  return { Authorization: `Bearer ${adminToken}` }
 }
 
 export async function login(username: string, password: string) {

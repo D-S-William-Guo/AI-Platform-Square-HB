@@ -1,4 +1,4 @@
-.PHONY: doctor venv backend-install backend-dev backend-test frontend-install frontend-dev frontend-build db-up db-down test
+.PHONY: doctor venv backend-install backend-dev backend-test frontend-install frontend-dev frontend-build app-serve db-up db-down test
 
 doctor:
 	bash scripts/doctor.sh
@@ -24,8 +24,11 @@ frontend-dev:
 frontend-build:
 	bash scripts/frontend_build.sh
 
+app-serve:
+	bash scripts/app_serve.sh
+
 db-up:
-	docker compose up -d
+	docker compose up -d mysql
 
 db-down:
 	docker compose down

@@ -1,10 +1,14 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from .config import settings
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -15,3 +19,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_database_schema_ready() -> None:
+    # Import models lazily so Base.metadata is fully populated without a circular import.
+    from . import models  # noqa: F401
+
+    expected_tables = set(Base.metadata.tables)
+    try:
+        with engine.connect() as connection:
+            existing_tables = set(inspect(connection).get_table_names())
+    except SQLAlchemyError as exc:
+        raise RuntimeError(
+            "Failed to connect to MySQL with the configured DATABASE_URL."
+        ) from exc
+
+    missing_tables = sorted(expected_tables - existing_tables)
+    if missing_tables:
+        raise RuntimeError(
+            "Database schema is incomplete. Missing tables: "
+            f"{', '.join(missing_tables)}. Run `alembic upgrade head` before starting the app."
+        )

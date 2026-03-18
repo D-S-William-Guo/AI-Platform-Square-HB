@@ -9,15 +9,16 @@ from typing import Optional
 
 from fastapi import Body, Cookie, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from sqlalchemy import func, inspect, or_, text
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .auth_utils import generate_session_token, hash_password, verify_password
 from .config import resolve_runtime_path, settings
-from .database import Base, engine, get_db
+from .database import ensure_database_schema_ready, get_db
 from .models import (
     ActionLog,
     App,
@@ -77,7 +78,6 @@ from .schemas import (
     UserStatusUpdatePayload,
     AdminAppStatusUpdate,
 )
-from .seed import seed_data
 from .venv_utils import venv_reader
 
 APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
@@ -90,6 +90,7 @@ DEFAULT_RANKING_TAG = "推荐"
 STATIC_DIR = resolve_runtime_path(settings.static_dir)
 UPLOAD_DIR = resolve_runtime_path(settings.upload_dir)
 IMAGE_DIR = resolve_runtime_path(settings.image_dir)
+FRONTEND_DIST_DIR = (Path(__file__).resolve().parents[2] / "frontend" / "dist").resolve()
 
 
 logger = logging.getLogger(__name__)
@@ -114,143 +115,27 @@ def ensure_runtime_directories() -> None:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def ensure_additive_schema_columns() -> None:
-    """为历史数据库补齐增量字段，避免版本升级后因缺列导致 500。"""
-    expected_columns = {
-        "apps": {
-            "detail_doc_url": {
-                "mysql": "VARCHAR(500) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "detail_doc_name": {
-                "mysql": "VARCHAR(255) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "created_by_user_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "created_from_submission_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "approved_by_user_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "approved_at": {
-                "mysql": "DATETIME NULL",
-                "sqlite": "DATETIME",
-            },
-        },
-        "submissions": {
-            "manage_token": {
-                "mysql": "VARCHAR(64) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "detail_doc_url": {
-                "mysql": "VARCHAR(500) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "detail_doc_name": {
-                "mysql": "VARCHAR(255) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "submitter_user_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "approved_by_user_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "approved_at": {
-                "mysql": "DATETIME NULL",
-                "sqlite": "DATETIME",
-            },
-            "rejected_by_user_id": {
-                "mysql": "INT NULL",
-                "sqlite": "INTEGER",
-            },
-            "rejected_at": {
-                "mysql": "DATETIME NULL",
-                "sqlite": "DATETIME",
-            },
-            "rejected_reason": {
-                "mysql": "VARCHAR(255) DEFAULT ''",
-                "sqlite": "TEXT DEFAULT ''",
-            },
-            "updated_at": {
-                "mysql": "DATETIME NULL",
-                "sqlite": "DATETIME",
-            },
-            "monthly_calls": {
-                "mysql": "FLOAT DEFAULT 0.0",
-                "sqlite": "REAL DEFAULT 0.0",
-            },
-            "difficulty": {
-                "mysql": "VARCHAR(20) DEFAULT 'Medium'",
-                "sqlite": "TEXT DEFAULT 'Medium'",
-            },
-        },
-        "app_dimension_scores": {
-            "ranking_config_id": {
-                "mysql": "VARCHAR(50) NULL",
-                "sqlite": "TEXT",
-            },
-        },
-    }
-    with engine.begin() as conn:
-        inspector = inspect(conn)
-        for table_name, columns in expected_columns.items():
-            existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
-            for col_name, defs in columns.items():
-                if col_name in existing_cols:
-                    continue
-                if conn.dialect.name == "sqlite":
-                    sqlite_def = defs["sqlite"]
-                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {sqlite_def}"))
-                else:
-                    col_def = defs["mysql"]
-                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+def resolve_frontend_asset(full_path: str) -> Path | None:
+    requested = full_path.strip("/")
+    if not requested:
+        return None
 
-        existing_indexes = {idx["name"] for idx in inspector.get_indexes("app_dimension_scores")}
-        if "uq_app_dim_scores_app_config_dim_period" not in existing_indexes:
-            if conn.dialect.name == "sqlite":
-                conn.execute(
-                    text(
-                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_app_dim_scores_app_config_dim_period "
-                        "ON app_dimension_scores (app_id, ranking_config_id, dimension_id, period_date)"
-                    )
-                )
-            else:
-                conn.execute(
-                    text(
-                        "CREATE UNIQUE INDEX uq_app_dim_scores_app_config_dim_period "
-                        "ON app_dimension_scores (app_id, ranking_config_id, dimension_id, period_date)"
-                    )
-                )
-
-
-def ensure_submission_manage_tokens() -> None:
-    """回填历史 submissions.manage_token，确保自助管理接口可用。"""
-    db = Session(bind=engine)
+    candidate = (FRONTEND_DIST_DIR / requested).resolve()
     try:
-        rows = (
-            db.query(Submission)
-            .filter(or_(Submission.manage_token.is_(None), Submission.manage_token == ""))
-            .all()
-        )
-        if not rows:
-            return
-        for row in rows:
-            row.manage_token = uuid.uuid4().hex
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+        candidate.relative_to(FRONTEND_DIST_DIR)
+    except ValueError:
+        return None
+
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def get_frontend_index_file() -> Path | None:
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.is_file():
+        return index_file
+    return None
 
 
 def normalize_dedupe_text(value: str) -> str:
@@ -265,14 +150,7 @@ def resolve_ranking_scope_id(ranking_type: str | None = None, ranking_config_id:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ensure_runtime_directories()
-    Base.metadata.create_all(bind=engine)
-    ensure_additive_schema_columns()
-    ensure_submission_manage_tokens()
-    db = next(get_db())
-    try:
-        seed_data(db)
-    finally:
-        db.close()
+    ensure_database_schema_ready()
     yield
 
 
@@ -482,7 +360,7 @@ def require_auth_session(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> AuthSession:
     token = extract_bearer_token(authorization) or auth_cookie_token
-    if not token or token == settings.admin_token:
+    if not token:
         raise HTTPException(status_code=401, detail="请先登录")
     session = load_active_session(db, token)
     if not session:
@@ -496,7 +374,7 @@ def get_optional_auth_session(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> AuthSession | None:
     token = extract_bearer_token(authorization) or auth_cookie_token
-    if not token or token == settings.admin_token:
+    if not token:
         return None
     session = load_active_session(db, token)
     if not session:
@@ -511,28 +389,20 @@ def require_admin_token(
     auth_cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
 ) -> User | None:
     bearer_token = extract_bearer_token(authorization)
-    has_any_credential = bool(x_admin_token or bearer_token or auth_cookie_token)
-
     if x_admin_token:
-        if x_admin_token != settings.admin_token:
-            raise HTTPException(status_code=403, detail="无权限访问")
-        return None
-
-    if bearer_token == settings.admin_token:
-        return None
+        raise HTTPException(status_code=401, detail="X-Admin-Token 已下线，请使用管理员登录态")
 
     for candidate in (bearer_token, auth_cookie_token):
-        if not candidate or candidate == settings.admin_token:
+        if not candidate:
             continue
         session = load_active_session(db, candidate)
         if session:
             if session.user.role != "admin":
                 raise HTTPException(status_code=403, detail="无权限访问")
             return session.user
+        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
 
-    if has_any_credential:
-        raise HTTPException(status_code=403, detail="无权限访问")
-    raise HTTPException(status_code=401, detail="缺少管理员令牌")
+    raise HTTPException(status_code=401, detail="请先登录管理员账号")
 
 def write_ranking_audit_log(
     db: Session,
@@ -1154,141 +1024,15 @@ def list_apps(
     if q:
         query = query.filter(App.name.contains(q) | App.description.contains(q))
 
-    try:
-        return query.order_by(App.id).all()
-    except SQLAlchemyError:
-        # 数据库表结构可能不完整，回退到 SQL 查询并补齐兼容字段。
-        try:
-            clauses = []
-            params: dict[str, object] = {}
-            if section:
-                clauses.append("section = :section")
-                params["section"] = section
-            if status:
-                clauses.append("status = :status")
-                params["status"] = status
-            else:
-                clauses.append("status <> :offline_status")
-                params["offline_status"] = "offline"
-            if category and category != "全部":
-                clauses.append("category = :category")
-                params["category"] = category
-            if q:
-                clauses.append("(name LIKE :keyword OR description LIKE :keyword)")
-                params["keyword"] = f"%{q}%"
-
-            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-            result = db.execute(
-                text(
-                    f"""
-                    SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
-                           api_open, difficulty, contact_name, highlight, access_mode, access_url,
-                           detail_doc_url, detail_doc_name,
-                           target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
-                           cover_image_url
-                    FROM apps
-                    {where_sql}
-                    ORDER BY id
-                    """
-                ),
-                params,
-            )
-            apps = []
-            for row in result:
-                apps.append({
-                    "id": row.id,
-                    "name": row.name,
-                    "org": row.org,
-                    "section": row.section,
-                    "category": row.category,
-                    "description": row.description,
-                    "status": row.status,
-                    "monthly_calls": row.monthly_calls,
-                    "release_date": row.release_date,
-                    "api_open": row.api_open,
-                    "difficulty": row.difficulty,
-                    "contact_name": row.contact_name,
-                    "highlight": row.highlight,
-                    "access_mode": row.access_mode,
-                    "access_url": row.access_url,
-                    "detail_doc_url": row.detail_doc_url or "",
-                    "detail_doc_name": row.detail_doc_name or "",
-                    "target_system": row.target_system,
-                    "target_users": row.target_users,
-                    "problem_statement": row.problem_statement,
-                    "effectiveness_type": row.effectiveness_type,
-                    "effectiveness_metric": row.effectiveness_metric,
-                    "cover_image_url": row.cover_image_url,
-                    "ranking_enabled": True,
-                    "ranking_weight": 1.0,
-                    "ranking_tags": "",
-                    "last_ranking_update": None,
-                })
-            return apps
-        except SQLAlchemyError:
-            return []
+    return query.order_by(App.id).all()
 
 
 @app.get(f"{settings.api_prefix}/apps/{{app_id}}", response_model=AppDetail)
 def get_app_detail(app_id: int, db: Session = Depends(get_db)):
-    try:
-        item = db.query(App).filter(App.id == app_id).first()
-        if not item:
-            raise HTTPException(status_code=404, detail="App not found")
-        return item
-    except HTTPException:
-        raise
-    except SQLAlchemyError:
-        # 数据库表结构可能不完整，使用 SQL 查询获取兼容字段
-        try:
-            result = db.execute(text("""
-                SELECT id, name, org, section, category, description, status, monthly_calls, release_date,
-                       api_open, difficulty, contact_name, highlight, access_mode, access_url,
-                       detail_doc_url, detail_doc_name,
-                       target_system, target_users, problem_statement, effectiveness_type, effectiveness_metric,
-                       cover_image_url
-                FROM apps
-                WHERE id = :app_id
-            """), {"app_id": app_id})
-            
-            row = result.first()
-            if not row:
-                raise HTTPException(status_code=404, detail="App not found")
-            
-            # 构造应用对象
-            app_dict = {
-                "id": row.id,
-                "name": row.name,
-                "org": row.org,
-                "section": row.section,
-                "category": row.category,
-                "description": row.description,
-                "status": row.status,
-                "monthly_calls": row.monthly_calls,
-                "release_date": row.release_date,
-                "api_open": row.api_open,
-                "difficulty": row.difficulty,
-                "contact_name": row.contact_name,
-                "highlight": row.highlight,
-                "access_mode": row.access_mode,
-                "access_url": row.access_url,
-                "detail_doc_url": row.detail_doc_url or "",
-                "detail_doc_name": row.detail_doc_name or "",
-                "target_system": row.target_system,
-                "target_users": row.target_users,
-                "problem_statement": row.problem_statement,
-                "effectiveness_type": row.effectiveness_type,
-                "effectiveness_metric": row.effectiveness_metric,
-                "cover_image_url": row.cover_image_url,
-                # 添加默认值
-                "ranking_enabled": True,
-                "ranking_weight": 1.0,
-                "ranking_tags": "",
-                "last_ranking_update": None
-            }
-            return app_dict
-        except SQLAlchemyError:
-            raise HTTPException(status_code=404, detail="App not found")
+    item = db.query(App).filter(App.id == app_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="App not found")
+    return item
 
 
 def resolve_latest_run_id(db: Session, ranking_type: str, period_date: date) -> str | None:
@@ -3839,3 +3583,27 @@ def list_all_app_ranking_settings(
     
     settings_list = query.all()
     return settings_list
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend_index():
+    index_file = get_frontend_index_file()
+    if not index_file:
+        raise HTTPException(status_code=404, detail="Frontend build artifact is missing")
+    return FileResponse(index_file)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend_app(full_path: str):
+    normalized_path = full_path.strip("/")
+    if normalized_path == settings.api_prefix.strip("/") or normalized_path.startswith(f"{settings.api_prefix.strip('/')}/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    asset_path = resolve_frontend_asset(full_path)
+    if asset_path:
+        return FileResponse(asset_path)
+
+    index_file = get_frontend_index_file()
+    if not index_file:
+        raise HTTPException(status_code=404, detail="Frontend build artifact is missing")
+    return FileResponse(index_file)

@@ -1,25 +1,28 @@
 # backend/scripts/dev/bootstrap_venv.ps1
 $ErrorActionPreference = "Stop"
 
+$rootDir = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $backendDir = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$venvDir = Join-Path $rootDir.Path ".venv"
 Set-Location $backendDir
 
 Write-Host "[bootstrap] backend dir: $backendDir"
+Write-Host "[bootstrap] repo root: $rootDir"
 
 if (-not (Test-Path "requirements.txt")) {
   Write-Error "[bootstrap] requirements.txt not found in $backendDir"
   exit 1
 }
 
-if (-not (Test-Path ".venv")) {
-  Write-Host "[bootstrap] creating .venv"
-  python -m venv .venv
+if (-not (Test-Path $venvDir)) {
+  Write-Host "[bootstrap] creating $venvDir"
+  python -m venv $venvDir
   if ($LASTEXITCODE -ne 0) { throw "failed to create .venv" }
 } else {
-  Write-Host "[bootstrap] reusing existing .venv"
+  Write-Host "[bootstrap] reusing existing $venvDir"
 }
 
-$VenvPython = Join-Path $backendDir.Path ".venv\Scripts\python.exe"
+$VenvPython = Join-Path $venvDir "Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) { throw "venv python not found: $VenvPython" }
 
 Write-Host "[bootstrap] installing requirements"
