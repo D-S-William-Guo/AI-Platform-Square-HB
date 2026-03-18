@@ -39,13 +39,19 @@ PYTHONPATH=. ../.venv/bin/alembic upgrade head
 PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 ```
 
-开发调试端口可通过以下变量覆盖：
+环境文件强约束：
 
-```bash
-export APP_HOST=0.0.0.0
-export BACKEND_DEV_PORT=8000
-export FRONTEND_DEV_PORT=5173
-export VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_DEV_PORT}"
+- `backend/.env` 是唯一应用配置源，开发端口、测试数据库、准生产端口都写在这里。
+- 根目录 `.env` 只给 Docker Compose MySQL 使用。
+- 根目录 `.env.local` 已废止；若存在，当前脚本会直接提示迁移并退出。
+
+开发调试端口请直接写入 `backend/.env`，例如：
+
+```env
+APP_HOST=0.0.0.0
+BACKEND_DEV_PORT=8000
+FRONTEND_DEV_PORT=5173
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
 最短命令清单：

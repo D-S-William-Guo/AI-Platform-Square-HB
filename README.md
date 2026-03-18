@@ -75,18 +75,26 @@ AI-Platform-Square-HB/
 cp backend/.env.example backend/.env
 # 如需覆盖 docker compose 的默认账号，再额外复制：
 # cp .env.example .env
-# 如需给 make/backend/frontend 统一注入本地变量，可再复制：
-# cp .env.local.example .env.local
 ```
 
-说明：
-- `backend/.env` 是后端运行时真相源，至少要配置 `DATABASE_URL`。
+环境文件治理规则：
+- `backend/.env` 是唯一应用配置源，后端运行、前端开发端口、测试数据库、准生产单端口部署都从这里读取。
 - 根目录 `.env` 仅用于覆盖 docker compose 中的 MySQL 默认账号。
-- 根目录 `.env.local` 会被 `make backend-dev`、`make frontend-dev`、`make test` 自动加载，适合本机调试。
+- 根目录 `.env.local` 已废止；当前脚本发现它存在会直接退出，并提示把应用变量迁移到 `backend/.env`。
+- 所有 `*.example` 都只是模板，不会自动生效。
 - 默认端口约定：
   - `APP_PORT=80`：准生产单端口
   - `BACKEND_DEV_PORT=8000`：后端开发端口
   - `FRONTEND_DEV_PORT=5173`：前端开发端口
+
+环境文件一览：
+
+| 文件 | 角色 | 是否自动生效 |
+| --- | --- | --- |
+| `backend/.env` | 唯一应用配置源 | 是 |
+| `backend/.env.example` | 应用配置模板 | 否 |
+| `.env` | Docker Compose MySQL 覆盖文件 | 仅对 Compose / 依赖 Compose 变量的脚本生效 |
+| `.env.example` | Docker Compose MySQL 模板 | 否 |
 
 ### 1) 安装依赖与虚拟环境
 
@@ -268,14 +276,13 @@ make app-serve
 curl -sS "http://<主机地址>:${APP_PORT:-80}/api/health"
 ```
 
-本地 0 门槛调试（推荐）：
+旧 `.env.local` 迁移说明：
 
-```bash
-cp .env.local.example .env.local
-```
+1. 把仍需保留的应用变量移动到 `backend/.env`。
+2. 根目录 `.env` 只保留 `MYSQL_ROOT_PASSWORD`、`MYSQL_DATABASE`、`MYSQL_USER`、`MYSQL_PASSWORD`。
+3. 删除根目录 `.env.local`。
 
-> `make backend-dev` / `make frontend-dev` / `make test` 会自动加载仓库根目录 `.env.local`。  
-> 该文件已在 `.gitignore` 中忽略，不会提交到 GitHub。  
+> 当前 `make backend-dev` / `make frontend-dev` / `make backend-test` / `make app-serve` / `make frontend-build` 发现根目录 `.env.local` 时会直接退出，避免多入口覆盖。  
 > 管理接口只接受管理员登录态，不再支持 `X-Admin-Token`、`ADMIN_TOKEN`、`VITE_ADMIN_TOKEN` 之类旁路令牌。
 
 ## 登录与权限（第一阶段）

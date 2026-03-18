@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
 
 # shellcheck disable=SC1091
-source "$ROOT_DIR/scripts/load_local_env.sh"
-load_local_env "$ROOT_DIR"
+source "$ROOT_DIR/scripts/load_app_env.sh"
+load_app_env "$ROOT_DIR"
 
 if [ ! -d "$VENV_DIR" ]; then
   bash "$ROOT_DIR/scripts/backend_install.sh"
@@ -14,11 +14,6 @@ fi
 
 if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
   bash "$ROOT_DIR/scripts/frontend_install.sh"
-fi
-
-if [ -z "${DATABASE_URL:-}" ] && [ ! -f "$ROOT_DIR/backend/.env" ]; then
-  echo "DATABASE_URL is not configured. Set it in backend/.env or .env.local before starting the app."
-  exit 1
 fi
 
 APP_HOST="${APP_HOST:-0.0.0.0}"

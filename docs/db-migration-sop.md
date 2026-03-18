@@ -13,6 +13,12 @@
    - `python -m app.bootstrap seed-demo`
 4. 启动单端口服务
 
+环境文件约束：
+
+- `backend/.env` 是唯一应用配置源。
+- 根目录 `.env` 仅用于本地 Docker Compose MySQL 凭据。
+- 根目录 `.env.local` 已废止；脚本发现该文件存在会直接退出并提示迁移。
+
 ## 2. 开发 / 部署最小步骤
 
 ### 2.1 本地 Docker MySQL
@@ -105,6 +111,12 @@ make app-serve
 - `BACKEND_DEV_PORT`：后端开发端口，默认 `8000`
 - `FRONTEND_DEV_PORT`：前端开发端口，默认 `5173`
 - `VITE_API_BASE_URL`：开发态前端代理目标；未配置时默认指向 `http://127.0.0.1:${BACKEND_DEV_PORT}`
+
+旧 `.env.local` 迁移步骤：
+
+1. 将原 `.env.local` 中仍需保留的应用变量迁移到 `backend/.env`
+2. 根目录 `.env` 仅保留 MySQL Compose 变量
+3. 删除根目录 `.env.local`
 
 ## 3. 测试数据库
 

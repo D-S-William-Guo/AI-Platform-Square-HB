@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck disable=SC1091
-source "$ROOT_DIR/scripts/load_local_env.sh"
-load_local_env "$ROOT_DIR"
+source "$ROOT_DIR/scripts/load_app_env.sh"
+load_app_env "$ROOT_DIR"
 
 APP_HOST="${APP_HOST:-0.0.0.0}"
 BACKEND_DEV_PORT="${BACKEND_DEV_PORT:-8000}"

@@ -46,10 +46,22 @@ for path in backend/app/main.py backend/tests frontend/package.json docker-compo
   fi
 done
 
-if [ -f "$ROOT_DIR/.env.local" ]; then
-  echo "[OK] .env.local"
+if [ -f "$ROOT_DIR/backend/.env" ]; then
+  echo "[OK] backend/.env"
 else
-  echo "[WARN] .env.local not found (local port / env overrides unavailable)"
+  echo "[MISSING] backend/.env"
+  status=1
+fi
+
+if [ -f "$ROOT_DIR/.env.local" ]; then
+  echo "[MISSING] .env.local is deprecated; move any application variables into backend/.env and delete .env.local"
+  status=1
+fi
+
+if [ -f "$ROOT_DIR/.env" ]; then
+  echo "[OK] .env (docker compose MySQL overrides)"
+else
+  echo "[INFO] .env not found (docker compose defaults from .env.example remain in effect)"
 fi
 
 if [ "$status" -ne 0 ]; then

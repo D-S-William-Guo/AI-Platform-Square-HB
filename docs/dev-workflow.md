@@ -67,7 +67,9 @@ git push origin fix/<topic>
 迁移执行顺序、初始化命令与本地/远程 MySQL 最小验证步骤统一维护在：[docs/db-migration-sop.md](db-migration-sop.md)。
 
 本文件仅保留入口：
-- 后端读取 `backend/.env` 的 `DATABASE_URL`；
+- 后端与开发脚本统一读取 `backend/.env`；
+- 根目录 `.env` 只保留 Docker Compose MySQL 变量；
+- 根目录 `.env.local` 已废止；
 - 测试使用 `TEST_DATABASE_URL`；
 - 结构迁移统一执行 `alembic upgrade head`。
 

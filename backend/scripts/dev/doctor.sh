@@ -11,6 +11,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 BACKEND_DIR="${ROOT_DIR}/backend"
 
+# shellcheck disable=SC1091
+source "${ROOT_DIR}/scripts/load_app_env.sh"
+load_app_env "${ROOT_DIR}"
+
 section () { echo -e "\n==================== $* ====================\n"; }
 ok () { echo "✅ $*"; }
 warn () { echo "⚠️  $*"; }

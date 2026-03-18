@@ -8,6 +8,12 @@
 - Git 分支与 PR 规范：`docs/dev-workflow.md`
 - 准生产单机内网部署：`README.md` 中“准生产部署（单机内网、单端口同源）”
 
+环境文件治理口径：
+
+- `backend/.env`：唯一应用配置源
+- 根目录 `.env`：仅 Docker Compose MySQL 变量
+- 根目录 `.env.local`：已废止，不再允许使用
+
 ## Phase-4 PR-D 回归测试（口径锁定）
 
 在仓库根目录执行：`cd backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/test_ranking_consistency.py tests/test_phase4_regression_lock.py`。
