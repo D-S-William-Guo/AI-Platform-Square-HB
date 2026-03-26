@@ -209,8 +209,19 @@ make frontend-dev
 - 后端同源托管前端静态文件和 `/api/*`
 - 对外只暴露一个端口：`APP_PORT`
 - 数据库连接远程 MySQL，首次部署按空库初始化处理
+- 远程主机只做运行时部署，不负责 `npm install` 或前端构建
 
 推荐顺序：
+
+构建机上先完成静态资源构建并打包发布物：
+
+```bash
+make frontend-install
+make frontend-build
+make release-bundle
+```
+
+将 `release/ai-platform-square-hb-<timestamp>.tar.gz` 传到远程主机并解压后，再在远程主机执行：
 
 ```bash
 cp backend/.env.example backend/.env
@@ -218,11 +229,13 @@ cp backend/.env.example backend/.env
 # 把 ENVIRONMENT 改成 production
 # 把 USER_DEFAULT_PASSWORD / ADMIN_DEFAULT_PASSWORD 改成正式值
 
+make venv
+make backend-install
 cd backend
 PYTHONPATH=. ../.venv/bin/alembic upgrade head
 PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 cd ..
-make app-serve
+make app-run
 ```
 
 准生产访问地址：
@@ -230,16 +243,27 @@ make app-serve
 - 健康检查：`http://<host>:${APP_PORT:-80}/api/health`
 
 说明：
-- `make app-serve` 会先构建前端，再启动后端单端口服务。
+- `make app-run` 只做数据库升级、基础初始化和后端启动，要求发布物中已包含 `frontend/dist`。
+- `make app-serve` 仅用于本机全量验证，仍会构建前端后再启动服务。
 - 若远程 MySQL 不是空库或不是本项目独占的新库，本次定版不负责自动识别和兼容，需先人工清库或迁移到新库。
 
 ### 准生产单机内网最短命令清单
+
+构建机：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-install
+make frontend-build
+make release-bundle
+```
+
+远程主机：
 
 ```bash
 cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
 make venv
 make backend-install
-make frontend-install
 cp backend/.env.example backend/.env
 ```
 
@@ -269,7 +293,7 @@ PYTHONPATH=. ../.venv/bin/python -m app.bootstrap seed-demo
 
 ```bash
 cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
-make app-serve
+make app-run
 ```
 
 部署后验证：
@@ -663,13 +687,20 @@ make test
 
 ## 推荐使用 make 命令进行准生产启动
 
+构建机：
+
+```bash
+make frontend-install
+make frontend-build
+make release-bundle
+```
+
+远程主机：
+
 ```bash
 cp backend/.env.example backend/.env
 # 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT
+make venv
 make backend-install
-make frontend-install
-cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
-cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
-cd ..
-make app-serve
+make app-run
 ```
