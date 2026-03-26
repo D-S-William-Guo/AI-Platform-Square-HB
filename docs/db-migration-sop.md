@@ -77,27 +77,46 @@ make frontend-dev
 
 1. 将 `DATABASE_URL` 指向远程 MySQL 服务。
 2. 目标库必须是空库或由本项目独占的新库。
-3. 在部署主机执行：
+3. 在开发机执行：
    ```bash
+   make frontend-install
+   make frontend-build
+   make release-bundle
+   ```
+4. 将发布包传到部署主机并解压；发布包必须已包含 `frontend/dist`。
+5. 在部署主机执行：
+   ```bash
+   make venv
+   make backend-install
    cd backend
    PYTHONPATH=. ../.venv/bin/alembic upgrade head
    PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
    ```
-4. 回到仓库根目录执行：
+6. 回到仓库根目录执行：
    ```bash
-   make app-serve
+   make app-run
    ```
-5. 验证：
+7. 验证：
    - `http://<host>:${APP_PORT:-80}`
    - `http://<host>:${APP_PORT:-80}/api/health`
 
 最短命令清单：
 
+开发机：
+
+```bash
+cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
+make frontend-install
+make frontend-build
+make release-bundle
+```
+
+部署主机：
+
 ```bash
 cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB
 make venv
 make backend-install
-make frontend-install
 cp backend/.env.example backend/.env
 ```
 
@@ -108,7 +127,7 @@ cd /home/ctyun/BigData/GitHub/AI-Platform-Square-HB/backend
 PYTHONPATH=. ../.venv/bin/alembic upgrade head
 PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 cd ..
-make app-serve
+make app-run
 ```
 
 ## 2.3 端口规则

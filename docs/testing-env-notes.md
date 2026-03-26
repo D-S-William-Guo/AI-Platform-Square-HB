@@ -1,54 +1,31 @@
 # 依赖安装与测试环境说明
 
-> 说明：本文件保留网络/镜像受限场景的补充说明。当前项目默认测试基线已经切换为 MySQL + Alembic，请优先以 `README.md`、`docs/dev-setup.md` 与 `scripts/backend_test.sh` 为准。
+> 说明：本文件仅保留网络受限场景的背景说明。当前项目默认口径是“前端在开发链路预构建，远程环境不再执行 npm 安装或前端构建”，请优先以 `README.md`、`docs/dev-setup.md` 与 `scripts/backend_test.sh` 为准。
 
 ## 当前现象
 
 - `pip install -r backend/requirements.txt` 通过代理拉取 PyPI 时返回 403。
 - 取消代理后，外网 `pypi.org` 网络不可达（`Network is unreachable`）。
-- `npm install` 访问 `registry.npmjs.org` 也返回 403。
+- 受限网络环境不适合作为前端构建机。
 
 ## 结论
 
-该环境属于“必须走代理，但代理策略不放行 PyPI/npm registry”的组合限制，
-不是项目代码本身问题。
+该环境属于“网络/镜像受限”的基础设施问题，不是项目代码本身问题。当前正式方案已经避免在远程部署环境执行前端构建。
 
 ## 建议的完善方案（可执行优先级）
 
-1. **公司内网镜像源（推荐）**
+1. **开发链路预构建前端（当前正式方案）**
+   - 在开发机执行 `make frontend-build`
+   - 通过 `make release-bundle` 产出包含 `frontend/dist` 的发布包
+   - 远程环境只部署运行时产物
+2. **公司内网镜像源（可选补充）**
    - Python: 配置内部 PyPI mirror（如 Artifactory / Nexus）
-   - Node: 配置内部 npm mirror
-2. **CI 预装依赖缓存**
-   - 在可联网构建机生成 wheel / npm cache
-   - 当前环境仅做离线安装
 3. **容器化统一构建**
    - 使用公司允许的基础镜像，镜像内预置依赖
 
 ## 当前标准验证链路
 
 - 后端测试：`make backend-test`
-- 前端安装：`make frontend-install`
 - 前端开发：`make frontend-dev`
 - 数据库迁移：`cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head`
 - 基础初始化：`cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base`
-
-
-## 如何放开访问（GitHub / PyPI / npm）
-
-以下任一方式生效即可，不需要全部同时做：
-
-1. **配置可访问的企业代理**
-   - 允许访问 `github.com`, `api.github.com`, `pypi.org`, `files.pythonhosted.org`, `registry.npmjs.org`。
-   - 在环境变量中提供：
-     - `HTTP_PROXY` / `HTTPS_PROXY`
-     - `NO_PROXY`（保留 `localhost,127.0.0.1`）
-
-2. **配置内部镜像/制品库**
-   - Python: `PIP_INDEX_URL` 指向企业 PyPI 镜像。
-   - Node: `npm config set registry <internal-npm-url>`。
-   - GitHub: 企业镜像或代理访问 `api.github.com`。
-
-3. **提供 GitHub Token（可选）**
-   - 若代理允许但需要鉴权，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
-
-如果你确认了具体策略（代理地址、镜像地址或 Token），我可以立刻按你的设置重试并安装相关 skill。

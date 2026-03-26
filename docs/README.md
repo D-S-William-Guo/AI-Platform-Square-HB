@@ -7,6 +7,8 @@
 - 本地开发环境、自检与 MySQL 测试：`docs/dev-setup.md`
 - Git 分支与 PR 规范：`docs/dev-workflow.md`
 - 准生产单机内网部署：`README.md` 中“准生产部署（单机内网、单端口同源）”
+  - 开发机先执行 `make frontend-build` 和 `make release-bundle`
+  - 远程主机只执行 `make app-run`
 
 环境文件治理口径：
 

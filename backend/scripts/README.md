@@ -13,7 +13,11 @@
 - `dev/bootstrap_venv.sh`
   - 在仓库根目录创建 `.venv` 并安装依赖。
 - `../../scripts/app_serve.sh`
-  - 构建前端并以单端口同源模式启动后端服务。
+  - 本机构建前端并以单端口同源模式启动后端服务。
+- `../../scripts/app_run.sh`
+  - 远程运行时入口；要求发布物已包含 `frontend/dist`，不负责前端构建。
+- `../../scripts/release_bundle.sh`
+  - 在开发机打包包含 `frontend/dist` 的发布包。
 
 ## 初始化命令
 
@@ -31,5 +35,5 @@ python -m app.bootstrap seed-demo
 
 ```bash
 cd ..
-make app-serve
+make app-run
 ```
