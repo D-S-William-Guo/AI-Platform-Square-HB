@@ -45,6 +45,7 @@ PYTHONPATH=. ../.venv/bin/python -m app.bootstrap init-base
 - `backend/.env` 是唯一应用配置源，开发端口、测试数据库、准生产端口都写在这里。
 - 根目录 `.env` 只给 Docker Compose MySQL 使用。
 - 根目录 `.env.local` 已废止；若存在，当前脚本会直接提示迁移并退出。
+- `ENVIRONMENT=production` 时，`make backend-install` 与 `bootstrap_venv.sh` 会自动切到 `PIP_INDEX_URL_PRODUCTION` / `PIP_TRUSTED_HOST_PRODUCTION`。
 
 开发调试端口请直接写入 `backend/.env`，例如：
 
