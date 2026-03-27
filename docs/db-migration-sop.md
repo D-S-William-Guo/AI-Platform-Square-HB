@@ -19,6 +19,7 @@
 - `backend/.env` 是唯一应用配置源。
 - 根目录 `.env` 仅用于本地 Docker Compose MySQL 凭据。
 - 根目录 `.env.local` 已废止；脚本发现该文件存在会直接退出并提示迁移。
+- `ENVIRONMENT=production` 时，后端安装脚本默认改走 `PIP_INDEX_URL_PRODUCTION` / `PIP_TRUSTED_HOST_PRODUCTION`；未显式配置时默认值为 `http://136.142.12.68/simple/` 和 `136.142.12.68`。
 
 ## 2. 开发 / 部署最小步骤
 

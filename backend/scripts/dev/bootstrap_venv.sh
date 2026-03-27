@@ -6,6 +6,10 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 VENV_DIR="${ROOT_DIR}/.venv"
 
+# shellcheck disable=SC1091
+source "${ROOT_DIR}/scripts/load_pip_env.sh"
+load_pip_install_args "${ROOT_DIR}"
+
 if [[ ! -f "${BACKEND_DIR}/requirements.txt" ]]; then
   echo "[bootstrap] ERROR: requirements.txt not found in ${BACKEND_DIR}" >&2
   exit 1
@@ -29,9 +33,9 @@ if [[ ! -x "${VENV_PY}" ]]; then
 fi
 
 echo "[bootstrap] installing requirements"
-"${VENV_PY}" -m pip install -r requirements.txt
+"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -r requirements.txt
 
 echo "[bootstrap] installing editable package"
-"${VENV_PY}" -m pip install -e .
+"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -e .
 
 echo "[bootstrap] done"

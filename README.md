@@ -106,6 +106,11 @@ make frontend-install
 
 当前仓库统一使用根目录 `.venv`，不再使用 `backend/.venv`。
 
+后端依赖安装源规则：
+- `ENVIRONMENT=development`：默认走系统外网 PyPI 配置
+- `ENVIRONMENT=production`：`make backend-install` 会自动切到 `backend/.env` 中配置的生产 pip 源
+- 如未显式覆盖，生产默认值为 `http://136.142.12.68/simple/` 且自动带 `--trusted-host=136.142.12.68`
+
 ### 2) 启动 MySQL
 
 ```bash
@@ -270,6 +275,8 @@ cp backend/.env.example backend/.env
 编辑 `backend/.env`，至少确认：
 - `DATABASE_URL=mysql+pymysql://...` 指向远程 MySQL
 - `ENVIRONMENT=production`
+- `PIP_INDEX_URL_PRODUCTION=http://136.142.12.68/simple/`
+- `PIP_TRUSTED_HOST_PRODUCTION=136.142.12.68`
 - `APP_HOST=0.0.0.0`
 - `APP_PORT=80`
 - `USER_DEFAULT_PASSWORD=...`
@@ -699,7 +706,7 @@ make release-bundle
 
 ```bash
 cp backend/.env.example backend/.env
-# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT
+# 编辑 backend/.env: DATABASE_URL, ENVIRONMENT=production, APP_PORT, PIP_INDEX_URL_PRODUCTION
 make venv
 make backend-install
 make app-run
