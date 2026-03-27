@@ -156,6 +156,7 @@ make app-run
 - 结构变更只允许通过 Alembic revision 管理。
 - 运行时代码不允许再通过 `create_all()`、启动补字段或手写 SQL DDL 偷偷修库。
 - 禁止把“兼容未知已有库状态”作为默认部署路径。
+- 若库已初始化过且修改了 `USER_DEFAULT_PASSWORD` / `ADMIN_DEFAULT_PASSWORD`，需显式执行 `cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap reset-default-users`；`init-base` 不会覆盖已有默认账号密码。
 - PR 描述中必须写明：
   - 变更了哪些 Alembic revision；
   - 是否需要执行 `init-base` 或 `seed-demo`；

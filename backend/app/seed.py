@@ -769,6 +769,38 @@ def seed_default_users(db: Session) -> None:
         db.commit()
 
 
+def reset_default_users(db: Session) -> None:
+    usernames = [item["username"] for item in DEFAULT_USERS]
+    existing = {
+        user.username: user
+        for user in db.query(User).filter(User.username.in_(usernames)).all()
+    }
+
+    for item in DEFAULT_USERS:
+        user = existing.get(item["username"])
+        if user is None:
+            db.add(
+                User(
+                    username=item["username"],
+                    chinese_name=item["chinese_name"],
+                    role=item["role"],
+                    is_active=True,
+                    phone="",
+                    email="",
+                    department="",
+                    password_hash=hash_password(item["password"]),
+                )
+            )
+            continue
+
+        user.chinese_name = item["chinese_name"]
+        user.role = item["role"]
+        user.is_active = True
+        user.password_hash = hash_password(item["password"])
+
+    db.commit()
+
+
 def seed_ranking_dimensions(db: Session) -> None:
     try:
         if db.query(RankingDimension).count() == 0:

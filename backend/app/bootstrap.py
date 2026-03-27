@@ -1,7 +1,7 @@
 import argparse
 
 from .database import SessionLocal, ensure_database_schema_ready
-from .seed import seed_base_data, seed_demo_data
+from .seed import reset_default_users, seed_base_data, seed_demo_data
 
 
 def run_bootstrap(command: str) -> int:
@@ -11,6 +11,8 @@ def run_bootstrap(command: str) -> int:
     try:
         if command == "init-base":
             seed_base_data(db)
+        elif command == "reset-default-users":
+            reset_default_users(db)
         elif command == "seed-demo":
             seed_demo_data(db)
         else:
@@ -25,8 +27,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap MySQL data for AI App Square")
     parser.add_argument(
         "command",
-        choices=("init-base", "seed-demo"),
-        help="init-base seeds only system catalogs/users; seed-demo also loads demo business data",
+        choices=("init-base", "reset-default-users", "seed-demo"),
+        help="init-base seeds system catalogs/users, reset-default-users rewrites default user accounts, seed-demo also loads demo business data",
     )
     args = parser.parse_args()
     return run_bootstrap(args.command)
