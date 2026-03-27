@@ -251,6 +251,7 @@ make app-run
 - `make app-run` 只做数据库升级、基础初始化和后端启动，要求发布物中已包含 `frontend/dist`。
 - `make app-serve` 仅用于本机全量验证，仍会构建前端后再启动服务。
 - 若远程 MySQL 不是空库或不是本项目独占的新库，本次定版不负责自动识别和兼容，需先人工清库或迁移到新库。
+- 若数据库已经初始化过，修改 `USER_DEFAULT_PASSWORD` / `ADMIN_DEFAULT_PASSWORD` 后需要显式执行 `cd backend && PYTHONPATH=. ../.venv/bin/python -m app.bootstrap reset-default-users`，`init-base` 不会覆盖已有默认账号密码。
 
 ### 准生产单机内网最短命令清单
 
