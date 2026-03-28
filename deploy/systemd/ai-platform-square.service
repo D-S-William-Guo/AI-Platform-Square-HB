@@ -1,0 +1,19 @@
+[Unit]
+Description=AI Platform Square
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+WorkingDirectory=__ROOT_DIR__
+ExecStart=/bin/bash __ROOT_DIR__/scripts/app_run.sh
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

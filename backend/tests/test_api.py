@@ -56,6 +56,38 @@ def test_auth_login_me_logout_flow():
     assert after_resp.status_code == 401
 
 
+def test_auth_provider_defaults_to_local_login():
+    resp = client.get("/api/auth/provider")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["mode"] == "local"
+    assert payload["local_login_enabled"] is True
+    assert payload["configured"] is True
+
+
+def test_auth_login_rejects_password_flow_when_external_provider_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "auth_provider_mode", "oa")
+    monkeypatch.setattr(settings, "oa_sso_login_url", "https://oa.example.internal/sso")
+
+    from app import main as main_module
+
+    main_module.identity_provider = main_module.get_identity_provider(settings)
+    try:
+        provider_resp = client.get("/api/auth/provider")
+        assert provider_resp.status_code == 200
+        assert provider_resp.json()["mode"] == "oa"
+        assert provider_resp.json()["local_login_enabled"] is False
+
+        login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+        assert login_resp.status_code == 409
+        exchange_resp = client.post("/api/auth/sso/exchange", json={"assertion": "ticket-1"})
+        assert exchange_resp.status_code == 501
+    finally:
+        monkeypatch.setattr(settings, "auth_provider_mode", "local")
+        monkeypatch.setattr(settings, "oa_sso_login_url", "")
+        main_module.identity_provider = main_module.get_identity_provider(settings)
+
+
 def test_auth_login_rejects_invalid_password():
     client.cookies.clear()
     resp = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})

@@ -133,13 +133,13 @@ export default function HistoricalRankingPage() {
               className={`filter-btn ${rankingType === 'excellent' ? 'active' : ''}`}
               onClick={() => handleTypeChange('excellent')}
             >
-              优秀应用榜
+              总应用榜
             </button>
             <button 
               className={`filter-btn ${rankingType === 'trend' ? 'active' : ''}`}
               onClick={() => handleTypeChange('trend')}
             >
-              趋势榜
+              增长趋势榜
             </button>
           </div>
 
@@ -184,7 +184,7 @@ export default function HistoricalRankingPage() {
         {selectedDate && (
           <div className="ranking-info">
             <h2>
-              {rankingType === 'excellent' ? '优秀应用榜' : '趋势榜'} 
+              {rankingType === 'excellent' ? '总应用榜' : '增长趋势榜'} 
               <span className="date-tag">{selectedDate}</span>
             </h2>
             <p className="ranking-desc">

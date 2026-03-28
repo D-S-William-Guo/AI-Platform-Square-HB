@@ -331,34 +331,35 @@ PROVINCE_SUBMISSIONS = [
 ]
 
 
-# 8个维度：5个现有 + 3个新增（增长趋势、用户增长、市场热度）
+# 8个维度：保留全部维度以兼容历史数据和后续扩展，
+# 但默认系统榜单只使用启动期最关键的一组维度。
 DEFAULT_DIMENSIONS = [
     {
         "name": "用户满意度",
         "description": "基于用户反馈和使用数据评估应用的满意度",
         "calculation_method": "基于应用的月调用量和用户评分计算",
-        "weight": 2.5,
+        "weight": 1.0,
         "is_active": True,
     },
     {
         "name": "业务价值",
         "description": "评估应用对业务的提升作用",
         "calculation_method": "基于应用的成效类型和指标计算",
-        "weight": 2.5,
+        "weight": 1.0,
         "is_active": True,
     },
     {
         "name": "技术创新性",
         "description": "评估应用的技术方案和创新点",
         "calculation_method": "基于应用的难度等级计算",
-        "weight": 1.5,
+        "weight": 1.0,
         "is_active": True,
     },
     {
         "name": "使用活跃度",
         "description": "评估应用的使用频率和用户活跃度",
         "calculation_method": "基于应用的月调用量计算",
-        "weight": 1.5,
+        "weight": 1.0,
         "is_active": True,
     },
     {
@@ -373,57 +374,75 @@ DEFAULT_DIMENSIONS = [
         "name": "增长趋势",
         "description": "评估应用的增长速度和发展潜力",
         "calculation_method": "基于上月调用量增长率和新增用户计算",
-        "weight": 2.0,
+        "weight": 1.0,
         "is_active": True,
     },
     {
         "name": "用户增长",
         "description": "评估应用的用户增长速度",
         "calculation_method": "基于新增用户数和用户留存率计算",
-        "weight": 1.5,
+        "weight": 1.0,
         "is_active": True,
     },
     {
         "name": "市场热度",
         "description": "评估应用在市场上的关注度和传播度",
         "calculation_method": "基于搜索次数、分享次数和收藏次数计算",
-        "weight": 1.5,
+        "weight": 1.0,
         "is_active": True,
     },
 ]
 
-# 榜单配置
-DEFAULT_RANKING_CONFIGS = [
+DEFAULT_DIMENSION_NAMES = {item["name"] for item in DEFAULT_DIMENSIONS}
+DEFAULT_RANKING_CONFIG_PRESETS = [
     {
         "id": "excellent",
-        "name": "优秀应用榜",
-        "description": "综合评估应用的业务价值和技术水平，突出成熟稳定的优秀应用",
-        "dimensions_config": json.dumps([
-            {"dim_id": 1, "weight": 2.5},  # 用户满意度
-            {"dim_id": 2, "weight": 3.0},  # 业务价值（权重更高）
-            {"dim_id": 3, "weight": 2.0},  # 技术创新性
-            {"dim_id": 4, "weight": 1.5},  # 使用活跃度
-            {"dim_id": 5, "weight": 1.0},  # 稳定性和安全性
-        ]),
+        "name": "总应用榜",
+        "description": "综合评估应用的推广效果和运行质量，突出成熟稳定、可复制推广的重点应用。",
+        "dimension_names": ["用户满意度", "业务价值", "使用活跃度", "稳定性和安全性"],
         "calculation_method": "composite",
         "is_active": True,
     },
     {
         "id": "trend",
-        "name": "趋势榜",
-        "description": "关注应用的增长速度和市场热度，突出新兴潜力应用",
-        "dimensions_config": json.dumps([
-            {"dim_id": 1, "weight": 1.5},  # 用户满意度
-            {"dim_id": 2, "weight": 1.5},  # 业务价值
-            {"dim_id": 4, "weight": 2.0},  # 使用活跃度
-            {"dim_id": 6, "weight": 2.5},  # 增长趋势（权重更高）
-            {"dim_id": 7, "weight": 2.0},  # 用户增长（权重更高）
-            {"dim_id": 8, "weight": 1.5},  # 市场热度（权重更高）
-        ]),
+        "name": "增长趋势榜",
+        "description": "重点观察应用的近期活跃情况与增长潜力，突出新近起量和持续升温的应用。",
+        "dimension_names": ["使用活跃度", "增长趋势", "用户增长"],
         "calculation_method": "growth_rate",
         "is_active": True,
     },
 ]
+
+SYSTEM_RANKING_CONFIG_IDS = {item["id"] for item in DEFAULT_RANKING_CONFIG_PRESETS}
+
+
+def build_default_ranking_configs(dimension_name_to_id: dict[str, int]) -> list[dict]:
+    configs: list[dict] = []
+    for preset in DEFAULT_RANKING_CONFIG_PRESETS:
+        missing_dimensions = [name for name in preset["dimension_names"] if name not in dimension_name_to_id]
+        if missing_dimensions:
+            raise RuntimeError(
+                "Cannot build default ranking configs because system dimensions are missing: "
+                + ", ".join(missing_dimensions)
+            )
+
+        configs.append(
+            {
+                "id": preset["id"],
+                "name": preset["name"],
+                "description": preset["description"],
+                "dimensions_config": json.dumps(
+                    [
+                        {"dim_id": dimension_name_to_id[name], "weight": 1.0}
+                        for name in preset["dimension_names"]
+                    ],
+                    ensure_ascii=False,
+                ),
+                "calculation_method": preset["calculation_method"],
+                "is_active": preset["is_active"],
+            }
+        )
+    return configs
 
 
 def create_submission_direct(db: Session, payload: dict) -> Submission:
@@ -801,6 +820,15 @@ def reset_default_users(db: Session) -> None:
     db.commit()
 
 
+def _system_dimension_name_to_id(db: Session) -> dict[str, int]:
+    return {
+        dimension.name: dimension.id
+        for dimension in db.query(RankingDimension)
+        .filter(RankingDimension.name.in_(DEFAULT_DIMENSION_NAMES))
+        .all()
+    }
+
+
 def seed_ranking_dimensions(db: Session) -> None:
     try:
         if db.query(RankingDimension).count() == 0:
@@ -816,13 +844,72 @@ def seed_ranking_dimensions(db: Session) -> None:
 def seed_ranking_configs(db: Session) -> None:
     try:
         if db.query(RankingConfig).count() == 0:
-            for config in DEFAULT_RANKING_CONFIGS:
+            for config in build_default_ranking_configs(_system_dimension_name_to_id(db)):
                 db.add(RankingConfig(**config))
             db.commit()
-            print(f"Seeded {len(DEFAULT_RANKING_CONFIGS)} ranking configs")
+            print(f"Seeded {len(DEFAULT_RANKING_CONFIG_PRESETS)} ranking configs")
     except Exception as exc:
         print(f"Error seeding ranking configs: {exc}")
         db.rollback()
+
+
+def sync_system_presets(db: Session) -> None:
+    existing_dimensions = {
+        dimension.name: dimension
+        for dimension in db.query(RankingDimension)
+        .filter(RankingDimension.name.in_(DEFAULT_DIMENSION_NAMES))
+        .all()
+    }
+    dimension_created = 0
+    dimension_updated = 0
+
+    for payload in DEFAULT_DIMENSIONS:
+        dimension = existing_dimensions.get(payload["name"])
+        if dimension is None:
+            db.add(RankingDimension(**payload))
+            dimension_created += 1
+            continue
+
+        changed = False
+        for field_name in ("description", "calculation_method", "weight", "is_active"):
+            if getattr(dimension, field_name) != payload[field_name]:
+                setattr(dimension, field_name, payload[field_name])
+                changed = True
+        if changed:
+            dimension_updated += 1
+
+    db.commit()
+
+    existing_configs = {
+        config.id: config
+        for config in db.query(RankingConfig)
+        .filter(RankingConfig.id.in_(SYSTEM_RANKING_CONFIG_IDS))
+        .all()
+    }
+    config_created = 0
+    config_updated = 0
+
+    for payload in build_default_ranking_configs(_system_dimension_name_to_id(db)):
+        config = existing_configs.get(payload["id"])
+        if config is None:
+            db.add(RankingConfig(**payload))
+            config_created += 1
+            continue
+
+        changed = False
+        for field_name in ("name", "description", "dimensions_config", "calculation_method", "is_active"):
+            if getattr(config, field_name) != payload[field_name]:
+                setattr(config, field_name, payload[field_name])
+                changed = True
+        if changed:
+            config_updated += 1
+
+    db.commit()
+    print(
+        "Synced system presets: "
+        f"dimensions created={dimension_created}, updated={dimension_updated}; "
+        f"configs created={config_created}, updated={config_updated}"
+    )
 
 
 def seed_base_data(db: Session) -> None:

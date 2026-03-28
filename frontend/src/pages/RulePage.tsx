@@ -73,15 +73,14 @@ const RulePage = () => {
           {activeSection === 'ranking' && (
             <section className="guide-section">
               <h2>排行榜规则</h2>
-              <p>AI 应用广场设有多个排行榜，每个排行榜有其特定的评估标准和规则。</p>
+              <p>AI 应用广场当前聚焦两个榜单：总应用榜看综合推广效果，增长趋势榜看近期增长表现。</p>
               
               <div className="guide-card">
                 <h3>排行榜类型</h3>
                 <ul>
-                  <li><strong>优秀应用榜</strong>：综合评估应用的质量、用户满意度、技术创新性等因素</li>
-                  <li><strong>趋势榜</strong>：评估应用的增长速度、近期活跃度等因素</li>
-                  <li><strong>分类榜单</strong>：按应用分类进行排名，如办公类、业务前台类等</li>
-                  <li><strong>月度之星</strong>：每月评选出的表现最突出的应用</li>
+                  <li><strong>总应用榜</strong>：默认看用户满意度、业务价值、使用活跃度、稳定性和安全性</li>
+                  <li><strong>增长趋势榜</strong>：默认看使用活跃度、增长趋势、用户增长</li>
+                  <li>一期不开放分类榜单、月度之星等额外榜单能力</li>
                 </ul>
               </div>
 
@@ -119,10 +118,10 @@ const RulePage = () => {
                 <h3>核心评估指标</h3>
                 <ul>
                   <li><strong>用户满意度</strong>：基于用户反馈和评分</li>
-                  <li><strong>技术创新性</strong>：评估应用的技术方案和创新点</li>
                   <li><strong>业务价值</strong>：评估应用对业务的提升作用</li>
                   <li><strong>使用活跃度</strong>：基于应用的使用频率和用户数</li>
                   <li><strong>稳定性和安全性</strong>：评估应用的可靠性和安全性</li>
+                  <li><strong>增长趋势 / 用户增长</strong>：用于增长趋势榜观察新近起量情况</li>
                 </ul>
               </div>
 
@@ -171,12 +170,8 @@ const RulePage = () => {
                   <p>首次发布榜单规则，建立基本的评估体系</p>
                 </div>
                 <div className="faq-item">
-                  <h4>2025年3月</h4>
-                  <p>调整权重分配，增加业务价值的权重</p>
-                </div>
-                <div className="faq-item">
-                  <h4>2025年6月</h4>
-                  <p>新增技术创新性维度的评估标准</p>
+                  <h4>2026年3月</h4>
+                  <p>榜单口径收口为“总应用榜 + 增长趋势榜”，默认权重统一为 1.0。</p>
                 </div>
               </div>
 

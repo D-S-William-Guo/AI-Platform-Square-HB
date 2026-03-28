@@ -52,3 +52,14 @@ def test_validate_settings_rejects_non_mysql_database_url():
 
     with pytest.raises(ValueError, match="mysql\\+pymysql"):
         validate_settings(settings)
+
+
+def test_validate_settings_rejects_unknown_auth_provider_mode():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        auth_provider_mode="legacy",
+    )
+
+    with pytest.raises(ValueError, match="AUTH_PROVIDER_MODE"):
+        validate_settings(settings)
