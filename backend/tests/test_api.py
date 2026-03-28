@@ -44,15 +44,16 @@ def test_auth_login_me_logout_flow():
     token = login_resp.json()["access_token"]
     assert token
     assert login_resp.json()["user"]["username"] == "zhangsan"
+    assert settings.auth_cookie_name in client.cookies
 
-    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    me_resp = client.get("/api/auth/me")
     assert me_resp.status_code == 200
     assert me_resp.json()["user"]["role"] == "user"
 
-    logout_resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    logout_resp = client.post("/api/auth/logout")
     assert logout_resp.status_code == 200
 
-    after_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    after_resp = client.get("/api/auth/me")
     assert after_resp.status_code == 401
 
 
@@ -94,12 +95,24 @@ def test_auth_login_rejects_invalid_password():
     assert resp.status_code == 401
 
 
+def test_auth_login_rate_limit_after_repeated_attempts():
+    client.cookies.clear()
+    for _ in range(10):
+        resp = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})
+        assert resp.status_code == 401
+
+    blocked = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})
+    assert blocked.status_code == 429
+
+
 def test_admin_api_supports_admin_session_token():
-    token = login_and_get_token("lisi", settings.admin_default_password)
-    resp = client.get("/api/submissions", headers={"Authorization": f"Bearer {token}"})
+    client.cookies.clear()
+    login_resp = client.post("/api/auth/login", json={"username": "lisi", "password": settings.admin_default_password})
+    assert login_resp.status_code == 200
+    resp = client.get("/api/submissions")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
-    client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    client.post("/api/auth/logout")
 
 
 def test_admin_api_rejects_legacy_x_admin_token_header():
@@ -108,10 +121,36 @@ def test_admin_api_rejects_legacy_x_admin_token_header():
 
 
 def test_admin_api_rejects_non_admin_session_token():
-    token = login_and_get_token("zhangsan", settings.user_default_password)
-    resp = client.get("/api/submissions", headers={"Authorization": f"Bearer {token}"})
+    client.cookies.clear()
+    login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+    assert login_resp.status_code == 200
+    resp = client.get("/api/submissions")
     assert resp.status_code == 403
-    client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    client.post("/api/auth/logout")
+
+
+def test_upload_endpoints_require_authenticated_session():
+    client.cookies.clear()
+    image_resp = client.post(
+        "/api/upload/image",
+        files={"file": ("cover.png", b"fake-image-bytes", "image/png")},
+    )
+    assert image_resp.status_code == 401
+
+    document_resp = client.post(
+        "/api/upload/document",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+    )
+    assert document_resp.status_code == 401
+
+
+def test_venv_endpoints_hidden_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    try:
+        resp = client.get("/api/venv/info")
+        assert resp.status_code == 404
+    finally:
+        monkeypatch.setattr(settings, "environment", "development")
 
 
 def test_submission_records_submitter_user_from_session():

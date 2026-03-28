@@ -2,9 +2,12 @@ import logging
 import os
 import uuid
 import json
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import Lock
+from time import monotonic
 from typing import Optional
 
 from fastapi import Body, Cookie, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
@@ -12,12 +15,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .auth_utils import generate_session_token, hash_password, verify_password
-from .config import resolve_runtime_path, settings
+from .config import (
+    get_allowed_hosts,
+    get_allowed_origins,
+    is_api_docs_enabled,
+    is_development_environment,
+    resolve_runtime_path,
+    settings,
+)
 from .database import ensure_database_schema_ready, get_db
 from .identity import get_identity_provider
 from .models import (
@@ -98,6 +109,18 @@ FRONTEND_DIST_DIR = (Path(__file__).resolve().parents[2] / "frontend" / "dist").
 
 logger = logging.getLogger(__name__)
 identity_provider = get_identity_provider(settings)
+rate_limit_lock = Lock()
+rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png"}
+ALLOWED_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".md"}
+ALLOWED_DOC_MIME_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/markdown",
+    "text/x-markdown",
+}
 
 
 def validate_static_upload_path_consistency(static_dir: Path, upload_dir: Path) -> None:
@@ -158,14 +181,28 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+docs_enabled = is_api_docs_enabled(settings)
+app = FastAPI(
+    title=settings.app_name,
+    lifespan=lifespan,
+    docs_url="/docs" if docs_enabled else None,
+    redoc_url="/redoc" if docs_enabled else None,
+    openapi_url=f"{settings.api_prefix}/openapi.json" if docs_enabled else None,
 )
+
+allowed_hosts = get_allowed_hosts(settings)
+if allowed_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+allowed_origins = get_allowed_origins(settings)
+if allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 def validate_submission_payload(payload: SubmissionCreate) -> None:
@@ -198,6 +235,35 @@ def extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization.lower().startswith("bearer "):
         return None
     return authorization[7:].strip() or None
+
+
+def clear_rate_limit_state() -> None:
+    with rate_limit_lock:
+        rate_limit_buckets.clear()
+
+
+def enforce_rate_limit(
+    request: Request,
+    *,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    now = monotonic()
+    key = f"{bucket}:{client_ip}"
+    with rate_limit_lock:
+        entries = rate_limit_buckets[key]
+        while entries and now - entries[0] >= window_seconds:
+            entries.popleft()
+        if len(entries) >= limit:
+            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+        entries.append(now)
+
+
+def require_development_mode() -> None:
+    if not is_development_environment(settings):
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def load_active_session(db: Session, token: str | None) -> AuthSession | None:
@@ -891,6 +957,7 @@ def auth_login(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    enforce_rate_limit(request, bucket="auth_login", limit=10, window_seconds=60)
     identity_provider.ensure_password_login_allowed()
     username = payload.username.strip()
     user = (
@@ -936,6 +1003,7 @@ def auth_login(
         secure=settings.environment.lower() in {"prod", "production"},
         samesite="lax",
         max_age=ttl_hours * 3600,
+        path="/",
     )
 
     return AuthLoginResponse(
@@ -993,7 +1061,7 @@ def auth_logout(
         payload_summary="logout_success",
     )
     db.commit()
-    response.delete_cookie(settings.auth_cookie_name)
+    response.delete_cookie(settings.auth_cookie_name, path="/")
     return {"message": "已退出登录"}
 
 
@@ -1002,6 +1070,7 @@ def get_venv_info():
     """
     获取虚拟环境信息
     """
+    require_development_mode()
     return venv_reader.get_venv_info()
 
 
@@ -1010,6 +1079,7 @@ def get_venv_python_path():
     """
     获取虚拟环境中Python可执行文件的路径
     """
+    require_development_mode()
     python_path = venv_reader.get_venv_python_path()
     if python_path:
         return {"python_path": str(python_path)}
@@ -1021,6 +1091,7 @@ def get_venv_site_packages():
     """
     获取虚拟环境中site-packages目录的路径
     """
+    require_development_mode()
     site_packages = venv_reader.get_venv_site_packages()
     if site_packages:
         return {"site_packages_path": str(site_packages)}
@@ -2734,22 +2805,21 @@ def admin_update_app_status(
 
 # Image upload configuration
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 MAX_DOC_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-ALLOWED_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".md"}
 
 
 def validate_image(file: UploadFile) -> tuple[bool, str]:
     """Validate uploaded image file"""
     # Check file extension
     ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return False, f"仅支持 {', '.join(ALLOWED_EXTENSIONS)} 格式的图片"
-    
-    # Check content type
-    if not file.content_type.startswith("image/"):
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return False, f"仅支持 {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))} 格式的图片"
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_MIME_TYPES:
         return False, "上传的文件不是有效的图片"
-    
+
     return True, ""
 
 
@@ -2758,6 +2828,9 @@ def validate_document(file: UploadFile) -> tuple[bool, str]:
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_DOC_EXTENSIONS:
         return False, f"仅支持 {', '.join(sorted(ALLOWED_DOC_EXTENSIONS))} 格式的文档"
+    content_type = (file.content_type or "").lower()
+    if content_type and content_type not in ALLOWED_DOC_MIME_TYPES:
+        return False, "上传的文件类型不受支持"
     return True, ""
 
 
@@ -2848,10 +2921,12 @@ def save_document(file: UploadFile) -> dict:
 
 @app.post(f"{settings.api_prefix}/upload/image", response_model=ImageUploadResponse)
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    _: AuthSession = Depends(require_auth_session),
 ):
     """Upload image file"""
+    enforce_rate_limit(request, bucket="upload_image", limit=20, window_seconds=300)
     # Validate file
     is_valid, error_msg = validate_image(file)
     if not is_valid:
@@ -2890,8 +2965,13 @@ async def upload_image(
 
 
 @app.post(f"{settings.api_prefix}/upload/document", response_model=DocumentUploadResponse)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    request: Request,
+    file: UploadFile = File(...),
+    _: AuthSession = Depends(require_auth_session),
+):
     """Upload document file"""
+    enforce_rate_limit(request, bucket="upload_document", limit=20, window_seconds=300)
     is_valid, error_msg = validate_document(file)
     if not is_valid:
         return DocumentUploadResponse(

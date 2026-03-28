@@ -43,6 +43,9 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 AUTH_PROVIDER_MODE=local
 OA_SSO_LOGIN_URL=
 EXTERNAL_SSO_LOGIN_URL=
+ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+ALLOWED_HOSTS=127.0.0.1,localhost,testserver
+# ENABLE_API_DOCS=false
 
 USER_DEFAULT_PASSWORD=ChangeMe_User_123!
 ADMIN_DEFAULT_PASSWORD=ChangeMe_Admin_123!
@@ -54,6 +57,15 @@ ADMIN_DEFAULT_PASSWORD=ChangeMe_Admin_123!
 PIP_INDEX_URL_PRODUCTION=http://136.142.12.68/simple/
 PIP_TRUSTED_HOST_PRODUCTION=136.142.12.68
 ```
+
+轻量安全基线：
+
+- 前端默认只依赖 `HttpOnly` Cookie 会话，不再把登录 token 持久化到浏览器 `localStorage`
+- 生产环境默认关闭 API docs；只有显式设置 `ENABLE_API_DOCS=true` 才会开启
+- 生产环境请显式配置：
+  - `ALLOWED_ORIGINS`
+  - `ALLOWED_HOSTS`
+- 图片和文档上传默认要求已登录用户访问
 
 ## 本地开发最短命令
 
