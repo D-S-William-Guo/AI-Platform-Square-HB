@@ -89,6 +89,17 @@ export type AuthMeResponse = {
   user: AuthUser
 }
 
+export type AuthProviderMode = 'local' | 'oa' | 'external_sso'
+
+export type AuthProviderInfo = {
+  mode: AuthProviderMode
+  display_name: string
+  login_url: string
+  local_login_enabled: boolean
+  configured: boolean
+  message: string
+}
+
 // 申报数据
 export type Submission = {
   id: number

@@ -103,6 +103,19 @@ class AuthMeResponse(BaseModel):
     user: UserPublic
 
 
+class AuthProviderInfoResponse(BaseModel):
+    mode: str
+    display_name: str
+    login_url: str
+    local_login_enabled: bool
+    configured: bool
+    message: str
+
+
+class AuthAssertionExchangeRequest(BaseModel):
+    assertion: str = Field(..., min_length=1, max_length=4096)
+
+
 class ActionLogOut(BaseModel):
     id: int
     actor_user_id: int | None

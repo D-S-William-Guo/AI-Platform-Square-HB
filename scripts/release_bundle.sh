@@ -38,6 +38,7 @@ rsync -a \
 mkdir -p "$STAGING_DIR/frontend"
 rsync -a "$ROOT_DIR/frontend/dist/" "$STAGING_DIR/frontend/dist/"
 rsync -a "$ROOT_DIR/scripts/" "$STAGING_DIR/scripts/"
+rsync -a "$ROOT_DIR/deploy/" "$STAGING_DIR/deploy/"
 rsync -a "$ROOT_DIR/docs/" "$STAGING_DIR/docs/"
 cp "$ROOT_DIR/Makefile" "$ROOT_DIR/README.md" "$ROOT_DIR/docker-compose.yml" "$ROOT_DIR/.env.example" "$STAGING_DIR/"
 
@@ -47,6 +48,7 @@ cp "$ROOT_DIR/Makefile" "$ROOT_DIR/README.md" "$ROOT_DIR/docker-compose.yml" "$R
     backend \
     frontend/dist \
     scripts \
+    deploy \
     docs \
     Makefile \
     README.md \

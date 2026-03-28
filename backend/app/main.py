@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 from .auth_utils import generate_session_token, hash_password, verify_password
 from .config import resolve_runtime_path, settings
 from .database import ensure_database_schema_ready, get_db
+from .identity import get_identity_provider
 from .models import (
     ActionLog,
     App,
@@ -40,7 +41,9 @@ from .schemas import (
     AppDetail,
     AuthLoginRequest,
     AuthLoginResponse,
+    AuthAssertionExchangeRequest,
     AuthMeResponse,
+    AuthProviderInfoResponse,
     ImageUploadResponse,
     DocumentUploadResponse,
     RankingItem,
@@ -94,6 +97,7 @@ FRONTEND_DIST_DIR = (Path(__file__).resolve().parents[2] / "frontend" / "dist").
 
 
 logger = logging.getLogger(__name__)
+identity_provider = get_identity_provider(settings)
 
 
 def validate_static_upload_path_consistency(static_dir: Path, upload_dir: Path) -> None:
@@ -887,6 +891,7 @@ def auth_login(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    identity_provider.ensure_password_login_allowed()
     username = payload.username.strip()
     user = (
         db.query(User)
@@ -939,6 +944,27 @@ def auth_login(
         expires_at=expires_at,
         user=to_public_user(user),
     )
+
+
+@app.get(f"{settings.api_prefix}/auth/provider", response_model=AuthProviderInfoResponse)
+def get_auth_provider_info():
+    descriptor = identity_provider.describe()
+    return AuthProviderInfoResponse(
+        mode=descriptor.mode,
+        display_name=descriptor.display_name,
+        login_url=descriptor.login_url,
+        local_login_enabled=descriptor.local_login_enabled,
+        configured=descriptor.configured,
+        message=descriptor.message,
+    )
+
+
+@app.post(f"{settings.api_prefix}/auth/sso/exchange")
+def exchange_auth_assertion(payload: AuthAssertionExchangeRequest):
+    if settings.auth_provider_mode == "local":
+        raise HTTPException(status_code=409, detail="当前环境未启用外部统一登录")
+    identity_provider.exchange_assertion(payload.assertion)
+    raise HTTPException(status_code=501, detail="统一登录断言交换尚未实现")
 
 
 @app.get(f"{settings.api_prefix}/auth/me", response_model=AuthMeResponse)

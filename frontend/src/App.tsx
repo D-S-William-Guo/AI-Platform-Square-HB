@@ -778,13 +778,13 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                     className={`filter-btn ${rankingType === 'excellent' ? 'active' : ''}`} 
                     onClick={() => setRankingType('excellent')}
                   >
-                    优秀应用榜
+                    总应用榜
                   </button>
                   <button 
                     className={`filter-btn ${rankingType === 'trend' ? 'active' : ''}`} 
                     onClick={() => setRankingType('trend')}
                   >
-                    趋势榜
+                    增长趋势榜
                   </button>
                 </div>
                 <div className="filter-group">

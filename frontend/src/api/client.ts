@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type {
   AppItem,
+  AuthProviderInfo,
   AuthLoginResponse,
   AuthMeResponse,
   RankingItem,
@@ -84,6 +85,11 @@ export async function login(username: string, password: string) {
 
 export async function fetchAuthMe() {
   const { data } = await client.get<AuthMeResponse>('/api/auth/me')
+  return data
+}
+
+export async function fetchAuthProviderInfo() {
+  const { data } = await client.get<AuthProviderInfo>('/api/auth/provider')
   return data
 }
 
