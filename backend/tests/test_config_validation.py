@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.config import Settings, validate_settings
+from app.config import (
+    Settings,
+    get_allowed_hosts,
+    get_allowed_origins,
+    is_api_docs_enabled,
+    validate_settings,
+)
 
 MYSQL_URL = "mysql+pymysql://tester:secret@127.0.0.1:3306/ai_app_square?charset=utf8mb4"
 
@@ -63,3 +69,48 @@ def test_validate_settings_rejects_unknown_auth_provider_mode():
 
     with pytest.raises(ValueError, match="AUTH_PROVIDER_MODE"):
         validate_settings(settings)
+
+
+def test_get_allowed_origins_defaults_to_dev_frontend_hosts():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        frontend_dev_port=5173,
+    )
+
+    assert get_allowed_origins(settings) == [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ]
+
+
+def test_get_allowed_origins_defaults_to_no_cors_in_production():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="production",
+        user_default_password="safe-user-password",
+        admin_default_password="safe-admin-password",
+    )
+
+    assert get_allowed_origins(settings) == []
+
+
+def test_get_allowed_hosts_uses_configured_csv():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        allowed_hosts="ai.example.internal, 10.0.0.10",
+    )
+
+    assert get_allowed_hosts(settings) == ["ai.example.internal", "10.0.0.10"]
+
+
+def test_api_docs_default_to_disabled_in_production():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="production",
+        user_default_password="safe-user-password",
+        admin_default_password="safe-admin-password",
+    )
+
+    assert is_api_docs_enabled(settings) is False

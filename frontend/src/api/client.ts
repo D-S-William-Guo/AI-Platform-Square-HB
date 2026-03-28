@@ -16,7 +16,6 @@ import type {
   HistoricalRanking
 } from '../types'
 
-const AUTH_TOKEN_STORAGE_KEY = 'AI_APP_AUTH_TOKEN'
 const client = axios.create({ baseURL: '/', withCredentials: true })
 const MISSING_ADMIN_TOKEN_ERROR_CODE = 'MISSING_ADMIN_TOKEN'
 
@@ -30,11 +29,8 @@ export class MissingAdminTokenError extends Error {
 }
 
 export function isMissingAdminTokenError(error: unknown): boolean {
-  if (error instanceof MissingAdminTokenError) {
-    return true
-  }
-  const candidate = error as { code?: string } | null
-  return candidate?.code === MISSING_ADMIN_TOKEN_ERROR_CODE
+  void error
+  return false
 }
 
 export function getAdminTokenSetupHint(): string {
@@ -42,44 +38,18 @@ export function getAdminTokenSetupHint(): string {
 }
 
 export function getAuthToken() {
-  if (typeof window === 'undefined') return ''
-  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''
+  return ''
 }
 
 export function setAuthToken(token: string) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token)
+  void token
 }
 
 export function clearAuthToken() {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-}
-
-client.interceptors.request.use((config) => {
-  const token = getAuthToken().trim()
-  if (token) {
-    config.headers = config.headers || {}
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
-function getAdminToken() {
-  return getAuthToken().trim()
-}
-
-function getRequiredAdminAuthHeaders() {
-  const adminToken = getAdminToken().trim()
-  if (!adminToken) {
-    throw new MissingAdminTokenError()
-  }
-  return { Authorization: `Bearer ${adminToken}` }
 }
 
 export async function login(username: string, password: string) {
   const { data } = await client.post<AuthLoginResponse>('/api/auth/login', { username, password })
-  setAuthToken(data.access_token)
   return data
 }
 
@@ -94,11 +64,7 @@ export async function fetchAuthProviderInfo() {
 }
 
 export async function logout() {
-  try {
-    await client.post('/api/auth/logout')
-  } finally {
-    clearAuthToken()
-  }
+  await client.post('/api/auth/logout')
 }
 
 export async function fetchApps(params?: Record<string, string>) {
@@ -227,7 +193,6 @@ export async function createRankingDimension(payload: {
   is_active: boolean
 }) {
   const { data } = await client.post<RankingDimension>('/api/ranking-dimensions', payload, {
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
@@ -243,44 +208,33 @@ export async function updateRankingDimension(
   }
 ) {
   const { data } = await client.put<RankingDimension>(`/api/ranking-dimensions/${dimensionId}`, payload, {
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
 
 export async function deleteRankingDimension(dimensionId: number) {
-  const { data } = await client.delete(`/api/ranking-dimensions/${dimensionId}`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.delete(`/api/ranking-dimensions/${dimensionId}`)
   return data
 }
 
 export async function fetchRankingLogs() {
-  const { data } = await client.get<any[]>('/api/ranking-logs', {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<any[]>('/api/ranking-logs')
   return data
 }
 
 export async function fetchRankingAuditLogs() {
-  const { data } = await client.get<any[]>('/api/ranking-audit-logs', {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<any[]>('/api/ranking-audit-logs')
   return data
 }
 
 // 数据联动 API
 export async function syncRankings() {
-  const { data } = await client.post('/api/rankings/sync', undefined, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post('/api/rankings/sync')
   return data
 }
 
 export async function publishRankings() {
-  const { data } = await client.post('/api/rankings/publish', undefined, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post('/api/rankings/publish')
   return data
 }
 
@@ -295,16 +249,12 @@ export async function batchUpdateRankingParams(
   const { data } = await client.post('/api/apps/batch-update-ranking-params', {
     apps,
     ...params
-  }, {
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
 
 export async function fetchSubmissions() {
-  const { data } = await client.get<Submission[]>('/api/submissions', {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<Submission[]>('/api/submissions')
   return data
 }
 
@@ -320,20 +270,12 @@ export async function approveSubmissionAndCreateApp(
     access_url?: string
   }
 ) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, payload)
   return data
 }
 
 export async function rejectSubmission(submissionId: number, reason: string) {
-  const { data } = await client.post(
-    `/api/submissions/${submissionId}/reject`,
-    { reason },
-    {
-      headers: getRequiredAdminAuthHeaders()
-    }
-  )
+  const { data } = await client.post(`/api/submissions/${submissionId}/reject`, { reason })
   return data
 }
 
@@ -387,9 +329,7 @@ export async function updateAppRankingParams(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-params`, params, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.put(`/api/apps/${appId}/ranking-params`, params)
   return data
 }
 
@@ -402,7 +342,6 @@ export async function updateAppDimensionScore(
 ) {
   const { data } = await client.put(`/api/apps/${appId}/dimension-scores/${dimensionId}`, { score }, {
     params: ranking_config_id ? { ranking_config_id } : {},
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
@@ -433,9 +372,7 @@ export async function createGroupApp(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.post('/api/admin/group-apps', payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post('/api/admin/group-apps', payload)
   return data
 }
 
@@ -446,7 +383,6 @@ export async function fetchAdminApps(params?: {
 }) {
   const { data } = await client.get<AppItem[]>('/api/admin/apps', {
     params: params || {},
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
@@ -458,7 +394,7 @@ export async function updateAdminAppStatus(
   const { data } = await client.put(
     `/api/admin/apps/${appId}/status`,
     { status },
-    { headers: getRequiredAdminAuthHeaders() }
+    {}
   )
   return data
 }
@@ -491,9 +427,7 @@ export async function createRankingConfig(payload: {
   calculation_method?: string
   is_active?: boolean
 }) {
-  const { data } = await client.post('/api/ranking-configs', payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post('/api/ranking-configs', payload)
   return data
 }
 
@@ -507,24 +441,18 @@ export async function updateRankingConfig(
     is_active?: boolean
   }
 ) {
-  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload)
   return data
 }
 
 export async function deleteRankingConfig(configId: string) {
-  const { data } = await client.delete(`/api/ranking-configs/${configId}`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.delete(`/api/ranking-configs/${configId}`)
   return data
 }
 
 // 应用榜单设置 API
 export async function fetchAppRankingSettings(appId: number) {
-  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`)
   return data
 }
 
@@ -532,7 +460,6 @@ export async function fetchAppRankingSettings(appId: number) {
 export async function fetchAllAppRankingSettings(rankingConfigId?: string) {
   const { data } = await client.get<any[]>('/api/app-ranking-settings', {
     params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {},
-    headers: getRequiredAdminAuthHeaders()
   })
   return data
 }
@@ -546,9 +473,7 @@ export async function createAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload)
   return data
 }
 
@@ -562,16 +487,12 @@ export async function updateAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload)
   return data
 }
 
 export async function deleteAppRankingSetting(appId: number, settingId: number) {
-  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`)
   return data
 }
 
@@ -586,9 +507,7 @@ export async function saveAppRankingSetting(
     dimension_scores: Array<{ dimension_id: number; score: number }>
   }
 ) {
-  const { data } = await client.post(`/api/apps/${appId}/ranking-settings/save`, payload, {
-    headers: getRequiredAdminAuthHeaders()
-  })
+  const { data } = await client.post(`/api/apps/${appId}/ranking-settings/save`, payload)
   return data
 }
 
