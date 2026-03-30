@@ -1,0 +1,128 @@
+.user-management-page {
+  background: var(--bg-color);
+}
+
+.user-management-body {
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.user-management-panel {
+  width: min(1200px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.user-management-panel .panel-header h2 {
+  margin: 0 0 6px;
+}
+
+.user-management-panel .panel-header p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.user-management-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.user-management-toolbar .search {
+  flex: 1;
+}
+
+.page-message {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.page-message.success {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.page-message.error {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.user-create-card,
+.user-table-wrapper {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+}
+
+.user-create-card h3 {
+  margin: 0 0 16px;
+}
+
+.user-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkbox-row {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.panel-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.user-table th,
+.user-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.user-table th {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .user-management-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .user-create-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .user-table {
+    min-width: 860px;
+  }
+}

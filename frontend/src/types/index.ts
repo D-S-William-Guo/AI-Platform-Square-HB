@@ -75,6 +75,19 @@ export type AuthUser = {
   email: string
   department: string
   is_active: boolean
+  can_submit: boolean
+}
+
+export type AdminUserCreatePayload = {
+  username: string
+  chinese_name: string
+  department: string
+  password?: string
+  phone?: string
+  email?: string
+  role?: UserRole
+  is_active?: boolean
+  can_submit?: boolean
 }
 
 export type AuthLoginResponse = {

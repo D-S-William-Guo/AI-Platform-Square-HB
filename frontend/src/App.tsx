@@ -25,6 +25,7 @@ import MySubmissionsPage from './pages/MySubmissionsPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import LoginPage from './pages/LoginPage'
+import UserManagementPage from './pages/UserManagementPage'
 import type { AppItem, AuthUser, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 
@@ -594,10 +595,17 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
             <span>📋</span>
             <span>我的申报</span>
           </Link>
-          <button className="primary" onClick={() => setShowSubmission(true)}>
-            <span>+</span>
-            <span>我要申报</span>
-          </button>
+          {currentUser.can_submit ? (
+            <button className="primary" onClick={() => setShowSubmission(true)}>
+              <span>+</span>
+              <span>我要申报</span>
+            </button>
+          ) : (
+            <button className="primary" type="button" disabled title="当前账号没有申报权限">
+              <span>+</span>
+              <span>我要申报</span>
+            </button>
+          )}
           <button className="secondary" onClick={onLogout}>
             <span>退出登录</span>
           </button>
@@ -688,6 +696,12 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
               <Link to="/submission-review" className="quick-link">
                 <span>✅</span>
                 <span>申报审核</span>
+              </Link>
+            )}
+            {currentUser.role === 'admin' && (
+              <Link to="/user-management" className="quick-link">
+                <span>👥</span>
+                <span>用户管理</span>
               </Link>
             )}
             <Link to="/historical-ranking" className="quick-link">
@@ -1415,6 +1429,10 @@ function App() {
       <Route
         path="/submission-review"
         element={currentUser.role === 'admin' ? <SubmissionReviewPage /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/user-management"
+        element={currentUser.role === 'admin' ? <UserManagementPage /> : <Navigate to="/" replace />}
       />
       <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
       <Route path="/ranking/:configId" element={<RankingDetailPage />} />

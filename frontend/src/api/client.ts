@@ -1,9 +1,11 @@
 import axios from 'axios'
 import type {
+  AdminUserCreatePayload,
   AppItem,
   AuthProviderInfo,
   AuthLoginResponse,
   AuthMeResponse,
+  AuthUser,
   RankingItem,
   Recommendation,
   RuleLink,
@@ -287,6 +289,35 @@ export async function fetchHistoricalRankings(
   const { data } = await client.get<HistoricalRanking[]>('/api/rankings/historical', {
     params: { ranking_type, period_date }
   })
+  return data
+}
+
+export async function fetchAdminUsers(params?: {
+  q?: string
+  role?: 'user' | 'admin'
+  is_active?: boolean
+}) {
+  const { data } = await client.get<AuthUser[]>('/api/admin/users', { params })
+  return data
+}
+
+export async function createAdminUser(payload: AdminUserCreatePayload) {
+  const { data } = await client.post<AuthUser>('/api/admin/users', payload)
+  return data
+}
+
+export async function updateAdminUserRole(userId: number, role: 'user' | 'admin') {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/role`, { role })
+  return data
+}
+
+export async function updateAdminUserStatus(userId: number, is_active: boolean) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/status`, { is_active })
+  return data
+}
+
+export async function updateAdminUserSubmitPermission(userId: number, can_submit: boolean) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/submit-permission`, { can_submit })
   return data
 }
 

@@ -34,12 +34,14 @@ DEFAULT_USERS = [
         "username": "zhangsan",
         "chinese_name": "张三",
         "role": "user",
+        "can_submit": True,
         "password": settings.user_default_password,
     },
     {
         "username": "lisi",
         "chinese_name": "李四",
         "role": "admin",
+        "can_submit": True,
         "password": settings.admin_default_password,
     },
 ]
@@ -762,6 +764,7 @@ def seed_default_users(db: Session) -> None:
                     chinese_name=item["chinese_name"],
                     role=item["role"],
                     is_active=True,
+                    can_submit=item["can_submit"],
                     phone="",
                     email="",
                     department="",
@@ -782,6 +785,9 @@ def seed_default_users(db: Session) -> None:
             changed = True
         if user.is_active is None:
             user.is_active = True
+            changed = True
+        if user.can_submit is None:
+            user.can_submit = item["can_submit"]
             changed = True
 
     if changed:
@@ -804,6 +810,7 @@ def reset_default_users(db: Session) -> None:
                     chinese_name=item["chinese_name"],
                     role=item["role"],
                     is_active=True,
+                    can_submit=item["can_submit"],
                     phone="",
                     email="",
                     department="",
@@ -815,6 +822,7 @@ def reset_default_users(db: Session) -> None:
         user.chinese_name = item["chinese_name"]
         user.role = item["role"]
         user.is_active = True
+        user.can_submit = item["can_submit"]
         user.password_hash = hash_password(item["password"])
 
     db.commit()

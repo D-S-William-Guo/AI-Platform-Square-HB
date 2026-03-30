@@ -49,6 +49,7 @@ from .models import (
 )
 from .schemas import (
     ActionLogOut,
+    AdminUserCreatePayload,
     AppDetail,
     AuthLoginRequest,
     AuthLoginResponse,
@@ -90,6 +91,7 @@ from .schemas import (
     UserImportResponse,
     UserRoleUpdatePayload,
     UserStatusUpdatePayload,
+    UserSubmitPermissionUpdatePayload,
     AdminAppStatusUpdate,
 )
 from .venv_utils import venv_reader
@@ -296,6 +298,7 @@ def to_public_user(user: User) -> UserPublic:
         email=user.email or "",
         department=user.department or "",
         is_active=bool(user.is_active),
+        can_submit=bool(user.can_submit),
     )
 
 
@@ -367,6 +370,7 @@ def upsert_users(
                     email=item["email"],
                     department=item["department"],
                     is_active=item["is_active"],
+                    can_submit=False,
                     password_hash=hash_password(settings.user_default_password),
                 )
             )
@@ -436,6 +440,16 @@ def require_auth_session(
     if not session:
         raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
     return session
+
+
+def require_submit_permission(
+    auth_session: AuthSession = Depends(require_auth_session),
+) -> AuthSession:
+    if auth_session.user.role == "admin":
+        return auth_session
+    if not auth_session.user.can_submit:
+        raise HTTPException(status_code=403, detail="当前账号没有申报权限")
+    return auth_session
 
 
 def get_optional_auth_session(
@@ -1322,7 +1336,7 @@ def list_submissions(
 def create_submission(
     payload: SubmissionCreate,
     request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     validate_submission_payload(payload)
@@ -1391,7 +1405,7 @@ def update_my_submission(
     submission_id: int,
     payload: SubmissionCreate,
     request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     """当前登录用户修改本人申报（仅 pending）。"""
@@ -2128,6 +2142,47 @@ def list_users(
     return query.order_by(User.id.asc()).all()
 
 
+@app.post(f"{settings.api_prefix}/admin/users", response_model=UserPublic)
+def create_admin_user(
+    payload: AdminUserCreatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(User).filter(func.lower(User.username) == payload.username.strip().lower()).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="用户名已存在")
+
+    user = User(
+        username=payload.username.strip(),
+        chinese_name=payload.chinese_name.strip(),
+        role=payload.role,
+        phone=payload.phone.strip(),
+        email=payload.email.strip(),
+        department=payload.department.strip(),
+        is_active=payload.is_active,
+        can_submit=payload.can_submit,
+        password_hash=hash_password((payload.password or settings.user_default_password).strip()),
+    )
+    db.add(user)
+    db.flush()
+    write_action_log(
+        db,
+        action="user.created",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=(
+            f"username={user.username},role={user.role},active={bool(user.is_active)},"
+            f"can_submit={bool(user.can_submit)}"
+        ),
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/role", response_model=UserPublic)
 def update_user_role(
     user_id: int,
@@ -2161,6 +2216,36 @@ def update_user_role(
         resource_id=str(user.id),
         request_id=request.headers.get("X-Request-Id", ""),
         payload_summary=f"username={user.username},old={old_role},new={user.role}",
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/submit-permission", response_model=UserPublic)
+def update_user_submit_permission(
+    user_id: int,
+    payload: UserSubmitPermissionUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if bool(user.can_submit) == bool(payload.can_submit):
+        return user
+
+    old_value = bool(user.can_submit)
+    user.can_submit = payload.can_submit
+    write_action_log(
+        db,
+        action="user.submit_permission_updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"username={user.username},old={old_value},new={bool(user.can_submit)}",
     )
     db.commit()
     db.refresh(user)
@@ -2923,7 +3008,7 @@ def save_document(file: UploadFile) -> dict:
 async def upload_image(
     request: Request,
     file: UploadFile = File(...),
-    _: AuthSession = Depends(require_auth_session),
+    _: AuthSession = Depends(require_submit_permission),
 ):
     """Upload image file"""
     enforce_rate_limit(request, bucket="upload_image", limit=20, window_seconds=300)
@@ -2968,7 +3053,7 @@ async def upload_image(
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    _: AuthSession = Depends(require_auth_session),
+    _: AuthSession = Depends(require_submit_permission),
 ):
     """Upload document file"""
     enforce_rate_limit(request, bucket="upload_document", limit=20, window_seconds=300)

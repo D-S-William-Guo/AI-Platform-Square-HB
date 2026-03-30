@@ -20,6 +20,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     department: Mapped[str] = mapped_column(String(120), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    can_submit: Mapped[bool] = mapped_column(Boolean, default=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

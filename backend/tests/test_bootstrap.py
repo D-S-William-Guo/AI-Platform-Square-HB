@@ -21,6 +21,7 @@ def test_seed_default_users_keeps_existing_password_hash():
         db.refresh(user)
 
         assert user.password_hash == "manually-set-hash"
+        assert user.can_submit is True
 
         user.password_hash = original_hash
         db.commit()
@@ -43,6 +44,7 @@ def test_reset_default_users_overwrites_existing_password_hash():
 
         assert user.password_hash != "manually-set-hash"
         assert verify_password(settings.admin_default_password, user.password_hash)
+        assert user.can_submit is True
 
         user.password_hash = original_hash
         db.commit()

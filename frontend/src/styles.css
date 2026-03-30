@@ -18,6 +18,7 @@
 @import './styles/historical-ranking-page.css';
 @import './styles/ranking-detail.css';
 @import './styles/ranking-management.css';
+@import './styles/user-management-page.css';
 
 /* 3. 模态框视觉重设计（最后导入，确保最高优先级） */
 @import './styles/modal-redesign.css';

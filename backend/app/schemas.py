@@ -82,6 +82,7 @@ class UserPublic(BaseModel):
     email: str
     department: str
     is_active: bool
+    can_submit: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -135,6 +136,22 @@ class UserRoleUpdatePayload(BaseModel):
 
 class UserStatusUpdatePayload(BaseModel):
     is_active: bool
+
+
+class UserSubmitPermissionUpdatePayload(BaseModel):
+    can_submit: bool
+
+
+class AdminUserCreatePayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+    chinese_name: str = Field(..., min_length=1, max_length=80)
+    department: str = Field(..., min_length=1, max_length=120)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=120)
+    role: str = Field(default="user", pattern="^(user|admin)$")
+    is_active: bool = True
+    can_submit: bool = False
 
 
 class UserImportItem(BaseModel):

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.config import settings
 from app.database import SessionLocal
-from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission
+from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission, User
 
 
 client = TestClient(app)
@@ -301,6 +301,95 @@ def test_admin_list_users_contains_seeded_accounts():
     data = resp.json()
     usernames = {item['username'] for item in data}
     assert {'zhangsan', 'lisi'}.issubset(usernames)
+    zhangsan = next(item for item in data if item["username"] == "zhangsan")
+    assert zhangsan["can_submit"] is True
+
+
+def test_user_without_submit_permission_cannot_create_submission():
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == "zhangsan").first()
+        assert user is not None
+        original_can_submit = bool(user.can_submit)
+        user.can_submit = False
+        db.commit()
+    finally:
+        db.close()
+
+    payload = {
+        "app_name": "权限校验测试应用",
+        "unit_name": "测试单位",
+        "contact": "测试人员",
+        "contact_phone": "13800000099",
+        "contact_email": "submit-block@example.com",
+        "category": "办公类",
+        "scenario": "这是一个用于验证无提交权限用户无法提交申报的测试场景描述，长度超过二十个字符。",
+        "embedded_system": "测试系统",
+        "problem_statement": "用于验证提交权限控制是否生效。",
+        "effectiveness_type": "efficiency_gain",
+        "effectiveness_metric": "效率提升 10%",
+        "data_level": "L2",
+        "expected_benefit": "阻止无权限用户发起申报。",
+        "monthly_calls": 0,
+        "difficulty": "Medium",
+        "cover_image_url": "",
+        "detail_doc_url": "",
+        "detail_doc_name": "",
+    }
+
+    try:
+        resp = create_submission_as_user(payload)
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "当前账号没有申报权限"
+    finally:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == "zhangsan").first()
+            assert user is not None
+            user.can_submit = original_can_submit
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_admin_can_create_user_and_manage_submit_permission():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "测试用户",
+            "department": "测试部门",
+            "password": "TestPass_123!",
+            "phone": "13800001111",
+            "email": "new.user@example.com",
+            "can_submit": False,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+    assert created["username"] == username
+    assert created["role"] == "user"
+    assert created["can_submit"] is False
+
+    login_resp = client.post("/api/auth/login", json={"username": username, "password": "TestPass_123!"})
+    assert login_resp.status_code == 200
+
+    toggle_resp = client.put(
+        f"/api/admin/users/{created['id']}/submit-permission",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"can_submit": True},
+    )
+    assert toggle_resp.status_code == 200
+    assert toggle_resp.json()["can_submit"] is True
+
+    list_resp = client.get(f"/api/admin/users?q={username}", headers={"Authorization": f"Bearer {admin_token}"})
+    assert list_resp.status_code == 200
+    listed = next(item for item in list_resp.json() if item["username"] == username)
+    assert listed["can_submit"] is True
 
 
 def test_admin_user_import_does_not_override_existing_role():
@@ -331,6 +420,7 @@ def test_admin_user_import_does_not_override_existing_role():
     user = next(item for item in list_resp.json() if item["username"] == "wangwu")
     user_id = user["id"]
     assert user["role"] == "user"
+    assert user["can_submit"] is False
 
     role_resp = client.put(
         f"/api/admin/users/{user_id}/role",
@@ -366,6 +456,7 @@ def test_admin_user_import_does_not_override_existing_role():
     assert updated["role"] == "admin"
     assert updated["department"] == "二次导入"
     assert updated["is_active"] is False
+    assert updated["can_submit"] is False
 
 
 def test_admin_update_user_status_blocks_disabling_last_active_admin():
