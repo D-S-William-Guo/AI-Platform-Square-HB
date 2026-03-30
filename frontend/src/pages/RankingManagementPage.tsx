@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import type { RankingDimension, AppItem } from '../types'
+import { useState, useEffect } from 'react'
+import type { RankingConfigRecord, RankingDimension, AppItem } from '../types'
 import {
   fetchRankingDimensions,
   createRankingDimension,
@@ -7,7 +7,7 @@ import {
   deleteRankingDimension,
   fetchRankingAuditLogs,
   publishRankings,
-  fetchApps,
+  fetchAdminRankingConfigs,
   fetchRankingConfigs,
   createRankingConfig,
   updateRankingConfig,
@@ -22,18 +22,9 @@ import {
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
+import Pagination from '../components/Pagination'
 
-// 榜单配置类型
-interface RankingConfig {
-  id: string
-  name: string
-  description: string
-  dimensions_config: string
-  calculation_method: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+type RankingConfig = RankingConfigRecord
 
 // 应用榜单设置类型
 interface AppRankingSettingItem {
@@ -92,6 +83,12 @@ const RankingManagementPage = () => {
 
   // 榜单配置管理状态
   const [rankingConfigs, setRankingConfigs] = useState<RankingConfig[]>([])
+  const [allRankingConfigs, setAllRankingConfigs] = useState<RankingConfig[]>([])
+  const [configPage, setConfigPage] = useState(1)
+  const [configPageSize, setConfigPageSize] = useState(6)
+  const [configTotal, setConfigTotal] = useState(0)
+  const [configTotalPages, setConfigTotalPages] = useState(0)
+  const [configLoading, setConfigLoading] = useState(false)
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [editingConfig, setEditingConfig] = useState<RankingConfig | null>(null)
   const [configFormData, setConfigFormData] = useState({
@@ -105,7 +102,17 @@ const RankingManagementPage = () => {
 
   // 应用参与管理状态
   const [apps, setApps] = useState<AppItem[]>([])
+  const [appsPage, setAppsPage] = useState(1)
+  const [appsPageSize, setAppsPageSize] = useState(10)
+  const [appsTotal, setAppsTotal] = useState(0)
+  const [appsTotalPages, setAppsTotalPages] = useState(0)
+  const [appSettingsLoading, setAppSettingsLoading] = useState(false)
   const [adminApps, setAdminApps] = useState<AppItem[]>([])
+  const [adminAppsPage, setAdminAppsPage] = useState(1)
+  const [adminAppsPageSize, setAdminAppsPageSize] = useState(10)
+  const [adminAppsTotal, setAdminAppsTotal] = useState(0)
+  const [adminAppsTotalPages, setAdminAppsTotalPages] = useState(0)
+  const [appManagementLoading, setAppManagementLoading] = useState(false)
   const [appSettings, setAppSettings] = useState<Record<number, AppRankingSettingItem[]>>({})
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<AppItem | null>(null)
   const [editingAppSetting, setEditingAppSetting] = useState<AppRankingSettingItem | null>(null)
@@ -165,25 +172,33 @@ const RankingManagementPage = () => {
   })
 
   useEffect(() => {
-    loadData()
+    loadBaseData()
   }, [])
 
-  const loadData = async () => {
+  useEffect(() => {
+    loadRankingConfigsPage()
+  }, [configPage, configPageSize])
+
+  useEffect(() => {
+    loadAppSettingsPage()
+  }, [appsPage, appsPageSize])
+
+  useEffect(() => {
+    loadAdminAppsPage()
+  }, [adminAppsPage, adminAppsPageSize, manageSectionFilter, manageStatusFilter, manageKeyword])
+
+  const loadBaseData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [dimensionsData, logsData, appsData, configsData, adminAppsData] = await Promise.all([
+      const [dimensionsData, logsData, allConfigsData] = await Promise.all([
         fetchRankingDimensions(),
         fetchRankingAuditLogs(),
-        fetchApps(),
         fetchRankingConfigs(),
-        fetchAdminApps()
       ])
       setDimensions(dimensionsData)
       setLogs(logsData)
-      setApps(appsData.filter(app => app.section === 'province'))
-      setRankingConfigs(configsData)
-      setAdminApps(adminAppsData)
+      setAllRankingConfigs(allConfigsData)
 
       // 加载所有应用榜单设置
       const allSettings = await fetchAllAppRankingSettings()
@@ -204,6 +219,82 @@ const RankingManagementPage = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadRankingConfigsPage = async () => {
+    setConfigLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAdminRankingConfigs({
+        page: configPage,
+        page_size: configPageSize,
+      })
+      setRankingConfigs(data.items)
+      setConfigTotal(data.total)
+      setConfigTotalPages(data.total_pages)
+      if (data.total_pages > 0 && configPage > data.total_pages) {
+        setConfigPage(data.total_pages)
+      }
+    } catch (err) {
+      setError(resolveAdminError(err, '加载榜单配置失败'))
+    } finally {
+      setConfigLoading(false)
+    }
+  }
+
+  const loadAppSettingsPage = async () => {
+    setAppSettingsLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAdminApps({
+        section: 'province',
+        page: appsPage,
+        page_size: appsPageSize,
+      })
+      setApps(data.items)
+      setAppsTotal(data.total)
+      setAppsTotalPages(data.total_pages)
+      if (data.total_pages > 0 && appsPage > data.total_pages) {
+        setAppsPage(data.total_pages)
+      }
+    } catch (err) {
+      setError(resolveAdminError(err, '加载应用参与列表失败'))
+    } finally {
+      setAppSettingsLoading(false)
+    }
+  }
+
+  const loadAdminAppsPage = async () => {
+    setAppManagementLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAdminApps({
+        ...(manageSectionFilter !== 'all' ? { section: manageSectionFilter } : {}),
+        ...(manageStatusFilter !== 'all' ? { status: manageStatusFilter } : {}),
+        ...(manageKeyword.trim() ? { q: manageKeyword.trim() } : {}),
+        page: adminAppsPage,
+        page_size: adminAppsPageSize,
+      })
+      setAdminApps(data.items)
+      setAdminAppsTotal(data.total)
+      setAdminAppsTotalPages(data.total_pages)
+      if (data.total_pages > 0 && adminAppsPage > data.total_pages) {
+        setAdminAppsPage(data.total_pages)
+      }
+    } catch (err) {
+      setError(resolveAdminError(err, '加载应用管理列表失败'))
+    } finally {
+      setAppManagementLoading(false)
+    }
+  }
+
+  const loadData = async () => {
+    await Promise.all([
+      loadBaseData(),
+      loadRankingConfigsPage(),
+      loadAppSettingsPage(),
+      loadAdminAppsPage(),
+    ])
   }
 
   const loadDimensionScoresForConfig = async (appId: number, rankingConfigId: string) => {
@@ -390,7 +481,7 @@ const RankingManagementPage = () => {
   const openAppSettingModal = (app: AppItem, existingSetting?: AppRankingSettingItem) => {
     setSelectedAppForConfig(app)
     setEditingAppSetting(existingSetting || null)
-    const defaultConfigId = existingSetting?.ranking_config_id || rankingConfigs[0]?.id || ''
+    const defaultConfigId = existingSetting?.ranking_config_id || allRankingConfigs[0]?.id || ''
     if (existingSetting) {
       setAppSettingForm({
         ranking_config_id: existingSetting.ranking_config_id,
@@ -546,25 +637,6 @@ const RankingManagementPage = () => {
     }
   }
 
-  const filteredAdminApps = useMemo(() => {
-    return adminApps.filter((app) => {
-      if (manageSectionFilter !== 'all' && app.section !== manageSectionFilter) {
-        return false
-      }
-      if (manageStatusFilter !== 'all' && app.status !== manageStatusFilter) {
-        return false
-      }
-      if (manageKeyword.trim()) {
-        const kw = manageKeyword.trim().toLowerCase()
-        const haystack = `${app.name} ${app.org} ${app.category}`.toLowerCase()
-        if (!haystack.includes(kw)) {
-          return false
-        }
-      }
-      return true
-    })
-  }, [adminApps, manageSectionFilter, manageStatusFilter, manageKeyword])
-
   const handleUpdateAppStatus = async (app: AppItem, nextStatus: 'available' | 'approval' | 'beta' | 'offline') => {
     const actionText = nextStatus === 'offline' ? '下架' : '上架'
     if (!confirm(`确定要将应用「${app.name}」${actionText}为 ${nextStatus} 吗？`)) {
@@ -575,7 +647,7 @@ const RankingManagementPage = () => {
       setAppManagementMessage(null)
       await updateAdminAppStatus(app.id, nextStatus)
       setAppManagementMessage(`应用「${app.name}」状态已更新为 ${nextStatus}`)
-      await loadData()
+      await Promise.all([loadAppSettingsPage(), loadAdminAppsPage()])
     } catch (err) {
       setError(resolveAdminError(err, '更新应用状态失败'))
     } finally {
@@ -588,7 +660,7 @@ const RankingManagementPage = () => {
     if (!appSettingForm.ranking_config_id) {
       return activeDimensions
     }
-    const selectedConfig = rankingConfigs.find(config => config.id === appSettingForm.ranking_config_id)
+    const selectedConfig = allRankingConfigs.find(config => config.id === appSettingForm.ranking_config_id)
     if (!selectedConfig) {
       return activeDimensions
     }
@@ -703,7 +775,7 @@ const RankingManagementPage = () => {
                 </div>
               )}
 
-              {loading ? (
+              {loading || configLoading ? (
                 <div className="loading">加载中...</div>
               ) : error ? (
                 <div className="error-message">{error}</div>
@@ -767,6 +839,19 @@ const RankingManagementPage = () => {
                       })}
                     </div>
                   )}
+                  <Pagination
+                    page={configPage}
+                    pageSize={configPageSize}
+                    total={configTotal}
+                    totalPages={configTotalPages}
+                    disabled={configLoading}
+                    onPageChange={setConfigPage}
+                    pageSizeOptions={[6, 12]}
+                    onPageSizeChange={(nextPageSize) => {
+                      setConfigPage(1)
+                      setConfigPageSize(nextPageSize)
+                    }}
+                  />
                 </div>
               )}
             </section>
@@ -795,7 +880,7 @@ const RankingManagementPage = () => {
                 </div>
               )}
 
-              {loading ? (
+              {loading || appSettingsLoading ? (
                 <div className="loading">加载中...</div>
               ) : (
                 <div className="app-settings-list">
@@ -827,7 +912,7 @@ const RankingManagementPage = () => {
                                 ) : (
                                   <div className="participation-tags">
                                     {settings.map(setting => {
-                                      const config = rankingConfigs.find(c => c.id === setting.ranking_config_id)
+                                      const config = allRankingConfigs.find(c => c.id === setting.ranking_config_id)
                                       return (
                                         <span
                                           key={setting.id}
@@ -870,6 +955,18 @@ const RankingManagementPage = () => {
                       </tbody>
                     </table>
                   )}
+                  <Pagination
+                    page={appsPage}
+                    pageSize={appsPageSize}
+                    total={appsTotal}
+                    totalPages={appsTotalPages}
+                    disabled={appSettingsLoading}
+                    onPageChange={setAppsPage}
+                    onPageSizeChange={(nextPageSize) => {
+                      setAppsPage(1)
+                      setAppsPageSize(nextPageSize)
+                    }}
+                  />
                 </div>
               )}
             </section>
@@ -894,7 +991,10 @@ const RankingManagementPage = () => {
               <div className="app-management-filters">
                 <select
                   value={manageSectionFilter}
-                  onChange={(e) => setManageSectionFilter(e.target.value as 'all' | 'group' | 'province')}
+                  onChange={(e) => {
+                    setManageSectionFilter(e.target.value as 'all' | 'group' | 'province')
+                    setAdminAppsPage(1)
+                  }}
                 >
                   <option value="all">全部分区</option>
                   <option value="province">省内应用</option>
@@ -902,7 +1002,10 @@ const RankingManagementPage = () => {
                 </select>
                 <select
                   value={manageStatusFilter}
-                  onChange={(e) => setManageStatusFilter(e.target.value as 'all' | 'available' | 'approval' | 'beta' | 'offline')}
+                  onChange={(e) => {
+                    setManageStatusFilter(e.target.value as 'all' | 'available' | 'approval' | 'beta' | 'offline')
+                    setAdminAppsPage(1)
+                  }}
                 >
                   <option value="all">全部状态</option>
                   <option value="available">可用</option>
@@ -913,16 +1016,19 @@ const RankingManagementPage = () => {
                 <input
                   type="text"
                   value={manageKeyword}
-                  onChange={(e) => setManageKeyword(e.target.value)}
+                  onChange={(e) => {
+                    setManageKeyword(e.target.value)
+                    setAdminAppsPage(1)
+                  }}
                   placeholder="搜索应用名/单位/分类"
                 />
               </div>
 
-              {loading ? (
+              {loading || appManagementLoading ? (
                 <div className="loading">加载中...</div>
               ) : (
                 <div className="app-management-list">
-                  {filteredAdminApps.length === 0 ? (
+                  {adminApps.length === 0 ? (
                     <div className="empty-state">
                       <span>🗂️</span>
                       <p>暂无匹配应用</p>
@@ -939,7 +1045,7 @@ const RankingManagementPage = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredAdminApps.map((app) => (
+                        {adminApps.map((app) => (
                           <tr key={app.id}>
                             <td>
                               <div className="app-name">{app.name}</div>
@@ -974,6 +1080,18 @@ const RankingManagementPage = () => {
                       </tbody>
                     </table>
                   )}
+                  <Pagination
+                    page={adminAppsPage}
+                    pageSize={adminAppsPageSize}
+                    total={adminAppsTotal}
+                    totalPages={adminAppsTotalPages}
+                    disabled={appManagementLoading}
+                    onPageChange={setAdminAppsPage}
+                    onPageSizeChange={(nextPageSize) => {
+                      setAdminAppsPage(1)
+                      setAdminAppsPageSize(nextPageSize)
+                    }}
+                  />
                 </div>
               )}
             </section>
@@ -1499,7 +1617,7 @@ const RankingManagementPage = () => {
                     onChange={(e) => setAppSettingForm(prev => ({ ...prev, ranking_config_id: e.target.value }))}
                   >
                     <option value="">请选择榜单</option>
-                    {rankingConfigs.map(config => (
+                    {allRankingConfigs.map(config => (
                       <option key={config.id} value={config.id}>{config.name}</option>
                     ))}
                   </select>

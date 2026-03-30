@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 import json
+import math
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -93,6 +94,7 @@ from .schemas import (
     UserStatusUpdatePayload,
     UserSubmitPermissionUpdatePayload,
     AdminAppStatusUpdate,
+    PaginatedResponse,
 )
 from .venv_utils import venv_reader
 
@@ -299,6 +301,19 @@ def to_public_user(user: User) -> UserPublic:
         department=user.department or "",
         is_active=bool(user.is_active),
         can_submit=bool(user.can_submit),
+    )
+
+
+def paginate_query(query, page: int, page_size: int):
+    total = query.order_by(None).count()
+    total_pages = math.ceil(total / page_size) if total else 0
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return PaginatedResponse(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=total_pages,
     )
 
 
@@ -2114,11 +2129,13 @@ def get_action_logs(
     ]
 
 
-@app.get(f"{settings.api_prefix}/admin/users", response_model=list[UserPublic])
+@app.get(f"{settings.api_prefix}/admin/users", response_model=PaginatedResponse[UserPublic])
 def list_users(
     q: str | None = Query(default=None),
     role: str | None = Query(default=None),
     is_active: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     _: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
@@ -2139,7 +2156,14 @@ def list_users(
     if is_active is not None:
         query = query.filter(User.is_active.is_(is_active))
 
-    return query.order_by(User.id.asc()).all()
+    rows = paginate_query(query.order_by(User.id.asc()), page, page_size)
+    return PaginatedResponse(
+        items=[to_public_user(user) for user in rows.items],
+        page=rows.page,
+        page_size=rows.page_size,
+        total=rows.total,
+        total_pages=rows.total_pages,
+    )
 
 
 @app.post(f"{settings.api_prefix}/admin/users", response_model=UserPublic)
@@ -2798,11 +2822,13 @@ def create_group_app(
         raise HTTPException(status_code=500, detail=f"创建集团应用失败: {str(e)}")
 
 
-@app.get(f"{settings.api_prefix}/admin/apps", response_model=list[AppDetail])
+@app.get(f"{settings.api_prefix}/admin/apps", response_model=PaginatedResponse[AppDetail])
 def admin_list_apps(
     section: str | None = Query(default=None, description="group/province"),
     status: str | None = Query(default=None, description="available/approval/beta/offline"),
     q: str | None = Query(default=None, description="按名称或描述搜索"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
@@ -2817,7 +2843,7 @@ def admin_list_apps(
         query = query.filter(App.status == status)
     if q:
         query = query.filter(App.name.contains(q) | App.description.contains(q))
-    return query.order_by(App.id).all()
+    return paginate_query(query.order_by(App.id), page, page_size)
 
 
 @app.put(f"{settings.api_prefix}/admin/apps/{{app_id}}/status")
@@ -3173,6 +3199,29 @@ def list_ranking_configs(
     if is_active is not None:
         query = query.filter(RankingConfig.is_active == is_active)
     return query.order_by(RankingConfig.id).all()
+
+
+@app.get(f"{settings.api_prefix}/admin/ranking-configs", response_model=PaginatedResponse[RankingConfigOut])
+def admin_list_ranking_configs(
+    is_active: bool | None = Query(default=None, description="按启用状态筛选"),
+    q: str | None = Query(default=None, description="按ID、名称或描述搜索"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    query = db.query(RankingConfig)
+    if is_active is not None:
+        query = query.filter(RankingConfig.is_active == is_active)
+    if q:
+        query = query.filter(
+            or_(
+                RankingConfig.id.contains(q),
+                RankingConfig.name.contains(q),
+                RankingConfig.description.contains(q),
+            )
+        )
+    return paginate_query(query.order_by(RankingConfig.id), page, page_size)
 
 
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)

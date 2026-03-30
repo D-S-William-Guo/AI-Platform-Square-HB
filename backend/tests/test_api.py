@@ -298,11 +298,24 @@ def test_reject_submission_records_admin_and_reason():
 def test_admin_list_users_contains_seeded_accounts():
     resp = client.get('/api/admin/users', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
-    data = resp.json()
+    payload = resp.json()
+    assert payload["page"] == 1
+    data = payload["items"]
     usernames = {item['username'] for item in data}
     assert {'zhangsan', 'lisi'}.issubset(usernames)
     zhangsan = next(item for item in data if item["username"] == "zhangsan")
     assert zhangsan["can_submit"] is True
+
+
+def test_admin_users_pagination_returns_metadata():
+    resp = client.get('/api/admin/users?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 2
+    assert payload["total_pages"] >= 2
+    assert len(payload["items"]) == 1
 
 
 def test_user_without_submit_permission_cannot_create_submission():
@@ -388,7 +401,7 @@ def test_admin_can_create_user_and_manage_submit_permission():
 
     list_resp = client.get(f"/api/admin/users?q={username}", headers={"Authorization": f"Bearer {admin_token}"})
     assert list_resp.status_code == 200
-    listed = next(item for item in list_resp.json() if item["username"] == username)
+    listed = next(item for item in list_resp.json()["items"] if item["username"] == username)
     assert listed["can_submit"] is True
 
 
@@ -417,7 +430,7 @@ def test_admin_user_import_does_not_override_existing_role():
 
     list_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
     assert list_resp.status_code == 200
-    user = next(item for item in list_resp.json() if item["username"] == "wangwu")
+    user = next(item for item in list_resp.json()["items"] if item["username"] == "wangwu")
     user_id = user["id"]
     assert user["role"] == "user"
     assert user["can_submit"] is False
@@ -452,7 +465,7 @@ def test_admin_user_import_does_not_override_existing_role():
 
     verify_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
     assert verify_resp.status_code == 200
-    updated = next(item for item in verify_resp.json() if item["username"] == "wangwu")
+    updated = next(item for item in verify_resp.json()["items"] if item["username"] == "wangwu")
     assert updated["role"] == "admin"
     assert updated["department"] == "二次导入"
     assert updated["is_active"] is False
@@ -464,7 +477,7 @@ def test_admin_update_user_status_blocks_disabling_last_active_admin():
 
     list_resp = client.get('/api/admin/users?role=admin&is_active=true', headers={"Authorization": f"Bearer {admin_token}"})
     assert list_resp.status_code == 200
-    admins = list_resp.json()
+    admins = list_resp.json()["items"]
     lisi = next(item for item in admins if item["username"] == "lisi")
 
     disable_resp = client.put(
@@ -510,7 +523,7 @@ def test_external_user_sync_requires_and_validates_sync_token():
         assert ok_resp.json()["source"] == "external-system"
         assert ok_resp.json()["created"] >= 1
 
-        users = client.get('/api/admin/users?q=zhaoliu', headers=auth_headers_for_user("lisi")).json()
+        users = client.get('/api/admin/users?q=zhaoliu', headers=auth_headers_for_user("lisi")).json()["items"]
         row = next(item for item in users if item["username"] == "zhaoliu")
         assert row["role"] == "user"
         assert row["department"] == "集成系统"
@@ -579,7 +592,18 @@ def test_public_apps_default_excludes_offline_but_supports_explicit_filter():
 
     admin_offline_resp = client.get("/api/admin/apps?section=group&status=offline", headers=auth_headers_for_user("lisi"))
     assert admin_offline_resp.status_code == 200
-    assert any(item["name"] == app_name for item in admin_offline_resp.json())
+    assert any(item["name"] == app_name for item in admin_offline_resp.json()["items"])
+
+
+def test_admin_apps_pagination_returns_metadata():
+    resp = client.get('/api/admin/apps?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 1
+    assert payload["total_pages"] >= 1
+    assert len(payload["items"]) == 1
 
 
 def test_rankings_have_metric_fields():
@@ -1264,6 +1288,17 @@ def test_admin_endpoint_accepts_valid_token():
     client.cookies.clear()
     resp = client.post('/api/rankings/sync', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
+
+
+def test_admin_ranking_configs_pagination_returns_metadata():
+    resp = client.get('/api/admin/ranking-configs?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 2
+    assert payload["total_pages"] >= 2
+    assert len(payload["items"]) == 1
 
 
 def test_submission_ranking_dimensions_write_is_deprecated():

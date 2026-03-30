@@ -64,6 +64,14 @@ export type RuleLink = {
   href: string
 }
 
+export type PaginatedResponse<T> = {
+  items: T[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
 export type UserRole = 'user' | 'admin'
 
 export type AuthUser = {
@@ -207,6 +215,17 @@ export type RankingDimension = {
   description: string
   calculation_method: string
   weight: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type RankingConfigRecord = {
+  id: string
+  name: string
+  description: string
+  dimensions_config: string
+  calculation_method: string
   is_active: boolean
   created_at: string
   updated_at: string

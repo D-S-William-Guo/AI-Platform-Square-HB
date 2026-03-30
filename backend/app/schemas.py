@@ -1,6 +1,10 @@
 from datetime import date, datetime
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+T = TypeVar("T")
 
 
 class AppBase(BaseModel):
@@ -173,6 +177,14 @@ class UserImportResponse(BaseModel):
     updated: int
     unchanged: int
     source: str
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class SubmissionCreate(BaseModel):

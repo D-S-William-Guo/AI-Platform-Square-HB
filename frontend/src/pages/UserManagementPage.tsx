@@ -7,6 +7,7 @@ import {
   updateAdminUserSubmitPermission,
 } from '../api/client'
 import type { AdminUserCreatePayload, AuthUser, UserRole } from '../types'
+import Pagination from '../components/Pagination'
 
 const defaultForm: AdminUserCreatePayload = {
   username: '',
@@ -29,19 +30,36 @@ function resolveError(err: unknown, fallback: string): string {
 const UserManagementPage = () => {
   const [users, setUsers] = useState<AuthUser[]>([])
   const [keyword, setKeyword] = useState('')
+  const [appliedKeyword, setAppliedKeyword] = useState('')
   const [loading, setLoading] = useState(true)
   const [savingUserId, setSavingUserId] = useState<number | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<AdminUserCreatePayload>(defaultForm)
   const [creating, setCreating] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
-  const loadUsers = async (q?: string) => {
+  const loadUsers = async (options?: { q?: string; page?: number; pageSize?: number }) => {
+    const nextPage = options?.page ?? page
+    const nextPageSize = options?.pageSize ?? pageSize
+    const nextQuery = options?.q ?? appliedKeyword
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAdminUsers(q ? { q } : undefined)
-      setUsers(data)
+      const data = await fetchAdminUsers({
+        ...(nextQuery ? { q: nextQuery } : {}),
+        page: nextPage,
+        page_size: nextPageSize,
+      })
+      setUsers(data.items)
+      setTotal(data.total)
+      setTotalPages(data.total_pages)
+      if (data.total_pages > 0 && nextPage > data.total_pages) {
+        setPage(data.total_pages)
+      }
     } catch (err) {
       setError(resolveError(err, '加载用户列表失败'))
     } finally {
@@ -51,17 +69,25 @@ const UserManagementPage = () => {
 
   useEffect(() => {
     loadUsers()
-  }, [])
+  }, [page, pageSize, appliedKeyword])
 
-  const filteredUsers = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase()
-    if (!normalized) return users
-    return users.filter((user) =>
-      [user.username, user.chinese_name, user.department, user.email]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(normalized))
-    )
-  }, [users, keyword])
+  const visibleSummary = useMemo(() => {
+    const activeCount = users.filter((user) => user.is_active).length
+    const submitEnabledCount = users.filter((user) => user.can_submit).length
+    const adminCount = users.filter((user) => user.role === 'admin').length
+    return { activeCount, submitEnabledCount, adminCount }
+  }, [users])
+
+  const applySearch = () => {
+    setPage(1)
+    setAppliedKeyword(keyword.trim())
+  }
+
+  const resetSearch = () => {
+    setKeyword('')
+    setAppliedKeyword('')
+    setPage(1)
+  }
 
   const handleCreateUser = async () => {
     if (!formData.username?.trim() || !formData.chinese_name?.trim() || !formData.department?.trim()) {
@@ -83,7 +109,11 @@ const UserManagementPage = () => {
       })
       setFormData(defaultForm)
       setMessage('用户创建成功')
-      await loadUsers(keyword.trim() || undefined)
+      await loadUsers({
+        q: appliedKeyword,
+        page,
+        pageSize,
+      })
     } catch (err) {
       setError(resolveError(err, '创建用户失败'))
     } finally {
@@ -102,7 +132,11 @@ const UserManagementPage = () => {
     try {
       await runner()
       setMessage(successMessage)
-      await loadUsers(keyword.trim() || undefined)
+      await loadUsers({
+        q: appliedKeyword,
+        page,
+        pageSize,
+      })
     } catch (err) {
       setError(resolveError(err, '保存失败'))
     } finally {
@@ -133,15 +167,47 @@ const UserManagementPage = () => {
             </div>
           </div>
 
+          <div className="user-management-summary">
+            <div className="summary-card">
+              <span className="summary-label">用户总数</span>
+              <strong>{total}</strong>
+            </div>
+            <div className="summary-card">
+              <span className="summary-label">当前页启用账号</span>
+              <strong>{visibleSummary.activeCount}</strong>
+            </div>
+            <div className="summary-card">
+              <span className="summary-label">当前页可申报</span>
+              <strong>{visibleSummary.submitEnabledCount}</strong>
+            </div>
+            <div className="summary-card">
+              <span className="summary-label">当前页管理员</span>
+              <strong>{visibleSummary.adminCount}</strong>
+            </div>
+          </div>
+
           <div className="user-management-toolbar">
-            <input
-              className="search"
-              placeholder="搜索用户名、姓名、部门..."
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-            <button className="secondary" onClick={() => loadUsers(keyword.trim() || undefined)} disabled={loading}>
-              刷新
+            <div className="toolbar-search-group">
+              <input
+                className="search"
+                placeholder="搜索用户名、姓名、部门..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    applySearch()
+                  }
+                }}
+              />
+              <button className="secondary" onClick={applySearch} disabled={loading}>
+                搜索
+              </button>
+              <button className="ghost" onClick={resetSearch} disabled={loading}>
+                重置
+              </button>
+            </div>
+            <button className="secondary" onClick={() => loadUsers()} disabled={loading}>
+              刷新列表
             </button>
           </div>
 
@@ -149,7 +215,12 @@ const UserManagementPage = () => {
           {error ? <div className="page-message error">{error}</div> : null}
 
           <div className="user-create-card">
-            <h3>新增用户</h3>
+            <div className="card-header-row">
+              <div>
+                <h3>新增用户</h3>
+                <p>测试阶段可通过本地账号快速发放访问权限，后续也可作为单点登录的兜底入口。</p>
+              </div>
+            </div>
             <div className="user-create-grid">
               <input
                 className="form-input"
@@ -223,74 +294,112 @@ const UserManagementPage = () => {
             {loading ? (
               <div className="loading-container">用户列表加载中...</div>
             ) : (
-              <table className="user-table">
-                <thead>
-                  <tr>
-                    <th>用户名</th>
-                    <th>姓名</th>
-                    <th>部门</th>
-                    <th>角色</th>
-                    <th>启用</th>
-                    <th>可申报</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id}>
-                      <td>{user.username}</td>
-                      <td>{user.chinese_name}</td>
-                      <td>{user.department || '-'}</td>
-                      <td>{user.role === 'admin' ? '管理员' : '普通用户'}</td>
-                      <td>{user.is_active ? '是' : '否'}</td>
-                      <td>{user.can_submit ? '是' : '否'}</td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            className="secondary"
-                            disabled={savingUserId === user.id}
-                            onClick={() =>
-                              mutateUser(
-                                user.id,
-                                () => updateAdminUserSubmitPermission(user.id, !user.can_submit),
-                                user.can_submit ? '已关闭申报权限' : '已开启申报权限',
-                              )
-                            }
-                          >
-                            {user.can_submit ? '关闭申报' : '开启申报'}
-                          </button>
-                          <button
-                            className="secondary"
-                            disabled={savingUserId === user.id}
-                            onClick={() =>
-                              mutateUser(
-                                user.id,
-                                () => updateAdminUserStatus(user.id, !user.is_active),
-                                user.is_active ? '已禁用账号' : '已启用账号',
-                              )
-                            }
-                          >
-                            {user.is_active ? '禁用' : '启用'}
-                          </button>
-                          <button
-                            className="secondary"
-                            disabled={savingUserId === user.id}
-                            onClick={() =>
-                              mutateUser(
-                                user.id,
-                                () => updateAdminUserRole(user.id, user.role === 'admin' ? 'user' : 'admin'),
-                                user.role === 'admin' ? '已降为普通用户' : '已提升为管理员',
-                              )
-                            }
-                          >
-                            {user.role === 'admin' ? '降级管理员' : '设为管理员'}
-                          </button>
-                        </div>
-                      </td>
+              <>
+                <table className="user-table">
+                  <thead>
+                    <tr>
+                      <th>用户名</th>
+                      <th>姓名</th>
+                      <th>部门</th>
+                      <th>角色</th>
+                      <th>启用</th>
+                      <th>可申报</th>
+                      <th>操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {users.length === 0 ? (
+                      <tr>
+                        <td colSpan={7}>
+                          <div className="table-empty-state">
+                            <strong>没有匹配用户</strong>
+                            <span>请尝试调整搜索条件，或者先创建一个测试账号。</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      users.map((user) => (
+                        <tr key={user.id}>
+                          <td>
+                            <div className="user-cell-primary">{user.username}</div>
+                            <div className="user-cell-secondary">{user.email || '未填写邮箱'}</div>
+                          </td>
+                          <td>{user.chinese_name}</td>
+                          <td>{user.department || '-'}</td>
+                          <td>
+                            <span className={`user-role-badge ${user.role}`}>{user.role === 'admin' ? '管理员' : '普通用户'}</span>
+                          </td>
+                          <td>
+                            <span className={`status-badge ${user.is_active ? 'active' : 'inactive'}`}>
+                              {user.is_active ? '启用' : '停用'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status-badge ${user.can_submit ? 'active' : 'inactive'}`}>
+                              {user.can_submit ? '允许申报' : '仅浏览'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="table-actions">
+                              <button
+                                className="secondary"
+                                disabled={savingUserId === user.id}
+                                onClick={() =>
+                                  mutateUser(
+                                    user.id,
+                                    () => updateAdminUserSubmitPermission(user.id, !user.can_submit),
+                                    user.can_submit ? '已关闭申报权限' : '已开启申报权限',
+                                  )
+                                }
+                              >
+                                {user.can_submit ? '关闭申报' : '开启申报'}
+                              </button>
+                              <button
+                                className="secondary"
+                                disabled={savingUserId === user.id}
+                                onClick={() =>
+                                  mutateUser(
+                                    user.id,
+                                    () => updateAdminUserStatus(user.id, !user.is_active),
+                                    user.is_active ? '已禁用账号' : '已启用账号',
+                                  )
+                                }
+                              >
+                                {user.is_active ? '禁用' : '启用'}
+                              </button>
+                              <button
+                                className="secondary"
+                                disabled={savingUserId === user.id}
+                                onClick={() =>
+                                  mutateUser(
+                                    user.id,
+                                    () => updateAdminUserRole(user.id, user.role === 'admin' ? 'user' : 'admin'),
+                                    user.role === 'admin' ? '已降为普通用户' : '已提升为管理员',
+                                  )
+                                }
+                              >
+                                {user.role === 'admin' ? '降级管理员' : '设为管理员'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                <Pagination
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  totalPages={totalPages}
+                  disabled={loading}
+                  onPageChange={setPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setPage(1)
+                    setPageSize(nextPageSize)
+                  }}
+                />
+              </>
             )}
           </div>
         </section>

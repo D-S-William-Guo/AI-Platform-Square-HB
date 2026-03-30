@@ -14,6 +14,8 @@ import type {
   ImageUploadResponse,
   DocumentUploadResponse,
   RankingDimension,
+  PaginatedResponse,
+  RankingConfigRecord,
   Submission,
   HistoricalRanking
 } from '../types'
@@ -296,8 +298,10 @@ export async function fetchAdminUsers(params?: {
   q?: string
   role?: 'user' | 'admin'
   is_active?: boolean
+  page?: number
+  page_size?: number
 }) {
-  const { data } = await client.get<AuthUser[]>('/api/admin/users', { params })
+  const { data } = await client.get<PaginatedResponse<AuthUser>>('/api/admin/users', { params })
   return data
 }
 
@@ -411,8 +415,22 @@ export async function fetchAdminApps(params?: {
   section?: 'group' | 'province'
   status?: 'available' | 'approval' | 'beta' | 'offline'
   q?: string
+  page?: number
+  page_size?: number
 }) {
-  const { data } = await client.get<AppItem[]>('/api/admin/apps', {
+  const { data } = await client.get<PaginatedResponse<AppItem>>('/api/admin/apps', {
+    params: params || {},
+  })
+  return data
+}
+
+export async function fetchAdminRankingConfigs(params?: {
+  is_active?: boolean
+  q?: string
+  page?: number
+  page_size?: number
+}) {
+  const { data } = await client.get<PaginatedResponse<RankingConfigRecord>>('/api/admin/ranking-configs', {
     params: params || {},
   })
   return data
@@ -434,7 +452,7 @@ export async function updateAdminAppStatus(
 
 // 榜单配置 API
 export async function fetchRankingConfigs(is_active?: boolean) {
-  const { data } = await client.get<any[]>('/api/ranking-configs', {
+  const { data } = await client.get<RankingConfigRecord[]>('/api/ranking-configs', {
     params: is_active !== undefined ? { is_active } : {},
   })
   return data
