@@ -131,3 +131,12 @@ def _init_test_db():
         db.close()
 
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_runtime_guards():
+    from app.main import clear_rate_limit_state
+
+    clear_rate_limit_state()
+    yield
+    clear_rate_limit_state()
