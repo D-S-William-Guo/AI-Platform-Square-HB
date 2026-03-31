@@ -51,6 +51,7 @@ from .models import (
 from .schemas import (
     ActionLogOut,
     AdminUserCreatePayload,
+    AdminUserUpdatePayload,
     AppDetail,
     AuthLoginRequest,
     AuthLoginResponse,
@@ -2275,6 +2276,94 @@ def create_admin_user(
         payload_summary=(
             f"username={user.username},role={user.role},active={bool(user.is_active)},"
             f"can_submit={bool(user.can_submit)}"
+        ),
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}", response_model=UserPublic)
+def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    next_role = payload.role
+    next_active = bool(payload.is_active)
+
+    if user.role == "admin" and next_role != "admin":
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if user.is_active and active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    if user.role == "admin" and user.is_active and not next_active:
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    if admin_user and admin_user.id == user.id and not next_active:
+        raise HTTPException(status_code=409, detail="不能禁用当前登录管理员账号")
+
+    old_snapshot = {
+        "role": user.role,
+        "is_active": bool(user.is_active),
+        "can_submit": bool(user.can_submit),
+        "company": user.company or "",
+        "department": user.department or "",
+        "phone": user.phone or "",
+        "email": user.email or "",
+        "chinese_name": user.chinese_name,
+    }
+
+    user.chinese_name = payload.chinese_name.strip()
+    user.company = payload.company.strip()
+    user.department = payload.department.strip()
+    user.phone = payload.phone.strip()
+    user.email = payload.email.strip()
+    user.role = next_role
+    user.is_active = next_active
+    user.can_submit = bool(payload.can_submit)
+
+    if payload.password and payload.password.strip():
+        user.password_hash = hash_password(payload.password.strip())
+
+    if not next_active:
+        db.query(AuthSession).filter(
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+        ).update(
+            {AuthSession.revoked_at: datetime.utcnow()},
+            synchronize_session=False,
+        )
+
+    write_action_log(
+        db,
+        action="user.updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=(
+            f"username={user.username},old_role={old_snapshot['role']},new_role={user.role},"
+            f"old_active={old_snapshot['is_active']},new_active={bool(user.is_active)},"
+            f"old_can_submit={old_snapshot['can_submit']},new_can_submit={bool(user.can_submit)},"
+            f"old_company={old_snapshot['company']},new_company={user.company},"
+            f"old_department={old_snapshot['department']},new_department={user.department}"
         ),
     )
     db.commit()

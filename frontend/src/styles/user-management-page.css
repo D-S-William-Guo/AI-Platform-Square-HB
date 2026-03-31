@@ -345,6 +345,72 @@
   color: var(--text-primary);
 }
 
+.user-management-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.user-management-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 24px 0;
+}
+
+.user-management-modal .modal-title {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.user-management-modal .modal-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.user-management-modal .modal-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.user-management-modal .modal-body {
+  padding: 20px 24px 0;
+}
+
+.user-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.user-edit-grid .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-edit-grid .form-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.user-management-modal .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px 24px;
+}
+
 @media (max-width: 900px) {
   .user-management-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -378,6 +444,10 @@
 
   .user-table {
     min-width: 860px;
+  }
+
+  .user-edit-grid {
+    grid-template-columns: 1fr;
   }
 }
 

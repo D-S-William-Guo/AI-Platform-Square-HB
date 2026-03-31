@@ -419,6 +419,131 @@ def test_admin_can_create_user_and_manage_submit_permission():
     assert listed["can_submit"] is True
 
 
+def test_admin_can_update_existing_user_profile_and_reset_password():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "初始用户",
+            "company": "唐山市公司",
+            "department": "初始部门",
+            "password": "Initial_123!",
+            "phone": "13800002222",
+            "email": "initial.user@example.com",
+            "can_submit": False,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+
+    update_resp = client.put(
+        f"/api/admin/users/{created['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "chinese_name": "更新后用户",
+            "company": "保定市公司",
+            "department": "创新推进部",
+            "password": "Updated_123!",
+            "phone": "13800003333",
+            "email": "updated.user@example.com",
+            "role": "admin",
+            "is_active": True,
+            "can_submit": True,
+        },
+    )
+    assert update_resp.status_code == 200
+    updated = update_resp.json()
+    assert updated["chinese_name"] == "更新后用户"
+    assert updated["company"] == "保定市公司"
+    assert updated["department"] == "创新推进部"
+    assert updated["role"] == "admin"
+    assert updated["can_submit"] is True
+
+    old_login = client.post("/api/auth/login", json={"username": username, "password": "Initial_123!"})
+    assert old_login.status_code == 401
+
+    new_login = client.post("/api/auth/login", json={"username": username, "password": "Updated_123!"})
+    assert new_login.status_code == 200
+
+
+def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "快照用户",
+            "company": "邯郸市公司",
+            "department": "原始部门",
+            "password": "Snapshot_123!",
+            "can_submit": True,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+
+    submission_resp = client.post(
+        '/api/submissions',
+        json={
+            "app_name": f"历史快照测试应用-{uuid.uuid4().hex[:8]}",
+            "unit_name": "将被覆盖",
+            "contact": "快照用户",
+            "contact_phone": "13800009999",
+            "contact_email": "snapshot@example.com",
+            "category": "办公类",
+            "scenario": "用于验证用户组织信息调整后，历史申报快照仍然保持创建当时的归属信息。",
+            "embedded_system": "快照系统",
+            "problem_statement": "验证用户编辑不会改穿历史申报和应用归属。",
+            "effectiveness_type": "efficiency_gain",
+            "effectiveness_metric": "回归稳定",
+            "data_level": "L2",
+            "expected_benefit": "确保历史归属快照不被覆盖。",
+            "monthly_calls": 0,
+            "difficulty": "Medium",
+            "cover_image_url": "",
+            "detail_doc_url": "",
+            "detail_doc_name": "",
+        },
+        headers=auth_headers_for_user(username, "Snapshot_123!"),
+    )
+    assert submission_resp.status_code == 200
+    submission_id = submission_resp.json()["id"]
+    assert submission_resp.json()["company"] == "邯郸市公司"
+    assert submission_resp.json()["department"] == "原始部门"
+
+    update_resp = client.put(
+        f"/api/admin/users/{created['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "chinese_name": "快照用户",
+            "company": "承德市公司",
+            "department": "更新后部门",
+            "phone": "",
+            "email": "",
+            "role": "user",
+            "is_active": True,
+            "can_submit": True,
+        },
+    )
+    assert update_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+      row = db.query(Submission).filter(Submission.id == submission_id).first()
+      assert row is not None
+      assert row.company == "邯郸市公司"
+      assert row.department == "原始部门"
+    finally:
+      db.close()
+
+
 def test_admin_user_import_does_not_override_existing_role():
     admin_token = login_and_get_token("lisi", settings.admin_default_password)
 

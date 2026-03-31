@@ -102,6 +102,18 @@ export type AdminUserCreatePayload = {
   can_submit?: boolean
 }
 
+export type AdminUserUpdatePayload = {
+  chinese_name: string
+  company: string
+  department: string
+  password?: string
+  phone?: string
+  email?: string
+  role?: UserRole
+  is_active?: boolean
+  can_submit?: boolean
+}
+
 export type AuthLoginResponse = {
   access_token: string
   token_type: 'bearer'

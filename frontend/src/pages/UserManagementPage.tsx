@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   createAdminUser,
   fetchAdminUsers,
+  updateAdminUser,
   updateAdminUserRole,
   updateAdminUserStatus,
   updateAdminUserSubmitPermission,
@@ -38,7 +39,20 @@ const UserManagementPage = () => {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<AdminUserCreatePayload>(defaultForm)
+  const [editingUser, setEditingUser] = useState<AuthUser | null>(null)
+  const [editFormData, setEditFormData] = useState({
+    chinese_name: '',
+    company: '',
+    department: '',
+    password: '',
+    phone: '',
+    email: '',
+    role: 'user' as UserRole,
+    is_active: true,
+    can_submit: false,
+  })
   const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -122,6 +136,73 @@ const UserManagementPage = () => {
       setError(resolveError(err, '创建用户失败'))
     } finally {
       setCreating(false)
+    }
+  }
+
+  const openEditUser = (user: AuthUser) => {
+    setEditingUser(user)
+    setEditFormData({
+      chinese_name: user.chinese_name,
+      company: user.company || '',
+      department: user.department || '',
+      password: '',
+      phone: user.phone || '',
+      email: user.email || '',
+      role: user.role,
+      is_active: user.is_active,
+      can_submit: user.can_submit,
+    })
+    setError(null)
+    setMessage(null)
+  }
+
+  const closeEditUser = () => {
+    setEditingUser(null)
+    setEditFormData({
+      chinese_name: '',
+      company: '',
+      department: '',
+      password: '',
+      phone: '',
+      email: '',
+      role: 'user',
+      is_active: true,
+      can_submit: false,
+    })
+  }
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return
+    if (!editFormData.chinese_name.trim() || !editFormData.company.trim() || !editFormData.department.trim()) {
+      setError('请填写姓名、公司和部门')
+      return
+    }
+    setUpdating(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await updateAdminUser(editingUser.id, {
+        chinese_name: editFormData.chinese_name.trim(),
+        company: editFormData.company.trim(),
+        department: editFormData.department.trim(),
+        password: editFormData.password.trim() || undefined,
+        phone: editFormData.phone.trim(),
+        email: editFormData.email.trim(),
+        role: editFormData.role,
+        is_active: editFormData.is_active,
+        can_submit: editFormData.can_submit,
+      })
+      closeEditUser()
+      setMessage('用户信息已更新')
+      await loadUsers({
+        q: appliedKeyword,
+        page,
+        pageSize,
+      })
+    } catch (err) {
+      setError(resolveError(err, '更新用户失败'))
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -291,6 +372,13 @@ const UserManagementPage = () => {
                                   <button
                                     className="secondary"
                                     disabled={savingUserId === user.id}
+                                    onClick={() => openEditUser(user)}
+                                  >
+                                    编辑
+                                  </button>
+                                  <button
+                                    className="secondary"
+                                    disabled={savingUserId === user.id}
                                     onClick={() =>
                                       mutateUser(
                                         user.id,
@@ -435,6 +523,109 @@ const UserManagementPage = () => {
           )}
         </section>
       </div>
+
+      {editingUser ? (
+        <div className="modal-overlay" onClick={closeEditUser}>
+          <div className="modal-container user-management-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">编辑用户</h3>
+                <p className="modal-subtitle">更新用户基础资料、权限和可申报状态。历史申报和已生成应用归属不会随之改动。</p>
+              </div>
+              <button className="modal-close" onClick={closeEditUser}>×</button>
+            </div>
+            <div className="modal-body user-edit-grid">
+              <div className="form-group">
+                <label className="form-label">用户名</label>
+                <input className="form-input" value={editingUser.username} readOnly />
+              </div>
+              <div className="form-group">
+                <label className="form-label">姓名</label>
+                <input
+                  className="form-input"
+                  value={editFormData.chinese_name}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, chinese_name: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">公司</label>
+                <input
+                  className="form-input"
+                  value={editFormData.company}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, company: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">部门</label>
+                <input
+                  className="form-input"
+                  value={editFormData.department}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, department: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">手机号</label>
+                <input
+                  className="form-input"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">邮箱</label>
+                <input
+                  className="form-input"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">重置密码（可选）</label>
+                <input
+                  className="form-input"
+                  type="password"
+                  placeholder="不填写则保持原密码"
+                  value={editFormData.password}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, password: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">角色</label>
+                <select
+                  className="form-select"
+                  value={editFormData.role}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, role: e.target.value as UserRole }))}
+                >
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </div>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={editFormData.is_active}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, is_active: e.target.checked }))}
+                />
+                <span>启用账号</span>
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={editFormData.can_submit}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, can_submit: e.target.checked }))}
+                />
+                <span>允许申报</span>
+              </label>
+            </div>
+            <div className="modal-footer">
+              <button className="ghost" onClick={closeEditUser} disabled={updating}>取消</button>
+              <button className="primary" onClick={handleUpdateUser} disabled={updating}>
+                {updating ? '保存中...' : '保存修改'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

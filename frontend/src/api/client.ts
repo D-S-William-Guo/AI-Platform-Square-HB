@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type {
   AdminUserCreatePayload,
+  AdminUserUpdatePayload,
   AppItem,
   AuthProviderInfo,
   AuthLoginResponse,
@@ -313,6 +314,11 @@ export async function fetchAdminUsers(params?: {
 
 export async function createAdminUser(payload: AdminUserCreatePayload) {
   const { data } = await client.post<AuthUser>('/api/admin/users', payload)
+  return data
+}
+
+export async function updateAdminUser(userId: number, payload: AdminUserUpdatePayload) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}`, payload)
   return data
 }
 
