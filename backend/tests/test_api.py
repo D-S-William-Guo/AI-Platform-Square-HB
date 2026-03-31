@@ -57,6 +57,28 @@ def test_auth_login_me_logout_flow():
     assert after_resp.status_code == 401
 
 
+def test_auth_login_sets_secure_cookie_by_default_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "auth_cookie_secure", None)
+    client.cookies.clear()
+
+    login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+
+    assert login_resp.status_code == 200
+    assert "Secure" in login_resp.headers["set-cookie"]
+
+
+def test_auth_login_can_disable_secure_cookie_for_internal_http(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "auth_cookie_secure", False)
+    client.cookies.clear()
+
+    login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
+
+    assert login_resp.status_code == 200
+    assert "Secure" not in login_resp.headers["set-cookie"]
+
+
 def test_auth_provider_defaults_to_local_login():
     resp = client.get("/api/auth/provider")
     assert resp.status_code == 200

@@ -45,6 +45,7 @@ OA_SSO_LOGIN_URL=
 EXTERNAL_SSO_LOGIN_URL=
 ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
 ALLOWED_HOSTS=127.0.0.1,localhost,testserver
+# AUTH_COOKIE_SECURE=false
 # ENABLE_API_DOCS=false
 
 USER_DEFAULT_PASSWORD=ChangeMe_User_123!
@@ -65,6 +66,7 @@ PIP_TRUSTED_HOST_PRODUCTION=136.142.12.68
 - 生产环境请显式配置：
   - `ALLOWED_ORIGINS`
   - `ALLOWED_HOSTS`
+- 纯内网 HTTP 主机如暂时没有 HTTPS 终止层，可显式设置 `AUTH_COOKIE_SECURE=false`，避免生产环境 `Secure` Cookie 无法回传
 - 图片和文档上传默认要求已登录用户访问
 
 ## 本地开发最短命令
