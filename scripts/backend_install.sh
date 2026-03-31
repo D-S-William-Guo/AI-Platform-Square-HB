@@ -13,4 +13,7 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -r "$ROOT_DIR/backend/requirements.txt"
-"$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -e "$ROOT_DIR/backend"
+if ! "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -e "$ROOT_DIR/backend"; then
+  echo "Editable install with build isolation failed; retrying without build isolation." >&2
+  "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e "$ROOT_DIR/backend"
+fi

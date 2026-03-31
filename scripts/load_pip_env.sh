@@ -45,11 +45,15 @@ load_pip_install_args() {
   case "$environment" in
     development)
       PIP_INSTALL_ARGS=()
+      unset PIP_INDEX_URL
+      unset PIP_TRUSTED_HOST
       ;;
     production)
       local pip_index_url="${PIP_INDEX_URL_PRODUCTION:-$DEFAULT_PIP_INDEX_URL_PRODUCTION}"
       local pip_trusted_host="${PIP_TRUSTED_HOST_PRODUCTION:-$DEFAULT_PIP_TRUSTED_HOST_PRODUCTION}"
       PIP_INSTALL_ARGS=(-i "$pip_index_url" --trusted-host "$pip_trusted_host")
+      export PIP_INDEX_URL="$pip_index_url"
+      export PIP_TRUSTED_HOST="$pip_trusted_host"
       ;;
     *)
       echo "Unsupported ENVIRONMENT='$environment'. Expected 'development' or 'production'." >&2
