@@ -12,6 +12,7 @@ import Pagination from '../components/Pagination'
 const defaultForm: AdminUserCreatePayload = {
   username: '',
   chinese_name: '',
+  company: '',
   department: '',
   password: '',
   phone: '',
@@ -91,8 +92,8 @@ const UserManagementPage = () => {
   }
 
   const handleCreateUser = async () => {
-    if (!formData.username?.trim() || !formData.chinese_name?.trim() || !formData.department?.trim()) {
-      setError('请填写用户名、姓名和部门')
+    if (!formData.username?.trim() || !formData.chinese_name?.trim() || !formData.company?.trim() || !formData.department?.trim()) {
+      setError('请填写用户名、姓名、公司和部门')
       return
     }
     setCreating(true)
@@ -103,6 +104,7 @@ const UserManagementPage = () => {
         ...formData,
         username: formData.username.trim(),
         chinese_name: formData.chinese_name.trim(),
+        company: formData.company.trim(),
         department: formData.department.trim(),
         phone: formData.phone?.trim() || '',
         email: formData.email?.trim() || '',
@@ -212,7 +214,7 @@ const UserManagementPage = () => {
                 <div className="toolbar-search-group">
                   <input
                     className="search"
-                    placeholder="搜索用户名、姓名、部门..."
+                    placeholder="搜索用户名、姓名、公司、部门..."
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     onKeyDown={(event) => {
@@ -243,6 +245,7 @@ const UserManagementPage = () => {
                         <tr>
                           <th>用户名</th>
                           <th>姓名</th>
+                          <th>公司</th>
                           <th>部门</th>
                           <th>角色</th>
                           <th>启用</th>
@@ -253,7 +256,7 @@ const UserManagementPage = () => {
                       <tbody>
                         {users.length === 0 ? (
                           <tr>
-                            <td colSpan={7}>
+                            <td colSpan={8}>
                               <div className="table-empty-state">
                                 <strong>没有匹配用户</strong>
                                 <span>请尝试调整搜索条件，或者切换到“新增用户”页签创建一个测试账号。</span>
@@ -268,6 +271,7 @@ const UserManagementPage = () => {
                                 <div className="user-cell-secondary">{user.email || '未填写邮箱'}</div>
                               </td>
                               <td>{user.chinese_name}</td>
+                              <td>{user.company || '-'}</td>
                               <td>{user.department || '-'}</td>
                               <td>
                                 <span className={`user-role-badge ${user.role}`}>{user.role === 'admin' ? '管理员' : '普通用户'}</span>
@@ -366,6 +370,12 @@ const UserManagementPage = () => {
                   placeholder="姓名"
                   value={formData.chinese_name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, chinese_name: e.target.value }))}
+                />
+                <input
+                  className="form-input"
+                  placeholder="公司"
+                  value={formData.company}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, company: e.target.value }))}
                 />
                 <input
                   className="form-input"

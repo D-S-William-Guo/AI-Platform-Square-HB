@@ -288,7 +288,8 @@ export default function SubmissionReviewPage() {
                     </span>
                   </div>
                   <div className="submission-meta">
-                    <span>申报单位：{submission.unit_name}</span>
+                    <span>所属公司：{submission.company || submission.unit_name}</span>
+                    <span>所属部门：{submission.department || '未设置'}</span>
                     <span>联系人：{submission.contact}</span>
                     <span>申报时间：{new Date(submission.created_at).toLocaleDateString()}</span>
                   </div>
@@ -379,8 +380,12 @@ export default function SubmissionReviewPage() {
                     <span className="detail-value">{selectedSubmission.app_name}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">申报单位</span>
-                    <span className="detail-value">{selectedSubmission.unit_name}</span>
+                    <span className="detail-label">所属公司</span>
+                    <span className="detail-value">{selectedSubmission.company || selectedSubmission.unit_name}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">所属部门</span>
+                    <span className="detail-value">{selectedSubmission.department || '未设置'}</span>
                   </div>
                   <div className="detail-item">
                     <span className="detail-label">联系人</span>

@@ -46,9 +46,17 @@ export default function RankingDetailPage() {
   const [config, setConfig] = useState<RankingConfigDetail | null>(null)
   const [rankings, setRankings] = useState<RankingItem[]>([])
   const [dimensions, setDimensions] = useState<RankingDimension[]>([])
+  const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedApp, setSelectedApp] = useState<RankingItem | null>(null)
+
+  const companyOptions = useMemo(() => {
+    const values = rankings
+      .map((item) => item.app.company || item.app.org)
+      .filter(Boolean)
+    return ['全部', ...Array.from(new Set(values))]
+  }, [rankings])
 
   useEffect(() => {
     if (!configId) return
@@ -61,7 +69,7 @@ export default function RankingDetailPage() {
         // 并行加载数据
         const [configData, rankingsData, dimensionsData] = await Promise.all([
           fetchRankingConfigWithDimensions(configId),
-          fetchRankingsByConfig(configId),
+          fetchRankingsByConfig(configId, companyFilter !== '全部' ? companyFilter : undefined),
           fetchRankingDimensions()
         ])
 
@@ -77,7 +85,7 @@ export default function RankingDetailPage() {
     }
 
     loadData()
-  }, [configId])
+  }, [configId, companyFilter])
 
   // 获取该榜单配置的维度详情
   const configDimensions = useMemo(() => {
@@ -196,7 +204,23 @@ export default function RankingDetailPage() {
       <section className="rankings-section">
         <div className="rankings-header">
           <h2 className="section-title">最新排名</h2>
-          <span className="update-time">更新时间: {new Date().toLocaleDateString()}</span>
+          <div className="header-actions">
+            <div className="filter-group">
+              <span className="filter-label">公司筛选：</span>
+              <select
+                className="filter-select"
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+              >
+                {companyOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="update-time">更新时间: {new Date().toLocaleDateString()}</span>
+          </div>
         </div>
 
         {rankings.length === 0 ? (
@@ -226,7 +250,10 @@ export default function RankingDetailPage() {
                   </div>
                   <div className="app-info">
                     <span className="app-name">{row.app.name}</span>
-                    <span className="app-org">{row.app.org}</span>
+                    <span className="app-org">{row.app.company || row.app.org}</span>
+                    {row.app.department ? (
+                      <span className="app-org">{row.app.department}</span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -268,8 +295,12 @@ export default function RankingDetailPage() {
                 <h4 className="section-title">基本信息</h4>
                 <div className="detail-grid">
                   <div className="detail-item">
-                    <span className="detail-label">所属单位</span>
-                    <span className="detail-value">{selectedApp.app.org}</span>
+                    <span className="detail-label">所属公司</span>
+                    <span className="detail-value">{selectedApp.app.company || selectedApp.app.org}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">所属部门</span>
+                    <span className="detail-value">{selectedApp.app.department || '未设置'}</span>
                   </div>
                   <div className="detail-item">
                     <span className="detail-label">应用分类</span>

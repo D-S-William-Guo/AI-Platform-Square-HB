@@ -65,6 +65,15 @@ const defaultSubmission: SubmissionPayload = {
   detail_doc_name: ''
 }
 
+function createSubmissionDraft(currentUser: AuthUser, overrides?: Partial<SubmissionPayload>): SubmissionPayload {
+  const company = currentUser.company || ''
+  return {
+    ...defaultSubmission,
+    ...overrides,
+    unit_name: company || overrides?.unit_name || '',
+  }
+}
+
 const submissionStatusLabel: Record<Submission['status'], string> = {
   pending: '待审核',
   approved: '已通过',
@@ -114,7 +123,7 @@ type ValidationRule = {
 // 表单验证规则
 const validationRules: Record<string, ValidationRule> = {
   app_name: { required: true, minLength: 2, maxLength: 120, message: '应用名称需在2-120个字符之间' },
-  unit_name: { required: true, minLength: 2, maxLength: 120, message: '申报单位需在2-120个字符之间' },
+  unit_name: { required: true, minLength: 2, maxLength: 120, message: '当前账号未配置所属公司，请联系管理员补全信息' },
   contact: { required: true, minLength: 2, maxLength: 80, message: '联系人需在2-80个字符之间' },
   contact_phone: { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号码' },
   contact_email: { pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: '请输入有效的邮箱地址' },
@@ -131,6 +140,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('全部')
+  const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [keyword, setKeyword] = useState('')
   const [apps, setApps] = useState<AppItem[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
@@ -143,7 +153,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   const [statsError, setStatsError] = useState<string | null>(null)
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
   const [showSubmission, setShowSubmission] = useState(false)
-  const [submission, setSubmission] = useState<SubmissionPayload>(defaultSubmission)
+  const [submission, setSubmission] = useState<SubmissionPayload>(() => createSubmissionDraft(currentUser))
   const [errors, setErrors] = useState<FormErrors>({})
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -163,6 +173,17 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   const [managedSubmission, setManagedSubmission] = useState<Submission | null>(null)
   const [manageLoading, setManageLoading] = useState(false)
   const [editingSubmissionMeta, setEditingSubmissionMeta] = useState<{ id: number; manageToken: string } | null>(null)
+
+  const companyOptions = useMemo(() => {
+    const values =
+      activeNav === 'ranking'
+        ? rankings.map((row) => row.app.company || row.app.org).filter(Boolean)
+        : apps
+            .filter((app) => app.section === 'province')
+            .map((app) => app.company || app.org)
+            .filter(Boolean)
+    return ['全部', ...Array.from(new Set(values))]
+  }, [activeNav, apps, rankings])
 
   useEffect(() => {
     fetchRankingDimensions()
@@ -193,9 +214,13 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   }, [])
 
   useEffect(() => {
+    setSubmission((prev) => ({ ...prev, unit_name: currentUser.company || prev.unit_name }))
+  }, [currentUser.company])
+
+  useEffect(() => {
     if (activeNav === 'ranking') {
       // 获取榜单数据
-      fetchRankings(rankingType).then(async (data) => {
+      fetchRankings(rankingType, companyFilter !== '全部' ? companyFilter : undefined).then(async (data) => {
         let processedRankings = [...data]
         
         // 如果选择了特定维度，获取该维度的评分并重新排序
@@ -243,6 +268,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
     const params: Record<string, string> = { section: activeNav }
     if (statusFilter) params.status = statusFilter
     if (categoryFilter && categoryFilter !== '全部') params.category = categoryFilter
+    if (activeNav === 'province' && companyFilter !== '全部') params.company = companyFilter
     if (keyword) params.q = keyword
 
     fetchApps(params).then((data) => {
@@ -256,7 +282,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
         setApps(data)
       }
     })
-  }, [activeNav, statusFilter, categoryFilter, keyword, rankingType, rankingDimension])
+  }, [activeNav, statusFilter, categoryFilter, companyFilter, keyword, rankingType, rankingDimension])
 
   const blockTitle = useMemo(() => {
     if (activeNav === 'group') return '集团应用整合'
@@ -494,9 +520,9 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
       return
     }
     setEditingSubmissionMeta({ id: managedSubmission.id, manageToken: manageToken.trim() })
-    setSubmission({
+    setSubmission(createSubmissionDraft(currentUser, {
       app_name: managedSubmission.app_name,
-      unit_name: managedSubmission.unit_name,
+      unit_name: managedSubmission.company || managedSubmission.unit_name,
       contact: managedSubmission.contact,
       contact_phone: managedSubmission.contact_phone,
       contact_email: managedSubmission.contact_email,
@@ -513,7 +539,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
       cover_image_url: managedSubmission.cover_image_url || '',
       detail_doc_url: managedSubmission.detail_doc_url || '',
       detail_doc_name: managedSubmission.detail_doc_name || ''
-    })
+    }))
     setImagePreview(managedSubmission.cover_image_url ? resolveMediaUrl(managedSubmission.cover_image_url) : null)
     setDocumentMeta(
       managedSubmission.detail_doc_url
@@ -555,7 +581,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
         )
       }
       setShowSubmission(false)
-      setSubmission(defaultSubmission)
+      setSubmission(createSubmissionDraft(currentUser))
       setImagePreview(null)
       setDocumentMeta(null)
       setErrors({})
@@ -567,7 +593,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
 
   function closeSubmission() {
     setShowSubmission(false)
-    setSubmission(defaultSubmission)
+    setSubmission(createSubmissionDraft(currentUser))
     setImagePreview(null)
     setDocumentMeta(null)
     setErrors({})
@@ -596,7 +622,13 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
             <span>我的申报</span>
           </Link>
           {currentUser.can_submit ? (
-            <button className="primary" onClick={() => setShowSubmission(true)}>
+            <button
+              className="primary"
+              onClick={() => {
+                setSubmission(createSubmissionDraft(currentUser))
+                setShowSubmission(true)
+              }}
+            >
               <span>+</span>
               <span>我要申报</span>
             </button>
@@ -783,6 +815,19 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                 >
                   {categories.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
+                {activeNav === 'province' && (
+                  <select
+                    className="filter-select"
+                    value={companyFilter}
+                    onChange={(e) => setCompanyFilter(e.target.value)}
+                  >
+                    {companyOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
             {activeNav === 'ranking' && (
@@ -816,6 +861,20 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                     ))}
                   </select>
                 </div>
+                <div className="filter-group">
+                  <span className="filter-label">公司：</span>
+                  <select
+                    className="filter-select"
+                    value={companyFilter}
+                    onChange={(e) => setCompanyFilter(e.target.value)}
+                  >
+                    {companyOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
           </section>
@@ -835,7 +894,13 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                   <div className="card-content">
                     <h3 className="card-title">{app.name}</h3>
                     <div className="card-meta">
-                      <span className="card-org">{app.org}</span>
+                      <span className="card-org">{app.company || app.org}</span>
+                      {app.department ? (
+                        <>
+                          <span>·</span>
+                          <span>{app.department}</span>
+                        </>
+                      ) : null}
                       <span>·</span>
                       <span className="card-category">{app.category}</span>
                     </div>
@@ -888,7 +953,8 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
               <div className="modal-title-section">
                 <h3 className="modal-title">{selectedApp.name}</h3>
                 <div className="modal-subtitle">
-                  <span className="modal-org">{selectedApp.org}</span>
+                  <span className="modal-org">{selectedApp.company || selectedApp.org}</span>
+                  {selectedApp.department ? <span className="modal-org">· {selectedApp.department}</span> : null}
                 </div>
               </div>
               <button className="modal-close" onClick={() => setSelectedApp(null)}>×</button>
@@ -930,6 +996,14 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
               <div className="modal-section">
                 <div className="modal-section-title">基本信息</div>
                 <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">所属公司</span>
+                    <span className="modal-info-value">{selectedApp.company || selectedApp.org}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">所属部门</span>
+                    <span className="modal-info-value">{selectedApp.department || '未设置'}</span>
+                  </div>
                   <div className="modal-info-item">
                     <span className="modal-info-label">接入系统</span>
                     <span className="modal-info-value">{selectedApp.target_system}</span>
@@ -1027,10 +1101,11 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                     </span>
                   </div>
                   <div className="manage-submission-grid">
-                    <div><span className="label">申报单位</span><span>{managedSubmission.unit_name}</span></div>
+                    <div><span className="label">所属公司</span><span>{managedSubmission.company || managedSubmission.unit_name}</span></div>
+                    <div><span className="label">所属部门</span><span>{managedSubmission.department || '未设置'}</span></div>
                     <div><span className="label">联系人</span><span>{managedSubmission.contact}</span></div>
                     <div><span className="label">嵌入系统</span><span>{managedSubmission.embedded_system}</span></div>
-                    <div><span className="label">更新时间</span><span>{new Date(managedSubmission.created_at).toLocaleString()}</span></div>
+                    <div><span className="label">更新时间</span><span>{new Date(managedSubmission.updated_at || managedSubmission.created_at).toLocaleString()}</span></div>
                   </div>
                   <div className="manage-submission-actions">
                     <button
@@ -1169,14 +1244,24 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                     {errors.app_name && <span className="error-message">{errors.app_name}</span>}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">申报单位 *</label>
+                    <label className="form-label">所属公司 *</label>
                     <input 
                       className={`form-input ${errors.unit_name ? 'error' : ''}`}
-                      placeholder="请输入申报单位"
                       value={submission.unit_name} 
-                      onChange={(e) => handleFieldChange('unit_name', e.target.value)} 
+                      readOnly
                     />
                     {errors.unit_name && <span className="error-message">{errors.unit_name}</span>}
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">所属部门</label>
+                    <input
+                      className="form-input"
+                      value={currentUser.department || '未设置'}
+                      readOnly
+                    />
                   </div>
                 </div>
 

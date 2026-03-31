@@ -18,6 +18,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user")  # user | admin
     phone: Mapped[str] = mapped_column(String(30), default="")
     email: Mapped[str] = mapped_column(String(120), default="")
+    company: Mapped[str] = mapped_column(String(120), default="")
     department: Mapped[str] = mapped_column(String(120), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     can_submit: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -69,6 +70,8 @@ class App(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     org: Mapped[str] = mapped_column(String(60), nullable=False)
+    company: Mapped[str] = mapped_column(String(120), default="")
+    department: Mapped[str] = mapped_column(String(120), default="")
     section: Mapped[str] = mapped_column(String(20), nullable=False)  # group | province
     category: Mapped[str] = mapped_column(String(30), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -145,6 +148,8 @@ class Submission(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     app_name: Mapped[str] = mapped_column(String(120), nullable=False)
     unit_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    company: Mapped[str] = mapped_column(String(120), default="")
+    department: Mapped[str] = mapped_column(String(120), default="")
     contact: Mapped[str] = mapped_column(String(80), nullable=False)
     contact_phone: Mapped[str] = mapped_column(String(20), default="")
     contact_email: Mapped[str] = mapped_column(String(120), default="")

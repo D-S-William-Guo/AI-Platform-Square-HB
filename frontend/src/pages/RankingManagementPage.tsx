@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { RankingConfigRecord, RankingDimension, AppItem } from '../types'
 import {
   fetchRankingDimensions,
@@ -136,6 +136,7 @@ const RankingManagementPage = () => {
   const [statusUpdatingAppId, setStatusUpdatingAppId] = useState<number | null>(null)
   const [manageSectionFilter, setManageSectionFilter] = useState<'all' | 'group' | 'province'>('all')
   const [manageStatusFilter, setManageStatusFilter] = useState<'all' | 'available' | 'approval' | 'beta' | 'offline'>('all')
+  const [manageCompanyFilter, setManageCompanyFilter] = useState('all')
   const [manageKeyword, setManageKeyword] = useState('')
 
   // 维度表单状态
@@ -171,6 +172,14 @@ const RankingManagementPage = () => {
     cover_image_url: ''
   })
 
+  const companyFilterOptions = useMemo(() => {
+    const values = adminApps
+      .filter((app) => app.section === 'province')
+      .map((app) => app.company || app.org)
+      .filter(Boolean)
+    return ['all', ...Array.from(new Set(values))]
+  }, [adminApps])
+
   useEffect(() => {
     loadBaseData()
   }, [])
@@ -185,7 +194,7 @@ const RankingManagementPage = () => {
 
   useEffect(() => {
     loadAdminAppsPage()
-  }, [adminAppsPage, adminAppsPageSize, manageSectionFilter, manageStatusFilter, manageKeyword])
+  }, [adminAppsPage, adminAppsPageSize, manageSectionFilter, manageStatusFilter, manageCompanyFilter, manageKeyword])
 
   const loadBaseData = async () => {
     setLoading(true)
@@ -271,6 +280,7 @@ const RankingManagementPage = () => {
       const data = await fetchAdminApps({
         ...(manageSectionFilter !== 'all' ? { section: manageSectionFilter } : {}),
         ...(manageStatusFilter !== 'all' ? { status: manageStatusFilter } : {}),
+        ...(manageCompanyFilter !== 'all' ? { company: manageCompanyFilter } : {}),
         ...(manageKeyword.trim() ? { q: manageKeyword.trim() } : {}),
         page: adminAppsPage,
         page_size: adminAppsPageSize,
@@ -894,7 +904,8 @@ const RankingManagementPage = () => {
                       <thead>
                         <tr>
                           <th>应用名称</th>
-                          <th>所属单位</th>
+                          <th>所属公司</th>
+                          <th>所属部门</th>
                           <th>参与的榜单</th>
                           <th>操作</th>
                         </tr>
@@ -905,7 +916,8 @@ const RankingManagementPage = () => {
                           return (
                             <tr key={app.id}>
                               <td className="app-name">{app.name}</td>
-                              <td className="app-org">{app.org}</td>
+                              <td className="app-org">{app.company || app.org}</td>
+                              <td>{app.department || '未设置'}</td>
                               <td className="app-participation">
                                 {settings.length === 0 ? (
                                   <span className="no-participation">未参与任何榜单</span>
@@ -1013,6 +1025,19 @@ const RankingManagementPage = () => {
                   <option value="beta">试运行</option>
                   <option value="offline">已下线</option>
                 </select>
+                <select
+                  value={manageCompanyFilter}
+                  onChange={(e) => {
+                    setManageCompanyFilter(e.target.value)
+                    setAdminAppsPage(1)
+                  }}
+                >
+                  {companyFilterOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item === 'all' ? '全部公司' : item}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="text"
                   value={manageKeyword}
@@ -1020,7 +1045,7 @@ const RankingManagementPage = () => {
                     setManageKeyword(e.target.value)
                     setAdminAppsPage(1)
                   }}
-                  placeholder="搜索应用名/单位/分类"
+                  placeholder="搜索应用名/公司/部门/分类"
                 />
               </div>
 
@@ -1039,6 +1064,7 @@ const RankingManagementPage = () => {
                         <tr>
                           <th>应用名称</th>
                           <th>分区</th>
+                          <th>公司 / 部门</th>
                           <th>分类</th>
                           <th>状态</th>
                           <th>操作</th>
@@ -1049,9 +1075,13 @@ const RankingManagementPage = () => {
                           <tr key={app.id}>
                             <td>
                               <div className="app-name">{app.name}</div>
-                              <div className="app-org">{app.org}</div>
+                              <div className="app-org">{app.company || app.org}</div>
                             </td>
                             <td>{app.section === 'province' ? '省内应用' : '集团应用'}</td>
+                            <td>
+                              <div>{app.company || app.org}</div>
+                              <div className="app-org">{app.department || '未设置'}</div>
+                            </td>
                             <td>{app.category}</td>
                             <td>
                               <span className={`status-chip ${app.status}`}>{app.status}</span>

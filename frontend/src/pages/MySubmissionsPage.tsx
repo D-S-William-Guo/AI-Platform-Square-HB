@@ -186,7 +186,8 @@ export default function MySubmissionsPage() {
                   <span className={`status-chip ${item.status}`}>{statusLabel[item.status]}</span>
                 </div>
                 <div className="submission-meta">
-                  <span>申报单位：{item.unit_name}</span>
+                  <span>所属公司：{item.company || item.unit_name}</span>
+                  <span>所属部门：{item.department || '未设置'}</span>
                   <span>成效类型：{valueDimensionLabel[item.effectiveness_type]}</span>
                   <span>提交时间：{new Date(item.created_at).toLocaleString()}</span>
                 </div>
@@ -230,8 +231,14 @@ export default function MySubmissionsPage() {
                     <input className="form-input" value={form.app_name} onChange={(e) => setForm((prev) => ({ ...prev, app_name: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">申报单位</label>
-                    <input className="form-input" value={form.unit_name} onChange={(e) => setForm((prev) => ({ ...prev, unit_name: e.target.value }))} />
+                    <label className="form-label">所属公司</label>
+                    <input className="form-input" value={editing.company || form.unit_name} readOnly />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">所属部门</label>
+                    <input className="form-input" value={editing.department || '未设置'} readOnly />
                   </div>
                 </div>
                 <div className="form-row">

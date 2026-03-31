@@ -11,6 +11,8 @@ class AppBase(BaseModel):
     id: int
     name: str
     org: str
+    company: str = ""
+    department: str = ""
     section: str
     category: str
     description: str
@@ -84,6 +86,7 @@ class UserPublic(BaseModel):
     role: str
     phone: str
     email: str
+    company: str
     department: str
     is_active: bool
     can_submit: bool
@@ -149,6 +152,7 @@ class UserSubmitPermissionUpdatePayload(BaseModel):
 class AdminUserCreatePayload(BaseModel):
     username: str = Field(..., min_length=1, max_length=80)
     chinese_name: str = Field(..., min_length=1, max_length=80)
+    company: str = Field(..., min_length=1, max_length=120)
     department: str = Field(..., min_length=1, max_length=120)
     password: str | None = Field(default=None, min_length=8, max_length=128)
     phone: str = Field(default="", max_length=30)
@@ -163,6 +167,7 @@ class UserImportItem(BaseModel):
     chinese_name: str = Field(..., min_length=1, max_length=80)
     phone: str = Field(default="", max_length=30)
     email: str = Field(default="", max_length=120)
+    company: str = Field(default="", max_length=120)
     department: str = Field(default="", max_length=120)
     is_active: bool = True
 
@@ -212,6 +217,8 @@ class SubmissionOut(BaseModel):
     id: int
     app_name: str
     unit_name: str
+    company: str
+    department: str
     contact: str
     contact_phone: str
     contact_email: str
@@ -367,6 +374,8 @@ class HistoricalRankingOut(BaseModel):
     app_id: int
     app_name: str
     app_org: str
+    company: str
+    department: str
     tag: str
     score: int
     metric_type: str

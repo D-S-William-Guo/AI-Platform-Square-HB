@@ -6,6 +6,8 @@ export type AppItem = {
   id: number
   name: string
   org: string
+  company: string
+  department: string
   section: 'group' | 'province'
   category: string
   description: string
@@ -81,6 +83,7 @@ export type AuthUser = {
   role: UserRole
   phone: string
   email: string
+  company: string
   department: string
   is_active: boolean
   can_submit: boolean
@@ -89,6 +92,7 @@ export type AuthUser = {
 export type AdminUserCreatePayload = {
   username: string
   chinese_name: string
+  company: string
   department: string
   password?: string
   phone?: string
@@ -126,6 +130,8 @@ export type Submission = {
   id: number
   app_name: string
   unit_name: string
+  company: string
+  department: string
   contact: string
   contact_phone: string
   contact_email: string
@@ -255,6 +261,8 @@ export type HistoricalRanking = {
   app_id: number
   app_name: string
   app_org: string
+  company: string
+  department: string
   tag: string
   score: number
   metric_type: MetricType

@@ -76,8 +76,13 @@ export async function fetchApps(params?: Record<string, string>) {
   return data
 }
 
-export async function fetchRankings(ranking_type: 'excellent' | 'trend') {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_type } })
+export async function fetchRankings(
+  ranking_type: 'excellent' | 'trend',
+  company?: string
+) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+    params: { ranking_type, ...(company ? { company } : {}) },
+  })
   return data
 }
 
@@ -286,10 +291,11 @@ export async function rejectSubmission(submissionId: number, reason: string) {
 // 历史榜单查询 API
 export async function fetchHistoricalRankings(
   ranking_type: 'excellent' | 'trend',
-  period_date?: string
+  period_date?: string,
+  company?: string
 ) {
   const { data } = await client.get<HistoricalRanking[]>('/api/rankings/historical', {
-    params: { ranking_type, period_date }
+    params: { ranking_type, period_date, ...(company ? { company } : {}) }
   })
   return data
 }
@@ -414,6 +420,7 @@ export async function createGroupApp(
 export async function fetchAdminApps(params?: {
   section?: 'group' | 'province'
   status?: 'available' | 'approval' | 'beta' | 'offline'
+  company?: string
   q?: string
   page?: number
   page_size?: number
@@ -561,8 +568,10 @@ export async function saveAppRankingSetting(
 }
 
 // 获取榜单排名数据（新API - 支持按榜单配置ID查询）
-export async function fetchRankingsByConfig(configId: string) {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_config_id: configId } })
+export async function fetchRankingsByConfig(configId: string, company?: string) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+    params: { ranking_config_id: configId, ...(company ? { company } : {}) },
+  })
   return data
 }
 

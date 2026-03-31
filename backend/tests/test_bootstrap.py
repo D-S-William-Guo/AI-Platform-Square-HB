@@ -21,6 +21,8 @@ def test_seed_default_users_keeps_existing_password_hash():
         db.refresh(user)
 
         assert user.password_hash == "manually-set-hash"
+        assert user.company == "河北省公司"
+        assert user.department == "平台管理部"
         assert user.can_submit is True
 
         user.password_hash = original_hash
@@ -44,6 +46,8 @@ def test_reset_default_users_overwrites_existing_password_hash():
 
         assert user.password_hash != "manually-set-hash"
         assert verify_password(settings.admin_default_password, user.password_hash)
+        assert user.company == "河北省公司"
+        assert user.department == "平台管理部"
         assert user.can_submit is True
 
         user.password_hash = original_hash
