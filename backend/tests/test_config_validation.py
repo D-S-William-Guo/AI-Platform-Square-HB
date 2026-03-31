@@ -6,6 +6,7 @@ from app.config import (
     get_allowed_hosts,
     get_allowed_origins,
     is_api_docs_enabled,
+    is_auth_cookie_secure,
     validate_settings,
 )
 
@@ -114,3 +115,35 @@ def test_api_docs_default_to_disabled_in_production():
     )
 
     assert is_api_docs_enabled(settings) is False
+
+
+def test_auth_cookie_secure_defaults_to_false_in_development():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+    )
+
+    assert is_auth_cookie_secure(settings) is False
+
+
+def test_auth_cookie_secure_defaults_to_true_in_production():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="production",
+        user_default_password="safe-user-password",
+        admin_default_password="safe-admin-password",
+    )
+
+    assert is_auth_cookie_secure(settings) is True
+
+
+def test_auth_cookie_secure_can_be_disabled_explicitly_in_production():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="production",
+        user_default_password="safe-user-password",
+        admin_default_password="safe-admin-password",
+        auth_cookie_secure=False,
+    )
+
+    assert is_auth_cookie_secure(settings) is False

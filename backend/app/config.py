@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     auth_provider_mode: str = "local"
     auth_cookie_name: str = "AI_APP_AUTH"
+    auth_cookie_secure: bool | None = None
     auth_session_ttl_hours: int = 12
     oa_sso_login_url: str = ""
     external_sso_login_url: str = ""
@@ -109,6 +110,12 @@ def is_api_docs_enabled(settings_obj: Settings) -> bool:
     if settings_obj.enable_api_docs is not None:
         return settings_obj.enable_api_docs
     return not is_production_environment(settings_obj)
+
+
+def is_auth_cookie_secure(settings_obj: Settings) -> bool:
+    if settings_obj.auth_cookie_secure is not None:
+        return settings_obj.auth_cookie_secure
+    return is_production_environment(settings_obj)
 
 
 settings = Settings()
