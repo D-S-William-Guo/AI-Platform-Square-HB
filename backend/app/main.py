@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 import json
+import math
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -49,6 +50,8 @@ from .models import (
 )
 from .schemas import (
     ActionLogOut,
+    AdminUserCreatePayload,
+    AdminUserUpdatePayload,
     AppDetail,
     AuthLoginRequest,
     AuthLoginResponse,
@@ -90,7 +93,9 @@ from .schemas import (
     UserImportResponse,
     UserRoleUpdatePayload,
     UserStatusUpdatePayload,
+    UserSubmitPermissionUpdatePayload,
     AdminAppStatusUpdate,
+    PaginatedResponse,
 )
 from .venv_utils import venv_reader
 
@@ -294,8 +299,23 @@ def to_public_user(user: User) -> UserPublic:
         role=user.role,
         phone=user.phone or "",
         email=user.email or "",
+        company=user.company or "",
         department=user.department or "",
         is_active=bool(user.is_active),
+        can_submit=bool(user.can_submit),
+    )
+
+
+def paginate_query(query, page: int, page_size: int):
+    total = query.order_by(None).count()
+    total_pages = math.ceil(total / page_size) if total else 0
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return PaginatedResponse(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=total_pages,
     )
 
 
@@ -337,6 +357,7 @@ def upsert_users(
             "chinese_name": item.chinese_name.strip(),
             "phone": item.phone.strip(),
             "email": item.email.strip(),
+            "company": item.company.strip(),
             "department": item.department.strip(),
             "is_active": item.is_active,
         }
@@ -365,8 +386,10 @@ def upsert_users(
                     role="user",
                     phone=item["phone"],
                     email=item["email"],
+                    company=item["company"],
                     department=item["department"],
                     is_active=item["is_active"],
+                    can_submit=False,
                     password_hash=hash_password(settings.user_default_password),
                 )
             )
@@ -382,6 +405,9 @@ def upsert_users(
             changed = True
         if (user.email or "") != item["email"]:
             user.email = item["email"]
+            changed = True
+        if (user.company or "") != item["company"]:
+            user.company = item["company"]
             changed = True
         if (user.department or "") != item["department"]:
             user.department = item["department"]
@@ -436,6 +462,16 @@ def require_auth_session(
     if not session:
         raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
     return session
+
+
+def require_submit_permission(
+    auth_session: AuthSession = Depends(require_auth_session),
+) -> AuthSession:
+    if auth_session.user.role == "admin":
+        return auth_session
+    if not auth_session.user.can_submit:
+        raise HTTPException(status_code=403, detail="当前账号没有申报权限")
+    return auth_session
 
 
 def get_optional_auth_session(
@@ -1103,6 +1139,7 @@ def list_apps(
     section: str | None = Query(default=None),
     status: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    company: str | None = Query(default=None),
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
@@ -1118,8 +1155,18 @@ def list_apps(
         query = query.filter(App.status != "offline")
     if category and category != "全部":
         query = query.filter(App.category == category)
+    if company:
+        query = query.filter(App.company == company)
     if q:
-        query = query.filter(App.name.contains(q) | App.description.contains(q))
+        query = query.filter(
+            or_(
+                App.name.contains(q),
+                App.description.contains(q),
+                App.org.contains(q),
+                App.company.contains(q),
+                App.department.contains(q),
+            )
+        )
 
     return query.order_by(App.id).all()
 
@@ -1155,6 +1202,7 @@ def resolve_latest_run_id(db: Session, ranking_type: str, period_date: date) -> 
 def list_rankings(
     ranking_type: str = "excellent",
     ranking_config_id: str | None = Query(default=None, description="榜单配置ID（兼容前端 ranking_config_id 参数）"),
+    company: str | None = Query(default=None, description="按公司筛选省内榜单"),
     period_date: date | None = Query(default=None, description="查询历史榜单日期，格式：YYYY-MM-DD；不传则返回实时榜单"),
     db: Session = Depends(get_db)
 ):
@@ -1217,6 +1265,8 @@ def list_rankings(
             for hr in historical_rankings:
                 app = db.query(App).filter(App.id == hr.app_id).first()
                 if app and app.section == "province":
+                    if company and (app.company or app.org) != company:
+                        continue
                     result.append(
                         _to_ranking_item(
                             app=app,
@@ -1248,6 +1298,8 @@ def list_rankings(
         for row in realtime_rows:
             app = db.query(App).filter(App.id == row.app_id).first()
             if app and app.section == "province":
+                if company and (app.company or app.org) != company:
+                    continue
                 result.append(
                     _to_ranking_item(
                         app=app,
@@ -1322,12 +1374,17 @@ def list_submissions(
 def create_submission(
     payload: SubmissionCreate,
     request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     validate_submission_payload(payload)
+    submitter = auth_session.user
+    resolved_company = (submitter.company or payload.unit_name).strip()
+    resolved_department = (submitter.department or "").strip()
+    if not resolved_company:
+        raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法提交申报")
     normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    normalized_unit = normalize_dedupe_text(resolved_company)
     existing = (
         db.query(Submission)
         .filter(
@@ -1346,7 +1403,9 @@ def create_submission(
     submission_data["ranking_weight"] = 1.0
     submission_data["ranking_tags"] = ""
     submission_data["ranking_dimensions"] = ""
-    submitter = auth_session.user
+    submission_data["company"] = resolved_company
+    submission_data["department"] = resolved_department
+    submission_data["unit_name"] = resolved_company
     submission = Submission(
         **submission_data,
         manage_token=uuid.uuid4().hex,
@@ -1391,7 +1450,7 @@ def update_my_submission(
     submission_id: int,
     payload: SubmissionCreate,
     request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     """当前登录用户修改本人申报（仅 pending）。"""
@@ -1403,8 +1462,13 @@ def update_my_submission(
     if submission.status != "pending":
         raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
 
+    resolved_company = (auth_session.user.company or payload.unit_name).strip()
+    resolved_department = (auth_session.user.department or "").strip()
+    if not resolved_company:
+        raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法更新申报")
+
     normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    normalized_unit = normalize_dedupe_text(resolved_company)
     duplicate = (
         db.query(Submission)
         .filter(
@@ -1420,6 +1484,9 @@ def update_my_submission(
 
     validate_submission_payload(payload)
     update_fields = payload.model_dump()
+    update_fields["company"] = resolved_company
+    update_fields["department"] = resolved_department
+    update_fields["unit_name"] = resolved_company
     update_fields["ranking_dimensions"] = ""
     for key, value in update_fields.items():
         setattr(submission, key, value)
@@ -1505,8 +1572,13 @@ def update_submission_self(
     if submission.status != "pending":
         raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
 
+    resolved_company = (auth_session.user.company or payload.unit_name).strip()
+    resolved_department = (auth_session.user.department or "").strip()
+    if not resolved_company:
+        raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法更新申报")
+
     normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(payload.unit_name)
+    normalized_unit = normalize_dedupe_text(resolved_company)
     duplicate = (
         db.query(Submission)
         .filter(
@@ -1524,6 +1596,9 @@ def update_submission_self(
     validate_submission_payload(create_payload)
 
     update_fields = create_payload.model_dump()
+    update_fields["company"] = resolved_company
+    update_fields["department"] = resolved_department
+    update_fields["unit_name"] = resolved_company
     # 收敛：ranking_dimensions 停写。
     update_fields["ranking_dimensions"] = ""
     for key, value in update_fields.items():
@@ -1779,6 +1854,7 @@ def update_app_dimension_score_api(
 @app.get(f"{settings.api_prefix}/rankings/historical", response_model=list[HistoricalRankingOut])
 def list_historical_rankings(
     ranking_type: str = "excellent",
+    company: str | None = Query(default=None, description="按公司筛选历史榜单"),
     period_date: date | None = Query(default=None, description="查询日期，格式：YYYY-MM-DD"),
     run_id: str | None = Query(default=None, description="可选发布批次ID；不传则日期模式返回最新 run_id"),
     db: Session = Depends(get_db)
@@ -1812,12 +1888,39 @@ def list_historical_rankings(
             target_date = latest_date_row[0]
 
         query = query.filter(HistoricalRanking.period_date == target_date)
+        if company:
+            query = query.filter(HistoricalRanking.app_org == company)
         selected_run_id = run_id if run_id is not None else resolve_latest_run_id(db, scope_id, target_date)
         if selected_run_id is not None:
             query = query.filter(HistoricalRanking.run_id == selected_run_id)
         else:
             query = query.filter(HistoricalRanking.run_id.is_(None))
-        return query.order_by(HistoricalRanking.position).all()
+        rows = query.order_by(HistoricalRanking.position).all()
+        result: list[HistoricalRankingOut] = []
+        for row in rows:
+            app_company = row.app.company if row.app else row.app_org
+            app_department = row.app.department if row.app else ""
+            result.append(
+                HistoricalRankingOut(
+                    id=row.id,
+                    ranking_type=row.ranking_type,
+                    period_date=row.period_date,
+                    run_id=row.run_id,
+                    position=row.position,
+                    app_id=row.app_id,
+                    app_name=row.app_name,
+                    app_org=row.app_org,
+                    company=app_company or row.app_org,
+                    department=app_department or "",
+                    tag=row.tag,
+                    score=row.score,
+                    metric_type=row.metric_type,
+                    value_dimension=row.value_dimension,
+                    usage_30d=row.usage_30d,
+                    created_at=row.created_at,
+                )
+            )
+        return result
     except Exception as e:
         return []
 
@@ -2100,11 +2203,13 @@ def get_action_logs(
     ]
 
 
-@app.get(f"{settings.api_prefix}/admin/users", response_model=list[UserPublic])
+@app.get(f"{settings.api_prefix}/admin/users", response_model=PaginatedResponse[UserPublic])
 def list_users(
     q: str | None = Query(default=None),
     role: str | None = Query(default=None),
     is_active: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     _: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
@@ -2115,6 +2220,7 @@ def list_users(
                 User.username.contains(q),
                 User.chinese_name.contains(q),
                 User.email.contains(q),
+                User.company.contains(q),
                 User.department.contains(q),
             )
         )
@@ -2125,7 +2231,144 @@ def list_users(
     if is_active is not None:
         query = query.filter(User.is_active.is_(is_active))
 
-    return query.order_by(User.id.asc()).all()
+    rows = paginate_query(query.order_by(User.id.asc()), page, page_size)
+    return PaginatedResponse(
+        items=[to_public_user(user) for user in rows.items],
+        page=rows.page,
+        page_size=rows.page_size,
+        total=rows.total,
+        total_pages=rows.total_pages,
+    )
+
+
+@app.post(f"{settings.api_prefix}/admin/users", response_model=UserPublic)
+def create_admin_user(
+    payload: AdminUserCreatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(User).filter(func.lower(User.username) == payload.username.strip().lower()).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="用户名已存在")
+
+    user = User(
+        username=payload.username.strip(),
+        chinese_name=payload.chinese_name.strip(),
+        role=payload.role,
+        phone=payload.phone.strip(),
+        email=payload.email.strip(),
+        company=payload.company.strip(),
+        department=payload.department.strip(),
+        is_active=payload.is_active,
+        can_submit=payload.can_submit,
+        password_hash=hash_password((payload.password or settings.user_default_password).strip()),
+    )
+    db.add(user)
+    db.flush()
+    write_action_log(
+        db,
+        action="user.created",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=(
+            f"username={user.username},role={user.role},active={bool(user.is_active)},"
+            f"can_submit={bool(user.can_submit)}"
+        ),
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}", response_model=UserPublic)
+def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    next_role = payload.role
+    next_active = bool(payload.is_active)
+
+    if user.role == "admin" and next_role != "admin":
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if user.is_active and active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    if user.role == "admin" and user.is_active and not next_active:
+        active_admin_count = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+            .count()
+        )
+        if active_admin_count <= 1:
+            raise HTTPException(status_code=409, detail="至少需要保留一个启用状态的管理员账号")
+
+    if admin_user and admin_user.id == user.id and not next_active:
+        raise HTTPException(status_code=409, detail="不能禁用当前登录管理员账号")
+
+    old_snapshot = {
+        "role": user.role,
+        "is_active": bool(user.is_active),
+        "can_submit": bool(user.can_submit),
+        "company": user.company or "",
+        "department": user.department or "",
+        "phone": user.phone or "",
+        "email": user.email or "",
+        "chinese_name": user.chinese_name,
+    }
+
+    user.chinese_name = payload.chinese_name.strip()
+    user.company = payload.company.strip()
+    user.department = payload.department.strip()
+    user.phone = payload.phone.strip()
+    user.email = payload.email.strip()
+    user.role = next_role
+    user.is_active = next_active
+    user.can_submit = bool(payload.can_submit)
+
+    if payload.password and payload.password.strip():
+        user.password_hash = hash_password(payload.password.strip())
+
+    if not next_active:
+        db.query(AuthSession).filter(
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+        ).update(
+            {AuthSession.revoked_at: datetime.utcnow()},
+            synchronize_session=False,
+        )
+
+    write_action_log(
+        db,
+        action="user.updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=(
+            f"username={user.username},old_role={old_snapshot['role']},new_role={user.role},"
+            f"old_active={old_snapshot['is_active']},new_active={bool(user.is_active)},"
+            f"old_can_submit={old_snapshot['can_submit']},new_can_submit={bool(user.can_submit)},"
+            f"old_company={old_snapshot['company']},new_company={user.company},"
+            f"old_department={old_snapshot['department']},new_department={user.department}"
+        ),
+    )
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/role", response_model=UserPublic)
@@ -2161,6 +2404,36 @@ def update_user_role(
         resource_id=str(user.id),
         request_id=request.headers.get("X-Request-Id", ""),
         payload_summary=f"username={user.username},old={old_role},new={user.role}",
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.put(f"{settings.api_prefix}/admin/users/{{user_id}}/submit-permission", response_model=UserPublic)
+def update_user_submit_permission(
+    user_id: int,
+    payload: UserSubmitPermissionUpdatePayload,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if bool(user.can_submit) == bool(payload.can_submit):
+        return user
+
+    old_value = bool(user.can_submit)
+    user.can_submit = payload.can_submit
+    write_action_log(
+        db,
+        action="user.submit_permission_updated",
+        actor_user=admin_user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"username={user.username},old={old_value},new={bool(user.can_submit)}",
     )
     db.commit()
     db.refresh(user)
@@ -2496,6 +2769,8 @@ def approve_submission_and_create_app(
         app = App(
             name=submission.app_name,
             org=submission.unit_name,
+            company=submission.company or submission.unit_name,
+            department=submission.department or "",
             section="province",
             category=submission.category,
             description=submission.scenario,
@@ -2664,6 +2939,8 @@ def create_group_app(
         app = App(
             name=payload.name,
             org=payload.org,
+            company=payload.org,
+            department="",
             section="group",  # 集团应用
             category=payload.category,
             description=payload.description,
@@ -2713,11 +2990,14 @@ def create_group_app(
         raise HTTPException(status_code=500, detail=f"创建集团应用失败: {str(e)}")
 
 
-@app.get(f"{settings.api_prefix}/admin/apps", response_model=list[AppDetail])
+@app.get(f"{settings.api_prefix}/admin/apps", response_model=PaginatedResponse[AppDetail])
 def admin_list_apps(
     section: str | None = Query(default=None, description="group/province"),
     status: str | None = Query(default=None, description="available/approval/beta/offline"),
+    company: str | None = Query(default=None, description="按公司筛选"),
     q: str | None = Query(default=None, description="按名称或描述搜索"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     _: None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
@@ -2730,9 +3010,20 @@ def admin_list_apps(
         if status not in APP_STATUS_VALUES:
             raise HTTPException(status_code=422, detail="Invalid status")
         query = query.filter(App.status == status)
+    if company:
+        query = query.filter(App.company == company)
     if q:
-        query = query.filter(App.name.contains(q) | App.description.contains(q))
-    return query.order_by(App.id).all()
+        query = query.filter(
+            or_(
+                App.name.contains(q),
+                App.description.contains(q),
+                App.org.contains(q),
+                App.company.contains(q),
+                App.department.contains(q),
+                App.category.contains(q),
+            )
+        )
+    return paginate_query(query.order_by(App.id), page, page_size)
 
 
 @app.put(f"{settings.api_prefix}/admin/apps/{{app_id}}/status")
@@ -2923,7 +3214,7 @@ def save_document(file: UploadFile) -> dict:
 async def upload_image(
     request: Request,
     file: UploadFile = File(...),
-    _: AuthSession = Depends(require_auth_session),
+    _: AuthSession = Depends(require_submit_permission),
 ):
     """Upload image file"""
     enforce_rate_limit(request, bucket="upload_image", limit=20, window_seconds=300)
@@ -2968,7 +3259,7 @@ async def upload_image(
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    _: AuthSession = Depends(require_auth_session),
+    _: AuthSession = Depends(require_submit_permission),
 ):
     """Upload document file"""
     enforce_rate_limit(request, bucket="upload_document", limit=20, window_seconds=300)
@@ -3088,6 +3379,29 @@ def list_ranking_configs(
     if is_active is not None:
         query = query.filter(RankingConfig.is_active == is_active)
     return query.order_by(RankingConfig.id).all()
+
+
+@app.get(f"{settings.api_prefix}/admin/ranking-configs", response_model=PaginatedResponse[RankingConfigOut])
+def admin_list_ranking_configs(
+    is_active: bool | None = Query(default=None, description="按启用状态筛选"),
+    q: str | None = Query(default=None, description="按ID、名称或描述搜索"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    query = db.query(RankingConfig)
+    if is_active is not None:
+        query = query.filter(RankingConfig.is_active == is_active)
+    if q:
+        query = query.filter(
+            or_(
+                RankingConfig.id.contains(q),
+                RankingConfig.name.contains(q),
+                RankingConfig.description.contains(q),
+            )
+        )
+    return paginate_query(query.order_by(RankingConfig.id), page, page_size)
 
 
 @app.get(f"{settings.api_prefix}/ranking-configs/{{config_id}}", response_model=RankingConfigOut)

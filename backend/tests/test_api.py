@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.config import settings
 from app.database import SessionLocal
-from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission
+from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission, User
 
 
 client = TestClient(app)
@@ -180,12 +180,18 @@ def test_submission_records_submitter_user_from_session():
     resp = client.post('/api/submissions', json=payload, headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert resp.json()['submitter_user_id'] == user_id
+    assert resp.json()['company'] == '河北省公司'
+    assert resp.json()['department'] == '创新应用部'
+    assert resp.json()['unit_name'] == '河北省公司'
 
     db = SessionLocal()
     try:
         row = db.query(Submission).filter(Submission.id == resp.json()['id']).first()
         assert row is not None
         assert row.submitter_user_id == user_id
+        assert row.company == "河北省公司"
+        assert row.department == "创新应用部"
+        assert row.unit_name == "河北省公司"
         assert row.updated_at is not None
     finally:
         db.close()
@@ -238,6 +244,10 @@ def test_approve_submission_records_admin_actor_fields():
         assert app is not None
         assert submission.approved_by_user_id == admin_id
         assert submission.approved_at is not None
+        assert submission.company == "河北省公司"
+        assert submission.department == "创新应用部"
+        assert app.company == "河北省公司"
+        assert app.department == "创新应用部"
         assert app.approved_by_user_id == admin_id
         assert app.created_from_submission_id == submission_id
     finally:
@@ -298,9 +308,240 @@ def test_reject_submission_records_admin_and_reason():
 def test_admin_list_users_contains_seeded_accounts():
     resp = client.get('/api/admin/users', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
-    data = resp.json()
+    payload = resp.json()
+    assert payload["page"] == 1
+    data = payload["items"]
     usernames = {item['username'] for item in data}
     assert {'zhangsan', 'lisi'}.issubset(usernames)
+    zhangsan = next(item for item in data if item["username"] == "zhangsan")
+    assert zhangsan["can_submit"] is True
+    assert zhangsan["company"] == "河北省公司"
+    assert zhangsan["department"] == "创新应用部"
+
+
+def test_admin_users_pagination_returns_metadata():
+    resp = client.get('/api/admin/users?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 2
+    assert payload["total_pages"] >= 2
+    assert len(payload["items"]) == 1
+
+
+def test_user_without_submit_permission_cannot_create_submission():
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == "zhangsan").first()
+        assert user is not None
+        original_can_submit = bool(user.can_submit)
+        user.can_submit = False
+        db.commit()
+    finally:
+        db.close()
+
+    payload = {
+        "app_name": "权限校验测试应用",
+        "unit_name": "测试单位",
+        "contact": "测试人员",
+        "contact_phone": "13800000099",
+        "contact_email": "submit-block@example.com",
+        "category": "办公类",
+        "scenario": "这是一个用于验证无提交权限用户无法提交申报的测试场景描述，长度超过二十个字符。",
+        "embedded_system": "测试系统",
+        "problem_statement": "用于验证提交权限控制是否生效。",
+        "effectiveness_type": "efficiency_gain",
+        "effectiveness_metric": "效率提升 10%",
+        "data_level": "L2",
+        "expected_benefit": "阻止无权限用户发起申报。",
+        "monthly_calls": 0,
+        "difficulty": "Medium",
+        "cover_image_url": "",
+        "detail_doc_url": "",
+        "detail_doc_name": "",
+    }
+
+    try:
+        resp = create_submission_as_user(payload)
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "当前账号没有申报权限"
+    finally:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == "zhangsan").first()
+            assert user is not None
+            user.can_submit = original_can_submit
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_admin_can_create_user_and_manage_submit_permission():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "测试用户",
+            "company": "石家庄市公司",
+            "department": "测试部门",
+            "password": "TestPass_123!",
+            "phone": "13800001111",
+            "email": "new.user@example.com",
+            "can_submit": False,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+    assert created["username"] == username
+    assert created["role"] == "user"
+    assert created["company"] == "石家庄市公司"
+    assert created["can_submit"] is False
+
+    login_resp = client.post("/api/auth/login", json={"username": username, "password": "TestPass_123!"})
+    assert login_resp.status_code == 200
+
+    toggle_resp = client.put(
+        f"/api/admin/users/{created['id']}/submit-permission",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"can_submit": True},
+    )
+    assert toggle_resp.status_code == 200
+    assert toggle_resp.json()["can_submit"] is True
+
+    list_resp = client.get(f"/api/admin/users?q={username}", headers={"Authorization": f"Bearer {admin_token}"})
+    assert list_resp.status_code == 200
+    listed = next(item for item in list_resp.json()["items"] if item["username"] == username)
+    assert listed["can_submit"] is True
+
+
+def test_admin_can_update_existing_user_profile_and_reset_password():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "初始用户",
+            "company": "唐山市公司",
+            "department": "初始部门",
+            "password": "Initial_123!",
+            "phone": "13800002222",
+            "email": "initial.user@example.com",
+            "can_submit": False,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+
+    update_resp = client.put(
+        f"/api/admin/users/{created['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "chinese_name": "更新后用户",
+            "company": "保定市公司",
+            "department": "创新推进部",
+            "password": "Updated_123!",
+            "phone": "13800003333",
+            "email": "updated.user@example.com",
+            "role": "admin",
+            "is_active": True,
+            "can_submit": True,
+        },
+    )
+    assert update_resp.status_code == 200
+    updated = update_resp.json()
+    assert updated["chinese_name"] == "更新后用户"
+    assert updated["company"] == "保定市公司"
+    assert updated["department"] == "创新推进部"
+    assert updated["role"] == "admin"
+    assert updated["can_submit"] is True
+
+    old_login = client.post("/api/auth/login", json={"username": username, "password": "Initial_123!"})
+    assert old_login.status_code == 401
+
+    new_login = client.post("/api/auth/login", json={"username": username, "password": "Updated_123!"})
+    assert new_login.status_code == 200
+
+
+def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "快照用户",
+            "company": "邯郸市公司",
+            "department": "原始部门",
+            "password": "Snapshot_123!",
+            "can_submit": True,
+        },
+    )
+    assert create_resp.status_code == 200
+    created = create_resp.json()
+
+    submission_resp = client.post(
+        '/api/submissions',
+        json={
+            "app_name": f"历史快照测试应用-{uuid.uuid4().hex[:8]}",
+            "unit_name": "将被覆盖",
+            "contact": "快照用户",
+            "contact_phone": "13800009999",
+            "contact_email": "snapshot@example.com",
+            "category": "办公类",
+            "scenario": "用于验证用户组织信息调整后，历史申报快照仍然保持创建当时的归属信息。",
+            "embedded_system": "快照系统",
+            "problem_statement": "验证用户编辑不会改穿历史申报和应用归属。",
+            "effectiveness_type": "efficiency_gain",
+            "effectiveness_metric": "回归稳定",
+            "data_level": "L2",
+            "expected_benefit": "确保历史归属快照不被覆盖。",
+            "monthly_calls": 0,
+            "difficulty": "Medium",
+            "cover_image_url": "",
+            "detail_doc_url": "",
+            "detail_doc_name": "",
+        },
+        headers=auth_headers_for_user(username, "Snapshot_123!"),
+    )
+    assert submission_resp.status_code == 200
+    submission_id = submission_resp.json()["id"]
+    assert submission_resp.json()["company"] == "邯郸市公司"
+    assert submission_resp.json()["department"] == "原始部门"
+
+    update_resp = client.put(
+        f"/api/admin/users/{created['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "chinese_name": "快照用户",
+            "company": "承德市公司",
+            "department": "更新后部门",
+            "phone": "",
+            "email": "",
+            "role": "user",
+            "is_active": True,
+            "can_submit": True,
+        },
+    )
+    assert update_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+      row = db.query(Submission).filter(Submission.id == submission_id).first()
+      assert row is not None
+      assert row.company == "邯郸市公司"
+      assert row.department == "原始部门"
+    finally:
+      db.close()
 
 
 def test_admin_user_import_does_not_override_existing_role():
@@ -317,6 +558,7 @@ def test_admin_user_import_does_not_override_existing_role():
                     "chinese_name": "王五",
                     "phone": "13800001234",
                     "email": "wangwu@example.com",
+                    "company": "河北省公司",
                     "department": "测试部",
                     "is_active": True
                 }
@@ -328,9 +570,11 @@ def test_admin_user_import_does_not_override_existing_role():
 
     list_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
     assert list_resp.status_code == 200
-    user = next(item for item in list_resp.json() if item["username"] == "wangwu")
+    user = next(item for item in list_resp.json()["items"] if item["username"] == "wangwu")
     user_id = user["id"]
     assert user["role"] == "user"
+    assert user["company"] == "河北省公司"
+    assert user["can_submit"] is False
 
     role_resp = client.put(
         f"/api/admin/users/{user_id}/role",
@@ -351,6 +595,7 @@ def test_admin_user_import_does_not_override_existing_role():
                     "chinese_name": "王五-更新",
                     "phone": "",
                     "email": "",
+                    "company": "保定市公司",
                     "department": "二次导入",
                     "is_active": False
                 }
@@ -362,10 +607,12 @@ def test_admin_user_import_does_not_override_existing_role():
 
     verify_resp = client.get('/api/admin/users?q=wangwu', headers={"Authorization": f"Bearer {admin_token}"})
     assert verify_resp.status_code == 200
-    updated = next(item for item in verify_resp.json() if item["username"] == "wangwu")
+    updated = next(item for item in verify_resp.json()["items"] if item["username"] == "wangwu")
     assert updated["role"] == "admin"
+    assert updated["company"] == "保定市公司"
     assert updated["department"] == "二次导入"
     assert updated["is_active"] is False
+    assert updated["can_submit"] is False
 
 
 def test_admin_update_user_status_blocks_disabling_last_active_admin():
@@ -373,7 +620,7 @@ def test_admin_update_user_status_blocks_disabling_last_active_admin():
 
     list_resp = client.get('/api/admin/users?role=admin&is_active=true', headers={"Authorization": f"Bearer {admin_token}"})
     assert list_resp.status_code == 200
-    admins = list_resp.json()
+    admins = list_resp.json()["items"]
     lisi = next(item for item in admins if item["username"] == "lisi")
 
     disable_resp = client.put(
@@ -412,16 +659,17 @@ def test_external_user_sync_requires_and_validates_sync_token():
             headers={"X-User-Sync-Token": "sync-test-token"},
             json={
                 "source": "external-system",
-                "users": [{"username": "zhaoliu", "chinese_name": "赵六", "department": "集成系统"}]
+                "users": [{"username": "zhaoliu", "chinese_name": "赵六", "company": "邯郸市公司", "department": "集成系统"}]
             }
         )
         assert ok_resp.status_code == 200
         assert ok_resp.json()["source"] == "external-system"
         assert ok_resp.json()["created"] >= 1
 
-        users = client.get('/api/admin/users?q=zhaoliu', headers=auth_headers_for_user("lisi")).json()
+        users = client.get('/api/admin/users?q=zhaoliu', headers=auth_headers_for_user("lisi")).json()["items"]
         row = next(item for item in users if item["username"] == "zhaoliu")
         assert row["role"] == "user"
+        assert row["company"] == "邯郸市公司"
         assert row["department"] == "集成系统"
     finally:
         settings.user_sync_token = original_token
@@ -488,7 +736,59 @@ def test_public_apps_default_excludes_offline_but_supports_explicit_filter():
 
     admin_offline_resp = client.get("/api/admin/apps?section=group&status=offline", headers=auth_headers_for_user("lisi"))
     assert admin_offline_resp.status_code == 200
-    assert any(item["name"] == app_name for item in admin_offline_resp.json())
+    assert any(item["name"] == app_name for item in admin_offline_resp.json()["items"])
+
+
+def test_admin_apps_pagination_returns_metadata():
+    resp = client.get('/api/admin/apps?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 1
+    assert payload["total_pages"] >= 1
+    assert len(payload["items"]) == 1
+
+
+def test_public_apps_support_company_filter_for_province_apps():
+    create_resp = client.post(
+        '/api/submissions',
+        headers=auth_headers_for_user("zhangsan"),
+        json={
+            'category': '办公类',
+            'app_name': f'公司筛选省内应用-{uuid.uuid4().hex[:8]}',
+            'unit_name': '将被覆盖',
+            'contact': '张三',
+            'scenario': '用于验证省内应用列表支持按公司维度筛选，覆盖提交到应用的整条链路。',
+            'embedded_system': '测试系统',
+            'problem_statement': '需要验证公司字段是否能够自动继承到申报和应用。',
+            'effectiveness_type': 'efficiency_gain',
+            'effectiveness_metric': '人工配置成本下降',
+            'data_level': 'L2',
+            'expected_benefit': '确保省内应用列表可按公司进行准确筛选。',
+            'ranking_enabled': True,
+            'ranking_weight': 1.0,
+            'ranking_tags': '',
+            'ranking_dimensions': ''
+        },
+    )
+    assert create_resp.status_code == 200
+    submission_id = create_resp.json()['id']
+
+    approve_resp = client.post(
+        f'/api/submissions/{submission_id}/approve-and-create-app',
+        headers=auth_headers_for_user("lisi"),
+    )
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()['app_id']
+
+    resp = client.get('/api/apps?section=province&company=河北省公司')
+    assert resp.status_code == 200
+    items = resp.json()
+    matched = next(item for item in items if item['id'] == app_id)
+    assert matched['company'] == '河北省公司'
+    assert matched['department'] == '创新应用部'
+    assert matched['org'] == '河北省公司'
 
 
 def test_rankings_have_metric_fields():
@@ -503,6 +803,63 @@ def test_rankings_have_metric_fields():
         assert 'metric_type' in row
         assert 'value_dimension' in row
         assert 'updated_at' in row
+
+
+def test_rankings_support_company_filter_and_return_company_fields():
+    resp = client.get('/api/rankings?ranking_type=excellent')
+    assert resp.status_code == 200
+    rows = resp.json()
+    if not rows:
+        return
+
+    company = rows[0]['app']['company'] or rows[0]['app']['org']
+    filtered = client.get(f'/api/rankings?ranking_type=excellent&company={company}')
+    assert filtered.status_code == 200
+    filtered_rows = filtered.json()
+    assert filtered_rows
+    assert all((row['app']['company'] or row['app']['org']) == company for row in filtered_rows)
+    assert 'department' in filtered_rows[0]['app']
+
+
+def test_historical_rankings_return_company_department_and_support_company_filter():
+    db = SessionLocal()
+    try:
+        app = db.query(App).filter(App.section == 'province').order_by(App.id.desc()).first()
+        assert app is not None
+        company = app.company or app.org
+        department = app.department or ""
+        today = datetime.now().date()
+        run_id = f"company-historical-{uuid.uuid4().hex[:8]}"
+        history = HistoricalRanking(
+            ranking_config_id='excellent',
+            ranking_type='excellent',
+            period_date=today,
+            run_id=run_id,
+            position=1,
+            app_id=app.id,
+            app_name=app.name,
+            app_org=company,
+            tag='推荐',
+            score=95,
+            metric_type='composite',
+            value_dimension='efficiency_gain',
+            usage_30d=1234,
+        )
+        db.add(history)
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.get(
+        f'/api/rankings/historical?ranking_type=excellent&period_date={today.isoformat()}&run_id={run_id}&company={company}'
+    )
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows
+    row = rows[0]
+    assert row['company'] == company
+    assert row['department'] == department
+    assert row['app_org'] == company
 
 
 def test_submission_flow():
@@ -526,6 +883,9 @@ def test_submission_flow():
     resp = create_submission_as_user(payload)
     assert resp.status_code == 200
     assert resp.json()['status'] == 'pending'
+    assert resp.json()['company'] == '河北省公司'
+    assert resp.json()['department'] == '创新应用部'
+    assert resp.json()['unit_name'] == '河北省公司'
     assert resp.json()['manage_token']
 
 
@@ -1173,6 +1533,17 @@ def test_admin_endpoint_accepts_valid_token():
     client.cookies.clear()
     resp = client.post('/api/rankings/sync', headers=auth_headers_for_user("lisi"))
     assert resp.status_code == 200
+
+
+def test_admin_ranking_configs_pagination_returns_metadata():
+    resp = client.get('/api/admin/ranking-configs?page=1&page_size=1', headers=auth_headers_for_user("lisi"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 1
+    assert payload["total"] >= 2
+    assert payload["total_pages"] >= 2
+    assert len(payload["items"]) == 1
 
 
 def test_submission_ranking_dimensions_write_is_deprecated():

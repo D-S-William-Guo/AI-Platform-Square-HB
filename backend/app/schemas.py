@@ -1,12 +1,18 @@
 from datetime import date, datetime
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+T = TypeVar("T")
 
 
 class AppBase(BaseModel):
     id: int
     name: str
     org: str
+    company: str = ""
+    department: str = ""
     section: str
     category: str
     description: str
@@ -80,8 +86,10 @@ class UserPublic(BaseModel):
     role: str
     phone: str
     email: str
+    company: str
     department: str
     is_active: bool
+    can_submit: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -137,11 +145,41 @@ class UserStatusUpdatePayload(BaseModel):
     is_active: bool
 
 
+class UserSubmitPermissionUpdatePayload(BaseModel):
+    can_submit: bool
+
+
+class AdminUserCreatePayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+    chinese_name: str = Field(..., min_length=1, max_length=80)
+    company: str = Field(..., min_length=1, max_length=120)
+    department: str = Field(..., min_length=1, max_length=120)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=120)
+    role: str = Field(default="user", pattern="^(user|admin)$")
+    is_active: bool = True
+    can_submit: bool = False
+
+
+class AdminUserUpdatePayload(BaseModel):
+    chinese_name: str = Field(..., min_length=1, max_length=80)
+    company: str = Field(..., min_length=1, max_length=120)
+    department: str = Field(..., min_length=1, max_length=120)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=120)
+    role: str = Field(default="user", pattern="^(user|admin)$")
+    is_active: bool = True
+    can_submit: bool = False
+
+
 class UserImportItem(BaseModel):
     username: str = Field(..., min_length=1, max_length=80)
     chinese_name: str = Field(..., min_length=1, max_length=80)
     phone: str = Field(default="", max_length=30)
     email: str = Field(default="", max_length=120)
+    company: str = Field(default="", max_length=120)
     department: str = Field(default="", max_length=120)
     is_active: bool = True
 
@@ -156,6 +194,14 @@ class UserImportResponse(BaseModel):
     updated: int
     unchanged: int
     source: str
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class SubmissionCreate(BaseModel):
@@ -183,6 +229,8 @@ class SubmissionOut(BaseModel):
     id: int
     app_name: str
     unit_name: str
+    company: str
+    department: str
     contact: str
     contact_phone: str
     contact_email: str
@@ -338,6 +386,8 @@ class HistoricalRankingOut(BaseModel):
     app_id: int
     app_name: str
     app_org: str
+    company: str
+    department: str
     tag: str
     score: int
     metric_type: str

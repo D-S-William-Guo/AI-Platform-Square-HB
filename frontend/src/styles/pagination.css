@@ -1,0 +1,118 @@
+.pagination-shell {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 18px;
+}
+
+.pagination-summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.pagination-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.pagination-size select {
+  min-width: 72px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 12px;
+  color: var(--text-primary);
+}
+
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-nav,
+.pagination-page {
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-nav {
+  padding: 0 14px;
+}
+
+.pagination-nav:hover:not(:disabled),
+.pagination-page:hover:not(:disabled) {
+  border-color: rgba(79, 124, 255, 0.45);
+  box-shadow: 0 8px 18px rgba(79, 124, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.pagination-page.active {
+  background: linear-gradient(135deg, #4f7cff, #325cf0);
+  border-color: #325cf0;
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(50, 92, 240, 0.24);
+}
+
+.pagination-nav:disabled,
+.pagination-page:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.pagination-ellipsis {
+  color: var(--text-secondary);
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .pagination-shell {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-controls {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 640px) {
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-pages {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}

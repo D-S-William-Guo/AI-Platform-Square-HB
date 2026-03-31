@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchHistoricalRankings, fetchAvailableRankingDates, fetchRankingDimensions, fetchDimensionScores } from '../api/client'
 import type { HistoricalRanking, RankingDimension } from '../types'
@@ -18,7 +18,15 @@ export default function HistoricalRankingPage() {
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
+  const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
+
+  const companyOptions = useMemo(() => {
+    const values = rankings
+      .map((item) => item.company || item.app_org)
+      .filter(Boolean)
+    return ['全部', ...Array.from(new Set(values))]
+  }, [rankings])
 
   // 获取可用日期列表
   const loadAvailableDates = useCallback(async () => {
@@ -39,7 +47,11 @@ export default function HistoricalRankingPage() {
     try {
       setLoading(true)
       setError(null)
-      let data = await fetchHistoricalRankings(rankingType, selectedDate || undefined)
+      let data = await fetchHistoricalRankings(
+        rankingType,
+        selectedDate || undefined,
+        companyFilter !== '全部' ? companyFilter : undefined
+      )
       
       // 如果选择了特定维度，获取该维度的评分并重新排序
       if (rankingDimension !== 'overall') {
@@ -78,7 +90,7 @@ export default function HistoricalRankingPage() {
     } finally {
       setLoading(false)
     }
-  }, [rankingType, selectedDate, rankingDimension])
+  }, [rankingType, selectedDate, rankingDimension, companyFilter])
 
   useEffect(() => {
     loadAvailableDates()
@@ -102,6 +114,7 @@ export default function HistoricalRankingPage() {
     setRankingType(type)
     setSelectedDate('') // 重置日期选择
     setRankingDimension('overall') // 重置维度选择
+    setCompanyFilter('全部')
   }
 
   return (
@@ -175,6 +188,21 @@ export default function HistoricalRankingPage() {
             </select>
           </div>
 
+          <div className="filter-group">
+            <span className="filter-label">公司筛选：</span>
+            <select
+              className="filter-select"
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value)}
+            >
+              {companyOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button className="refresh-btn" onClick={loadRankings} disabled={loading}>
             {loading ? '刷新中...' : '刷新'}
           </button>
@@ -221,7 +249,7 @@ export default function HistoricalRankingPage() {
             <div className="ranking-header">
               <span className="rank-col">排名</span>
               <span className="name-col">应用名称</span>
-              <span className="org-col">所属单位</span>
+              <span className="org-col">所属公司 / 部门</span>
               <span className="tag-col">标签</span>
               <span className="dimension-col">价值维度</span>
               <span className="score-col">综合得分</span>
@@ -242,7 +270,10 @@ export default function HistoricalRankingPage() {
                 <span className="name-col">
                   <div className="app-name">{ranking.app_name}</div>
                 </span>
-                <span className="org-col">{ranking.app_org}</span>
+                <span className="org-col">
+                  <div className="app-org">{ranking.company || ranking.app_org}</div>
+                  <div className="app-org">{ranking.department || '未设置'}</div>
+                </span>
                 <span className="tag-col">
                   <span className={`tag-badge ${ranking.tag === '推荐' ? 'recommended' : ranking.tag === '历史优秀' ? 'excellent' : 'new'}`}>
                     {ranking.tag}

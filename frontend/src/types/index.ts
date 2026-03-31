@@ -6,6 +6,8 @@ export type AppItem = {
   id: number
   name: string
   org: string
+  company: string
+  department: string
   section: 'group' | 'province'
   category: string
   description: string
@@ -64,6 +66,14 @@ export type RuleLink = {
   href: string
 }
 
+export type PaginatedResponse<T> = {
+  items: T[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
 export type UserRole = 'user' | 'admin'
 
 export type AuthUser = {
@@ -73,8 +83,35 @@ export type AuthUser = {
   role: UserRole
   phone: string
   email: string
+  company: string
   department: string
   is_active: boolean
+  can_submit: boolean
+}
+
+export type AdminUserCreatePayload = {
+  username: string
+  chinese_name: string
+  company: string
+  department: string
+  password?: string
+  phone?: string
+  email?: string
+  role?: UserRole
+  is_active?: boolean
+  can_submit?: boolean
+}
+
+export type AdminUserUpdatePayload = {
+  chinese_name: string
+  company: string
+  department: string
+  password?: string
+  phone?: string
+  email?: string
+  role?: UserRole
+  is_active?: boolean
+  can_submit?: boolean
 }
 
 export type AuthLoginResponse = {
@@ -105,6 +142,8 @@ export type Submission = {
   id: number
   app_name: string
   unit_name: string
+  company: string
+  department: string
   contact: string
   contact_phone: string
   contact_email: string
@@ -199,6 +238,17 @@ export type RankingDimension = {
   updated_at: string
 }
 
+export type RankingConfigRecord = {
+  id: string
+  name: string
+  description: string
+  dimensions_config: string
+  calculation_method: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 // 应用维度评分
 export type AppDimensionScore = {
   id: number
@@ -223,6 +273,8 @@ export type HistoricalRanking = {
   app_id: number
   app_name: string
   app_org: string
+  company: string
+  department: string
   tag: string
   score: number
   metric_type: MetricType

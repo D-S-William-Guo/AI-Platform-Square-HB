@@ -33,13 +33,19 @@ DEFAULT_USERS = [
     {
         "username": "zhangsan",
         "chinese_name": "张三",
+        "company": "河北省公司",
+        "department": "创新应用部",
         "role": "user",
+        "can_submit": True,
         "password": settings.user_default_password,
     },
     {
         "username": "lisi",
         "chinese_name": "李四",
+        "company": "河北省公司",
+        "department": "平台管理部",
         "role": "admin",
+        "can_submit": True,
         "password": settings.admin_default_password,
     },
 ]
@@ -762,9 +768,11 @@ def seed_default_users(db: Session) -> None:
                     chinese_name=item["chinese_name"],
                     role=item["role"],
                     is_active=True,
+                    can_submit=item["can_submit"],
                     phone="",
                     email="",
-                    department="",
+                    company=item["company"],
+                    department=item["department"],
                     password_hash=hash_password(item["password"]),
                 )
             )
@@ -777,11 +785,20 @@ def seed_default_users(db: Session) -> None:
         if not user.chinese_name:
             user.chinese_name = item["chinese_name"]
             changed = True
+        if not user.company:
+            user.company = item["company"]
+            changed = True
+        if not user.department:
+            user.department = item["department"]
+            changed = True
         if user.role not in {"user", "admin"}:
             user.role = item["role"]
             changed = True
         if user.is_active is None:
             user.is_active = True
+            changed = True
+        if user.can_submit is None:
+            user.can_submit = item["can_submit"]
             changed = True
 
     if changed:
@@ -804,17 +821,22 @@ def reset_default_users(db: Session) -> None:
                     chinese_name=item["chinese_name"],
                     role=item["role"],
                     is_active=True,
+                    can_submit=item["can_submit"],
                     phone="",
                     email="",
-                    department="",
+                    company=item["company"],
+                    department=item["department"],
                     password_hash=hash_password(item["password"]),
                 )
             )
             continue
 
         user.chinese_name = item["chinese_name"]
+        user.company = item["company"]
+        user.department = item["department"]
         user.role = item["role"]
         user.is_active = True
+        user.can_submit = item["can_submit"]
         user.password_hash = hash_password(item["password"])
 
     db.commit()
@@ -941,6 +963,8 @@ def seed_demo_group_apps(db: Session) -> None:
             app.setdefault("ranking_weight", 1.0)
             app.setdefault("ranking_tags", "")
             app.setdefault("last_ranking_update", None)
+            app.setdefault("company", app.get("org", ""))
+            app.setdefault("department", "")
             db.add(App(**app))
         db.commit()
         print(f"Seeded {len(GROUP_APPS)} group apps")
@@ -970,6 +994,8 @@ def seed_demo_province_submissions(db: Session) -> None:
 
         for index, payload in enumerate(PROVINCE_SUBMISSIONS):
             resolved_payload = dict(payload)
+            resolved_payload.setdefault("company", resolved_payload.get("unit_name", ""))
+            resolved_payload.setdefault("department", "")
             resolved_payload["ranking_dimensions"] = remap_legacy_dimension_ids(
                 payload.get("ranking_dimensions", ""),
                 dimension_name_to_id,

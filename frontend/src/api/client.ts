@@ -1,9 +1,12 @@
 import axios from 'axios'
 import type {
+  AdminUserCreatePayload,
+  AdminUserUpdatePayload,
   AppItem,
   AuthProviderInfo,
   AuthLoginResponse,
   AuthMeResponse,
+  AuthUser,
   RankingItem,
   Recommendation,
   RuleLink,
@@ -12,6 +15,8 @@ import type {
   ImageUploadResponse,
   DocumentUploadResponse,
   RankingDimension,
+  PaginatedResponse,
+  RankingConfigRecord,
   Submission,
   HistoricalRanking
 } from '../types'
@@ -72,8 +77,13 @@ export async function fetchApps(params?: Record<string, string>) {
   return data
 }
 
-export async function fetchRankings(ranking_type: 'excellent' | 'trend') {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_type } })
+export async function fetchRankings(
+  ranking_type: 'excellent' | 'trend',
+  company?: string
+) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+    params: { ranking_type, ...(company ? { company } : {}) },
+  })
   return data
 }
 
@@ -282,11 +292,48 @@ export async function rejectSubmission(submissionId: number, reason: string) {
 // 历史榜单查询 API
 export async function fetchHistoricalRankings(
   ranking_type: 'excellent' | 'trend',
-  period_date?: string
+  period_date?: string,
+  company?: string
 ) {
   const { data } = await client.get<HistoricalRanking[]>('/api/rankings/historical', {
-    params: { ranking_type, period_date }
+    params: { ranking_type, period_date, ...(company ? { company } : {}) }
   })
+  return data
+}
+
+export async function fetchAdminUsers(params?: {
+  q?: string
+  role?: 'user' | 'admin'
+  is_active?: boolean
+  page?: number
+  page_size?: number
+}) {
+  const { data } = await client.get<PaginatedResponse<AuthUser>>('/api/admin/users', { params })
+  return data
+}
+
+export async function createAdminUser(payload: AdminUserCreatePayload) {
+  const { data } = await client.post<AuthUser>('/api/admin/users', payload)
+  return data
+}
+
+export async function updateAdminUser(userId: number, payload: AdminUserUpdatePayload) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}`, payload)
+  return data
+}
+
+export async function updateAdminUserRole(userId: number, role: 'user' | 'admin') {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/role`, { role })
+  return data
+}
+
+export async function updateAdminUserStatus(userId: number, is_active: boolean) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/status`, { is_active })
+  return data
+}
+
+export async function updateAdminUserSubmitPermission(userId: number, can_submit: boolean) {
+  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/submit-permission`, { can_submit })
   return data
 }
 
@@ -379,9 +426,24 @@ export async function createGroupApp(
 export async function fetchAdminApps(params?: {
   section?: 'group' | 'province'
   status?: 'available' | 'approval' | 'beta' | 'offline'
+  company?: string
   q?: string
+  page?: number
+  page_size?: number
 }) {
-  const { data } = await client.get<AppItem[]>('/api/admin/apps', {
+  const { data } = await client.get<PaginatedResponse<AppItem>>('/api/admin/apps', {
+    params: params || {},
+  })
+  return data
+}
+
+export async function fetchAdminRankingConfigs(params?: {
+  is_active?: boolean
+  q?: string
+  page?: number
+  page_size?: number
+}) {
+  const { data } = await client.get<PaginatedResponse<RankingConfigRecord>>('/api/admin/ranking-configs', {
     params: params || {},
   })
   return data
@@ -403,7 +465,7 @@ export async function updateAdminAppStatus(
 
 // 榜单配置 API
 export async function fetchRankingConfigs(is_active?: boolean) {
-  const { data } = await client.get<any[]>('/api/ranking-configs', {
+  const { data } = await client.get<RankingConfigRecord[]>('/api/ranking-configs', {
     params: is_active !== undefined ? { is_active } : {},
   })
   return data
@@ -512,8 +574,10 @@ export async function saveAppRankingSetting(
 }
 
 // 获取榜单排名数据（新API - 支持按榜单配置ID查询）
-export async function fetchRankingsByConfig(configId: string) {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', { params: { ranking_config_id: configId } })
+export async function fetchRankingsByConfig(configId: string, company?: string) {
+  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+    params: { ranking_config_id: configId, ...(company ? { company } : {}) },
+  })
   return data
 }
 
