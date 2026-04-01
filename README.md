@@ -57,7 +57,10 @@ ADMIN_DEFAULT_PASSWORD=ChangeMe_Admin_123!
 ```env
 PIP_INDEX_URL_PRODUCTION=http://136.142.12.68/simple/
 PIP_TRUSTED_HOST_PRODUCTION=136.142.12.68
+# PIP_USE_BUILD_ISOLATION=false
 ```
+
+生产部署默认关闭 editable install 的 build isolation，避免离线或仅内网主机在安装阶段再次向索引请求 `setuptools/wheel`。
 
 轻量安全基线：
 
@@ -126,6 +129,8 @@ make venv
 make backend-install
 make app-run
 ```
+
+如果远程机需要严格隔离构建，可在 `backend/.env` 里显式设置 `PIP_USE_BUILD_ISOLATION=true`；默认部署不需要打开。
 
 `make app-run` 会自动执行：
 

@@ -12,9 +12,13 @@ if [ ! -d "$VENV_DIR" ]; then
   python3 -m venv "$VENV_DIR"
 fi
 
-"$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" --upgrade pip "setuptools>=68" wheel
+ensure_python_packaging_tools "$VENV_DIR/bin/python"
 "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -r "$ROOT_DIR/backend/requirements.txt"
-if ! "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -e "$ROOT_DIR/backend"; then
-  echo "Editable install with build isolation failed; retrying without build isolation." >&2
+if use_build_isolation_for_editable_install; then
+  if ! "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" -e "$ROOT_DIR/backend"; then
+    echo "Editable install with build isolation failed; retrying without build isolation." >&2
+    "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e "$ROOT_DIR/backend"
+  fi
+else
   "$VENV_DIR/bin/pip" install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e "$ROOT_DIR/backend"
 fi
