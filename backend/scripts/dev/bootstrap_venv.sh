@@ -32,10 +32,16 @@ if [[ ! -x "${VENV_PY}" ]]; then
   exit 1
 fi
 
+echo "[bootstrap] upgrading pip/setuptools/wheel"
+"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --upgrade pip "setuptools>=68" wheel
+
 echo "[bootstrap] installing requirements"
 "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -r requirements.txt
 
 echo "[bootstrap] installing editable package"
-"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -e .
+if ! "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -e .; then
+  echo "[bootstrap] editable install with build isolation failed, retrying without build isolation"
+  "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e .
+fi
 
 echo "[bootstrap] done"
