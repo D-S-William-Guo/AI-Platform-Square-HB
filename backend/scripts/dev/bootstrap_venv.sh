@@ -33,14 +33,18 @@ if [[ ! -x "${VENV_PY}" ]]; then
 fi
 
 echo "[bootstrap] upgrading pip/setuptools/wheel"
-"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --upgrade pip "setuptools>=68" wheel
+ensure_python_packaging_tools "${VENV_PY}"
 
 echo "[bootstrap] installing requirements"
 "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -r requirements.txt
 
 echo "[bootstrap] installing editable package"
-if ! "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -e .; then
-  echo "[bootstrap] editable install with build isolation failed, retrying without build isolation"
+if use_build_isolation_for_editable_install; then
+  if ! "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -e .; then
+    echo "[bootstrap] editable install with build isolation failed, retrying without build isolation"
+    "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e .
+  fi
+else
   "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --no-build-isolation -e .
 fi
 
