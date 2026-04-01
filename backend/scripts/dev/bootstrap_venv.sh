@@ -32,6 +32,9 @@ if [[ ! -x "${VENV_PY}" ]]; then
   exit 1
 fi
 
+echo "[bootstrap] upgrading pip/setuptools/wheel"
+"${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" --upgrade pip "setuptools>=68" wheel
+
 echo "[bootstrap] installing requirements"
 "${VENV_PY}" -m pip install "${PIP_INSTALL_ARGS[@]}" -r requirements.txt
 
