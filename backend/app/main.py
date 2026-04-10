@@ -153,14 +153,16 @@ def resolve_frontend_asset(full_path: str) -> Path | None:
     if not requested:
         return None
 
-    candidate = (FRONTEND_DIST_DIR / requested).resolve()
-    try:
-        candidate.relative_to(FRONTEND_DIST_DIR)
-    except ValueError:
-        return None
+    requested_parts = [part for part in requested.split("/") if part]
+    for idx in range(len(requested_parts)):
+        candidate = (FRONTEND_DIST_DIR / Path(*requested_parts[idx:])).resolve()
+        try:
+            candidate.relative_to(FRONTEND_DIST_DIR)
+        except ValueError:
+            return None
 
-    if candidate.is_file():
-        return candidate
+        if candidate.is_file():
+            return candidate
     return None
 
 

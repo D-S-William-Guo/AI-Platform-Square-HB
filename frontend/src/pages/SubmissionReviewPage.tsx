@@ -8,6 +8,7 @@ import {
 } from '../api/client'
 import type { Submission } from '../types'
 import { resolveMediaUrl } from '../utils/media'
+import { buildAppPath } from '../utils/basePath'
 
 const statusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待审核', color: '#f59e0b' },
@@ -180,7 +181,7 @@ export default function SubmissionReviewPage() {
           <span>HEBEI · AI 应用广场</span>
         </div>
         <div className="header-actions">
-          <button className="primary" onClick={() => window.location.href = '/'}>
+          <button className="primary" onClick={() => window.location.href = buildAppPath('/')}>
             <span>←</span>
             <span>返回首页</span>
           </button>

@@ -32,6 +32,7 @@ def test_frontend_build_paths_are_resolved_from_dist(monkeypatch, tmp_path):
 
     assert get_frontend_index_file() == index_file
     assert resolve_frontend_asset("assets/app.js") == asset_file
+    assert resolve_frontend_asset("prefix/assets/app.js") == asset_file
     assert resolve_frontend_asset("../secrets.txt") is None
 
 
@@ -49,6 +50,7 @@ def test_frontend_routes_fallback_to_index(monkeypatch, tmp_path):
     root_response = serve_frontend_index()
     route_response = serve_frontend_app("ranking-management")
     asset_response = serve_frontend_app("assets/bundle.js")
+    prefixed_asset_response = serve_frontend_app("nested/assets/bundle.js")
 
     assert isinstance(root_response, FileResponse)
     assert Path(root_response.path) == index_file
@@ -56,6 +58,8 @@ def test_frontend_routes_fallback_to_index(monkeypatch, tmp_path):
     assert Path(route_response.path) == index_file
     assert isinstance(asset_response, FileResponse)
     assert Path(asset_response.path) == asset_file
+    assert isinstance(prefixed_asset_response, FileResponse)
+    assert Path(prefixed_asset_response.path) == asset_file
 
     with pytest.raises(Exception) as exc_info:
         serve_frontend_app("api/missing")
