@@ -1,5 +1,6 @@
 # Trae IDE
 .trae/
+.codex
 
 # IDE
 .vscode/
