@@ -23,6 +23,7 @@ import {
   getAdminTokenSetupHint
 } from '../api/client'
 import Pagination from '../components/Pagination'
+import { buildAppPath } from '../utils/basePath'
 
 type RankingConfig = RankingConfigRecord
 
@@ -702,7 +703,7 @@ const RankingManagementPage = () => {
           <span>HEBEI · AI 应用广场</span>
         </div>
         <div className="header-actions">
-          <button className="primary" onClick={() => window.location.href = '/'}>
+          <button className="primary" onClick={() => window.location.href = buildAppPath('/')}>
             <span>←</span>
             <span>返回首页</span>
           </button>

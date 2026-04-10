@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchHistoricalRankings, fetchAvailableRankingDates, fetchRankingDimensions, fetchDimensionScores } from '../api/client'
 import type { HistoricalRanking, RankingDimension } from '../types'
+import { buildAppPath } from '../utils/basePath'
 
 const valueDimensionLabel: Record<string, string> = {
   cost_reduction: '降本',
@@ -125,7 +126,7 @@ export default function HistoricalRankingPage() {
           <span>HEBEI · AI 应用广场</span>
         </div>
         <div className="header-actions">
-          <button className="primary" onClick={() => window.location.href = '/'}>
+          <button className="primary" onClick={() => window.location.href = buildAppPath('/')}>
             <span>←</span>
             <span>返回首页</span>
           </button>

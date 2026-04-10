@@ -14,7 +14,7 @@
 - [docs/dev-setup.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/dev-setup.md)
   - 本地开发环境、依赖准备、首次启动和日常命令
 - [docs/dev-workflow.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/dev-workflow.md)
-  - 分支、提交、PR、发布包与远程部署流程
+  - 分支、提交、PR、发布包与远程部署流程，含根路径/子路径发布说明
 
 ## 运维部署
 
