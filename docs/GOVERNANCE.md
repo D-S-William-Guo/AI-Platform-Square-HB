@@ -37,3 +37,28 @@
   - `oa`
   - `external_sso`
 - 当前轮次只做统一身份适配层和登录入口预留，不直接接真实 OA / 第三方协议
+
+## 6. 文档治理规则
+
+- 根 `README.md` 只承担项目首页、最短入口和文档导航职责，不长期维护完整运维细节。
+- `docs/README.md` 是当前有效文档索引，新增、重命名或废弃有效文档时必须同步更新。
+- `AGENTS.md` 用于仓库级智能体工作约束、文档入口说明和最近关键文档变更摘要。
+- `backend/scripts/README.md` 只解释脚本用途，不承担后端主入口或治理结论职责。
+- `docs/archive/` 仅保留历史材料，不作为当前产品、部署或运维规则入口。
+
+## 7. 规则变化时的同步要求
+
+- 产品边界、榜单规则、数据真相源变化时，同步检查：
+  - `docs/GOVERNANCE.md`
+  - 根 `README.md`
+  - `docs/README.md`
+- 开发、部署、数据库命令变化时，同步检查：
+  - 根 `README.md`
+  - `docs/dev-setup.md`
+  - `docs/dev-workflow.md`
+  - `docs/db-migration-sop.md`
+  - `docs/README.md`
+- 文档入口或文档职责变化时，同步检查：
+  - `AGENTS.md`
+  - 根 `README.md`
+  - `docs/README.md`

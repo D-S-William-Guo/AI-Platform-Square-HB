@@ -1,5 +1,7 @@
 # Backend Scripts
 
+这里仅解释脚本用途，不是后端主入口，也不是当前治理规则入口。项目总览和有效文档入口请回到 [README.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/README.md) 与 [docs/README.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/README.md)。
+
 当前脚本集只保留 MySQL / ORM / 发布运行主链路相关工具。
 
 ## 运行与发布
