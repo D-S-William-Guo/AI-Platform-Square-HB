@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { buildApiPath } from '../utils/basePath'
 import type {
   AdminUserCreatePayload,
   AdminUserUpdatePayload,
@@ -22,6 +23,7 @@ import type {
 } from '../types'
 
 const client = axios.create({ baseURL: '/', withCredentials: true })
+const apiBasePath = buildApiPath('/api')
 const MISSING_ADMIN_TOKEN_ERROR_CODE = 'MISSING_ADMIN_TOKEN'
 
 export class MissingAdminTokenError extends Error {
@@ -54,26 +56,26 @@ export function clearAuthToken() {
 }
 
 export async function login(username: string, password: string) {
-  const { data } = await client.post<AuthLoginResponse>('/api/auth/login', { username, password })
+  const { data } = await client.post<AuthLoginResponse>(`${apiBasePath}/auth/login`, { username, password })
   return data
 }
 
 export async function fetchAuthMe() {
-  const { data } = await client.get<AuthMeResponse>('/api/auth/me')
+  const { data } = await client.get<AuthMeResponse>(`${apiBasePath}/auth/me`)
   return data
 }
 
 export async function fetchAuthProviderInfo() {
-  const { data } = await client.get<AuthProviderInfo>('/api/auth/provider')
+  const { data } = await client.get<AuthProviderInfo>(`${apiBasePath}/auth/provider`)
   return data
 }
 
 export async function logout() {
-  await client.post('/api/auth/logout')
+  await client.post(`${apiBasePath}/auth/logout`)
 }
 
 export async function fetchApps(params?: Record<string, string>) {
-  const { data } = await client.get<AppItem[]>('/api/apps', { params })
+  const { data } = await client.get<AppItem[]>(`${apiBasePath}/apps`, { params })
   return data
 }
 
@@ -81,41 +83,41 @@ export async function fetchRankings(
   ranking_type: 'excellent' | 'trend',
   company?: string
 ) {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+  const { data } = await client.get<RankingItem[]>(`${apiBasePath}/rankings`, {
     params: { ranking_type, ...(company ? { company } : {}) },
   })
   return data
 }
 
 export async function fetchRecommendations() {
-  const { data } = await client.get<Recommendation[]>('/api/recommendations')
+  const { data } = await client.get<Recommendation[]>(`${apiBasePath}/recommendations`)
   return data
 }
 
 export async function fetchStats() {
-  const { data } = await client.get<Stats>('/api/stats')
+  const { data } = await client.get<Stats>(`${apiBasePath}/stats`)
   return data
 }
 
 export async function fetchRules() {
-  const { data } = await client.get<RuleLink[]>('/api/rules')
+  const { data } = await client.get<RuleLink[]>(`${apiBasePath}/rules`)
   return data
 }
 
 export async function submitApp(payload: SubmissionPayload) {
-  const { data } = await client.post<Submission>('/api/submissions', payload)
+  const { data } = await client.post<Submission>(`${apiBasePath}/submissions`, payload)
   return data
 }
 
 export async function fetchSubmissionSelf(manageToken: string) {
-  const { data } = await client.get<Submission>('/api/submissions/self', {
+  const { data } = await client.get<Submission>(`${apiBasePath}/submissions/self`, {
     params: { manage_token: manageToken }
   })
   return data
 }
 
 export async function fetchMySubmissions() {
-  const { data } = await client.get<Submission[]>('/api/submissions/mine')
+  const { data } = await client.get<Submission[]>(`${apiBasePath}/submissions/mine`)
   return data
 }
 
@@ -123,24 +125,24 @@ export async function updateSubmissionSelf(
   submissionId: number,
   payload: SubmissionPayload & { manage_token: string }
 ) {
-  const { data } = await client.put<Submission>(`/api/submissions/${submissionId}/self`, payload)
+  const { data } = await client.put<Submission>(`${apiBasePath}/submissions/${submissionId}/self`, payload)
   return data
 }
 
 export async function updateMySubmission(submissionId: number, payload: SubmissionPayload) {
-  const { data } = await client.put<Submission>(`/api/submissions/${submissionId}/mine`, payload)
+  const { data } = await client.put<Submission>(`${apiBasePath}/submissions/${submissionId}/mine`, payload)
   return data
 }
 
 export async function withdrawSubmissionSelf(submissionId: number, manageToken: string) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/withdraw`, {
+  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/withdraw`, {
     manage_token: manageToken
   })
   return data
 }
 
 export async function withdrawMySubmission(submissionId: number) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/mine/withdraw`)
+  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/mine/withdraw`)
   return data
 }
 
@@ -149,7 +151,7 @@ export async function uploadImage(file: File): Promise<ImageUploadResponse> {
   const formData = new FormData()
   formData.append('file', file)
   
-  const { data } = await client.post<ImageUploadResponse>('/api/upload/image', formData, {
+  const { data } = await client.post<ImageUploadResponse>(`${apiBasePath}/upload/image`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -161,7 +163,7 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
   const formData = new FormData()
   formData.append('file', file)
 
-  const { data } = await client.post<DocumentUploadResponse>('/api/upload/document', formData, {
+  const { data } = await client.post<DocumentUploadResponse>(`${apiBasePath}/upload/document`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -180,18 +182,18 @@ export async function associateImageWithSubmission(
     is_cover?: boolean
   }
 ) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/images`, imageData)
+  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/images`, imageData)
   return data
 }
 
 export async function getSubmissionImages(submissionId: number) {
-  const { data } = await client.get(`/api/submissions/${submissionId}/images`)
+  const { data } = await client.get(`${apiBasePath}/submissions/${submissionId}/images`)
   return data
 }
 
 // 排行维度管理 API
 export async function fetchRankingDimensions() {
-  const { data } = await client.get<RankingDimension[]>('/api/ranking-dimensions')
+  const { data } = await client.get<RankingDimension[]>(`${apiBasePath}/ranking-dimensions`)
   return data
 }
 
@@ -202,7 +204,7 @@ export async function createRankingDimension(payload: {
   weight: number
   is_active: boolean
 }) {
-  const { data } = await client.post<RankingDimension>('/api/ranking-dimensions', payload, {
+  const { data } = await client.post<RankingDimension>(`${apiBasePath}/ranking-dimensions`, payload, {
   })
   return data
 }
@@ -217,34 +219,34 @@ export async function updateRankingDimension(
     is_active?: boolean
   }
 ) {
-  const { data } = await client.put<RankingDimension>(`/api/ranking-dimensions/${dimensionId}`, payload, {
+  const { data } = await client.put<RankingDimension>(`${apiBasePath}/ranking-dimensions/${dimensionId}`, payload, {
   })
   return data
 }
 
 export async function deleteRankingDimension(dimensionId: number) {
-  const { data } = await client.delete(`/api/ranking-dimensions/${dimensionId}`)
+  const { data } = await client.delete(`${apiBasePath}/ranking-dimensions/${dimensionId}`)
   return data
 }
 
 export async function fetchRankingLogs() {
-  const { data } = await client.get<any[]>('/api/ranking-logs')
+  const { data } = await client.get<any[]>(`${apiBasePath}/ranking-logs`)
   return data
 }
 
 export async function fetchRankingAuditLogs() {
-  const { data } = await client.get<any[]>('/api/ranking-audit-logs')
+  const { data } = await client.get<any[]>(`${apiBasePath}/ranking-audit-logs`)
   return data
 }
 
 // 数据联动 API
 export async function syncRankings() {
-  const { data } = await client.post('/api/rankings/sync')
+  const { data } = await client.post(`${apiBasePath}/rankings/sync`)
   return data
 }
 
 export async function publishRankings() {
-  const { data } = await client.post('/api/rankings/publish')
+  const { data } = await client.post(`${apiBasePath}/rankings/publish`)
   return data
 }
 
@@ -256,7 +258,7 @@ export async function batchUpdateRankingParams(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.post('/api/apps/batch-update-ranking-params', {
+  const { data } = await client.post(`${apiBasePath}/apps/batch-update-ranking-params`, {
     apps,
     ...params
   })
@@ -264,7 +266,7 @@ export async function batchUpdateRankingParams(
 }
 
 export async function fetchSubmissions() {
-  const { data } = await client.get<Submission[]>('/api/submissions')
+  const { data } = await client.get<Submission[]>(`${apiBasePath}/submissions`)
   return data
 }
 
@@ -280,12 +282,12 @@ export async function approveSubmissionAndCreateApp(
     access_url?: string
   }
 ) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/approve-and-create-app`, payload)
+  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/approve-and-create-app`, payload)
   return data
 }
 
 export async function rejectSubmission(submissionId: number, reason: string) {
-  const { data } = await client.post(`/api/submissions/${submissionId}/reject`, { reason })
+  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/reject`, { reason })
   return data
 }
 
@@ -295,7 +297,7 @@ export async function fetchHistoricalRankings(
   period_date?: string,
   company?: string
 ) {
-  const { data } = await client.get<HistoricalRanking[]>('/api/rankings/historical', {
+  const { data } = await client.get<HistoricalRanking[]>(`${apiBasePath}/rankings/historical`, {
     params: { ranking_type, period_date, ...(company ? { company } : {}) }
   })
   return data
@@ -308,37 +310,37 @@ export async function fetchAdminUsers(params?: {
   page?: number
   page_size?: number
 }) {
-  const { data } = await client.get<PaginatedResponse<AuthUser>>('/api/admin/users', { params })
+  const { data } = await client.get<PaginatedResponse<AuthUser>>(`${apiBasePath}/admin/users`, { params })
   return data
 }
 
 export async function createAdminUser(payload: AdminUserCreatePayload) {
-  const { data } = await client.post<AuthUser>('/api/admin/users', payload)
+  const { data } = await client.post<AuthUser>(`${apiBasePath}/admin/users`, payload)
   return data
 }
 
 export async function updateAdminUser(userId: number, payload: AdminUserUpdatePayload) {
-  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}`, payload)
+  const { data } = await client.put<AuthUser>(`${apiBasePath}/admin/users/${userId}`, payload)
   return data
 }
 
 export async function updateAdminUserRole(userId: number, role: 'user' | 'admin') {
-  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/role`, { role })
+  const { data } = await client.put<AuthUser>(`${apiBasePath}/admin/users/${userId}/role`, { role })
   return data
 }
 
 export async function updateAdminUserStatus(userId: number, is_active: boolean) {
-  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/status`, { is_active })
+  const { data } = await client.put<AuthUser>(`${apiBasePath}/admin/users/${userId}/status`, { is_active })
   return data
 }
 
 export async function updateAdminUserSubmitPermission(userId: number, can_submit: boolean) {
-  const { data } = await client.put<AuthUser>(`/api/admin/users/${userId}/submit-permission`, { can_submit })
+  const { data } = await client.put<AuthUser>(`${apiBasePath}/admin/users/${userId}/submit-permission`, { can_submit })
   return data
 }
 
 export async function fetchAvailableRankingDates(ranking_type: 'excellent' | 'trend') {
-  const { data } = await client.get<{ dates: string[] }>('/api/rankings/available-dates', {
+  const { data } = await client.get<{ dates: string[] }>(`${apiBasePath}/rankings/available-dates`, {
     params: { ranking_type }
   })
   return data
@@ -350,7 +352,7 @@ export async function fetchAppDimensionScores(
   period_date?: string,
   ranking_config_id?: string
 ) {
-  const { data } = await client.get<any[]>(`/api/apps/${appId}/dimension-scores`, {
+  const { data } = await client.get<any[]>(`${apiBasePath}/apps/${appId}/dimension-scores`, {
     params: { period_date, ranking_config_id }
   })
   return data
@@ -361,7 +363,7 @@ export async function fetchDimensionScores(
   period_date?: string,
   ranking_config_id?: string
 ) {
-  const { data } = await client.get<any[]>(`/api/ranking-dimensions/${dimensionId}/scores`, {
+  const { data } = await client.get<any[]>(`${apiBasePath}/ranking-dimensions/${dimensionId}/scores`, {
     params: { period_date, ranking_config_id }
   })
   return data
@@ -376,7 +378,7 @@ export async function updateAppRankingParams(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-params`, params)
+  const { data } = await client.put(`${apiBasePath}/apps/${appId}/ranking-params`, params)
   return data
 }
 
@@ -387,7 +389,7 @@ export async function updateAppDimensionScore(
   score: number,
   ranking_config_id?: string
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/dimension-scores/${dimensionId}`, { score }, {
+  const { data } = await client.put(`${apiBasePath}/apps/${appId}/dimension-scores/${dimensionId}`, { score }, {
     params: ranking_config_id ? { ranking_config_id } : {},
   })
   return data
@@ -419,7 +421,7 @@ export async function createGroupApp(
     ranking_tags?: string
   }
 ) {
-  const { data } = await client.post('/api/admin/group-apps', payload)
+  const { data } = await client.post(`${apiBasePath}/admin/group-apps`, payload)
   return data
 }
 
@@ -431,7 +433,7 @@ export async function fetchAdminApps(params?: {
   page?: number
   page_size?: number
 }) {
-  const { data } = await client.get<PaginatedResponse<AppItem>>('/api/admin/apps', {
+  const { data } = await client.get<PaginatedResponse<AppItem>>(`${apiBasePath}/admin/apps`, {
     params: params || {},
   })
   return data
@@ -443,7 +445,7 @@ export async function fetchAdminRankingConfigs(params?: {
   page?: number
   page_size?: number
 }) {
-  const { data } = await client.get<PaginatedResponse<RankingConfigRecord>>('/api/admin/ranking-configs', {
+  const { data } = await client.get<PaginatedResponse<RankingConfigRecord>>(`${apiBasePath}/admin/ranking-configs`, {
     params: params || {},
   })
   return data
@@ -454,7 +456,7 @@ export async function updateAdminAppStatus(
   status: 'available' | 'approval' | 'beta' | 'offline'
 ) {
   const { data } = await client.put(
-    `/api/admin/apps/${appId}/status`,
+    `${apiBasePath}/admin/apps/${appId}/status`,
     { status },
     {}
   )
@@ -465,19 +467,19 @@ export async function updateAdminAppStatus(
 
 // 榜单配置 API
 export async function fetchRankingConfigs(is_active?: boolean) {
-  const { data } = await client.get<RankingConfigRecord[]>('/api/ranking-configs', {
+  const { data } = await client.get<RankingConfigRecord[]>(`${apiBasePath}/ranking-configs`, {
     params: is_active !== undefined ? { is_active } : {},
   })
   return data
 }
 
 export async function fetchRankingConfig(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}`)
+  const { data } = await client.get<any>(`${apiBasePath}/ranking-configs/${configId}`)
   return data
 }
 
 export async function fetchRankingConfigWithDimensions(configId: string) {
-  const { data } = await client.get<any>(`/api/ranking-configs/${configId}/with-dimensions`)
+  const { data } = await client.get<any>(`${apiBasePath}/ranking-configs/${configId}/with-dimensions`)
   return data
 }
 
@@ -489,7 +491,7 @@ export async function createRankingConfig(payload: {
   calculation_method?: string
   is_active?: boolean
 }) {
-  const { data } = await client.post('/api/ranking-configs', payload)
+  const { data } = await client.post(`${apiBasePath}/ranking-configs`, payload)
   return data
 }
 
@@ -503,24 +505,24 @@ export async function updateRankingConfig(
     is_active?: boolean
   }
 ) {
-  const { data } = await client.put(`/api/ranking-configs/${configId}`, payload)
+  const { data } = await client.put(`${apiBasePath}/ranking-configs/${configId}`, payload)
   return data
 }
 
 export async function deleteRankingConfig(configId: string) {
-  const { data } = await client.delete(`/api/ranking-configs/${configId}`)
+  const { data } = await client.delete(`${apiBasePath}/ranking-configs/${configId}`)
   return data
 }
 
 // 应用榜单设置 API
 export async function fetchAppRankingSettings(appId: number) {
-  const { data } = await client.get<any[]>(`/api/apps/${appId}/ranking-settings`)
+  const { data } = await client.get<any[]>(`${apiBasePath}/apps/${appId}/ranking-settings`)
   return data
 }
 
 // 获取所有应用榜单设置（支持按榜单配置筛选）
 export async function fetchAllAppRankingSettings(rankingConfigId?: string) {
-  const { data } = await client.get<any[]>('/api/app-ranking-settings', {
+  const { data } = await client.get<any[]>(`${apiBasePath}/app-ranking-settings`, {
     params: rankingConfigId ? { ranking_config_id: rankingConfigId } : {},
   })
   return data
@@ -535,7 +537,7 @@ export async function createAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.post(`/api/apps/${appId}/ranking-settings`, payload)
+  const { data } = await client.post(`${apiBasePath}/apps/${appId}/ranking-settings`, payload)
   return data
 }
 
@@ -549,12 +551,12 @@ export async function updateAppRankingSetting(
     custom_tags?: string
   }
 ) {
-  const { data } = await client.put(`/api/apps/${appId}/ranking-settings/${settingId}`, payload)
+  const { data } = await client.put(`${apiBasePath}/apps/${appId}/ranking-settings/${settingId}`, payload)
   return data
 }
 
 export async function deleteAppRankingSetting(appId: number, settingId: number) {
-  const { data } = await client.delete(`/api/apps/${appId}/ranking-settings/${settingId}`)
+  const { data } = await client.delete(`${apiBasePath}/apps/${appId}/ranking-settings/${settingId}`)
   return data
 }
 
@@ -569,13 +571,13 @@ export async function saveAppRankingSetting(
     dimension_scores: Array<{ dimension_id: number; score: number }>
   }
 ) {
-  const { data } = await client.post(`/api/apps/${appId}/ranking-settings/save`, payload)
+  const { data } = await client.post(`${apiBasePath}/apps/${appId}/ranking-settings/save`, payload)
   return data
 }
 
 // 获取榜单排名数据（新API - 支持按榜单配置ID查询）
 export async function fetchRankingsByConfig(configId: string, company?: string) {
-  const { data } = await client.get<RankingItem[]>('/api/rankings', {
+  const { data } = await client.get<RankingItem[]>(`${apiBasePath}/rankings`, {
     params: { ranking_config_id: configId, ...(company ? { company } : {}) },
   })
   return data
@@ -586,7 +588,7 @@ export async function fetchAppDimensionScoresForConfig(
   appId: number,
   configId: string
 ) {
-  const { data } = await client.get<any[]>(`/api/apps/${appId}/dimension-scores`, {
+  const { data } = await client.get<any[]>(`${apiBasePath}/apps/${appId}/dimension-scores`, {
     params: { ranking_config_id: configId }
   })
   return data

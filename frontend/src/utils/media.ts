@@ -1,4 +1,7 @@
+import { buildApiPath } from './basePath'
+
 const API_STATIC_PREFIX = '/api/static/'
+const apiStaticPath = buildApiPath('/api/static')
 
 export function resolveMediaUrl(input?: string | null): string {
   const raw = (input || '').trim()
@@ -16,10 +19,10 @@ export function resolveMediaUrl(input?: string | null): string {
   }
 
   if (raw.startsWith('/static/')) {
-    return `/api${raw}`
+    return `${apiStaticPath}${raw.slice('/static'.length)}`
   }
   if (raw.startsWith(API_STATIC_PREFIX)) {
-    return raw
+    return buildApiPath(raw)
   }
 
   return raw.startsWith('/') ? raw : `/${raw}`

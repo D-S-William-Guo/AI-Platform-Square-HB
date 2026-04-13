@@ -18,3 +18,8 @@ export function buildAppPath(path: string = '/') {
   }
   return `${appBasePath}${normalizedPath.slice(1)}`
 }
+
+export function buildApiPath(path: string = '/api') {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return buildAppPath(normalizedPath)
+}

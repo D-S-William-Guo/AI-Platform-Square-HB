@@ -7,6 +7,7 @@
 - 前端：React + TypeScript + Vite
 - 部署：开发机构建前端静态产物，远程主机只负责运行发布物
 - 前端发布支持根路径或子路径构建，按目标入口选择构建基路径
+- 子路径发布时，前端页面、前端 API 与媒体资源统一跟随同一前缀
 
 ## 当前产品口径
 
@@ -71,6 +72,13 @@ make frontend-build
 make release-bundle
 ```
 
+如需构建子路径发布物，例如挂在 `/AISquare/`：
+
+```bash
+FRONTEND_BASE_PATH=/AISquare/ make frontend-build
+FRONTEND_BASE_PATH=/AISquare/ make release-bundle
+```
+
 远程主机启动：
 
 ```bash
@@ -88,6 +96,8 @@ make service-restart
 make service-status
 make service-logs
 ```
+
+远程主机更新发布物时，推荐顺序是：停服务、替换源码/发布物、确认 `backend/.env` 保持不变、再启动服务。
 
 详细发布流程见 [docs/dev-workflow.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/dev-workflow.md)。
 

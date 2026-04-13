@@ -66,7 +66,12 @@ git fetch origin --prune
 
 - `FRONTEND_BASE_PATH` 是前端构建期变量，不写入 `backend/.env` 作为后端运行时真相源
 - 后端公开 API 前缀仍保持 `/api`
-- 子路径模式下，代理层需要同时正确转发页面路由、静态资源以及 `/api`、静态文件请求
+- 子路径模式下，前端页面路由、前端 API 与媒体资源统一跟随同一前缀
+- 子路径模式下，推荐把整个应用收敛到同一前缀下，例如：
+  - 页面入口：`/AISquare/`
+  - API 入口：`/AISquare/api/...`
+  - 媒体资源：`/AISquare/api/static/...`
+- 这样部署时不会额外抢占宿主站点根路径 `/api`，更适合挂到已有系统或他人 Nginx 下
 
 ### 开发机
 
@@ -87,6 +92,18 @@ FRONTEND_BASE_PATH=/some-prefix/ make release-bundle
 
 未指定 `FRONTEND_BASE_PATH` 时，默认按根路径 `/` 构建。
 
+如果本次目标就是挂载到 `/AISquare/`，开发机可直接使用：
+
+```bash
+git checkout main
+git pull origin main
+make frontend-install
+FRONTEND_BASE_PATH=/AISquare/ make frontend-build
+FRONTEND_BASE_PATH=/AISquare/ make release-bundle
+```
+
+构建完成后，发布包中的前端页面、API 与媒体资源都会统一走 `/AISquare/` 前缀。
+
 ### 远程主机
 
 ```bash
@@ -97,9 +114,40 @@ make backend-install
 make app-run
 ```
 
+如为更新已有服务，推荐使用以下顺序：
+
+```bash
+make service-stop
+tar -xzf ai-platform-square-hb-*.tar.gz
+# 如已有 backend/.env，保留现有配置，不要用示例文件覆盖
+make venv
+make backend-install
+make service-start
+```
+
+如果你是通过覆盖现有目录更新源码，也遵循同样原则：
+
+- 先停服务
+- 再替换源码/发布物
+- 保留现有 `backend/.env`
+- 最后重新启动服务
+
 正式常驻服务统一走：
 
 ```bash
 make service-install
 make service-start
 ```
+
+### 代理层建议
+
+子路径发布时，代理层应把应用前缀整段转发给运行中的应用服务，例如 `/AISquare/ -> 127.0.0.1:30888`。
+
+推荐目标是让以下路径都能从同一个外部前缀访问：
+
+- `/AISquare/`
+- `/AISquare/assets/...`
+- `/AISquare/api/...`
+- `/AISquare/api/static/...`
+
+这样可保证页面、接口、上传文件与图片预览都落在同一命名空间下。
