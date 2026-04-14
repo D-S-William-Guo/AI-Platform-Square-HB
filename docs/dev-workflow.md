@@ -104,6 +104,13 @@ FRONTEND_BASE_PATH=/AISquare/ make release-bundle
 
 构建完成后，发布包中的前端页面、API 与媒体资源都会统一走 `/AISquare/` 前缀。
 
+当前已验证的远程场景：
+
+- 远程应用服务运行在 `127.0.0.1:30888`
+- 宿主 Nginx 对外入口为 `:38878`
+- 外部访问路径为 `/AISquare/`
+- 该场景下应用已完成远程启动与页面访问验证
+
 ### 远程主机
 
 ```bash
@@ -151,3 +158,5 @@ make service-start
 - `/AISquare/api/static/...`
 
 这样可保证页面、接口、上传文件与图片预览都落在同一命名空间下。
+
+如果宿主 Nginx 还承载其他系统，优先保持 AI 广场只占用 `/AISquare/` 这一整棵路径，不再额外暴露宿主根路径 `/api`。
