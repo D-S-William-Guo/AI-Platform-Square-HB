@@ -30,6 +30,7 @@ import LoginPage from './pages/LoginPage'
 import UserManagementPage from './pages/UserManagementPage'
 import type { AppItem, AuthUser, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
+import UiIcon from './components/UiIcon'
 
 const DEFAULT_APP_CATEGORIES = ['前端市场类', '客户服务类', '云网运营类', '管理支撑类'] as const
 const statusOptions = [
@@ -639,7 +640,7 @@ function HomePage({
           <span>HEBEI · AI 应用广场</span>
         </div>
         <div className="search-wrapper">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon"><UiIcon name="search" size={14} /></span>
           <input 
             className="search" 
             placeholder="搜索应用名称..." 
@@ -649,11 +650,11 @@ function HomePage({
         </div>
         <div className="header-actions">
           <Link to="/platform-intro" className="secondary">
-            <span>🧭</span>
+            <UiIcon name="platform" />
             <span>平台介绍</span>
           </Link>
           <Link to="/my-submissions" className="secondary">
-            <span>📋</span>
+            <UiIcon name="my" />
             <span>我的申报</span>
           </Link>
           {currentUser.can_submit ? (
@@ -692,14 +693,14 @@ function HomePage({
               className={`nav-item ${activeNav === 'group' ? 'active' : ''}`} 
               onClick={() => setActiveNav('group')}
             >
-              <span className="nav-icon">🏢</span>
+              <span className="nav-icon"><UiIcon name="group" /></span>
               <span>集团应用</span>
             </button>
             <button 
               className={`nav-item ${activeNav === 'province' ? 'active' : ''}`} 
               onClick={() => setActiveNav('province')}
             >
-              <span className="nav-icon">📍</span>
+              <span className="nav-icon"><UiIcon name="province" /></span>
               <span>省内应用</span>
             </button>
           </div>
@@ -719,7 +720,7 @@ function HomePage({
                   }}
                 >
                   <span className="nav-icon">
-                    {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+                    {config.id === 'excellent' ? <UiIcon name="trophy" /> : config.id === 'trend' ? <UiIcon name="trend" /> : <UiIcon name="medal" />}
                   </span>
                   <span>{config.name}</span>
                 </Link>
@@ -745,41 +746,41 @@ function HomePage({
           <div className="quick-links">
             <div className="nav-section-title">快速入口</div>
             <Link to="/platform-intro" className="quick-link">
-              <span>🧭</span>
+              <UiIcon name="platform" />
               <span>平台介绍</span>
             </Link>
             <Link to="/guide" className="quick-link">
-              <span>📋</span>
+              <UiIcon name="guide" />
               <span>申报指南</span>
             </Link>
             <Link to="/rule" className="quick-link">
-              <span>📜</span>
+              <UiIcon name="rule" />
               <span>榜单规则</span>
             </Link>
             <Link to="/my-submissions" className="quick-link">
-              <span>🧾</span>
+              <UiIcon name="my" />
               <span>我的申报</span>
             </Link>
             {currentUser.role === 'admin' && (
               <Link to="/ranking-management" className="quick-link">
-                <span>⚙️</span>
+                <UiIcon name="ranking" />
                 <span>排行榜管理</span>
               </Link>
             )}
             {currentUser.role === 'admin' && (
               <Link to="/submission-review" className="quick-link">
-                <span>✅</span>
+                <UiIcon name="review" />
                 <span>申报审核</span>
               </Link>
             )}
             {currentUser.role === 'admin' && (
               <Link to="/user-management" className="quick-link">
-                <span>👥</span>
+                <UiIcon name="user" />
                 <span>用户管理</span>
               </Link>
             )}
             <Link to="/historical-ranking" className="quick-link">
-              <span>📊</span>
+              <UiIcon name="history" />
               <span>历史榜单</span>
             </Link>
           </div>
@@ -794,7 +795,7 @@ function HomePage({
                 </div>
               ) : statsError ? (
                 <div className="stats-error">
-                  <span className="error-icon">❌</span>
+                  <span className="error-icon"><UiIcon name="error" /></span>
                   <span>{statsError}</span>
                   <button
                     className="retry-button"
@@ -949,8 +950,8 @@ function HomePage({
                     <p className="card-desc">{app.description}</p>
                     <div className="card-footer">
                       <div className="card-metrics">
-                        <span>📊 {monthlyCallsText(app)}</span>
-                        <span>📅 {app.release_date}</span>
+                        <span><UiIcon name="calls" /> {monthlyCallsText(app)}</span>
+                        <span><UiIcon name="date" /> {app.release_date}</span>
                       </div>
                     </div>
                   </div>
@@ -1024,12 +1025,12 @@ function HomePage({
 
               <div className="modal-metrics">
                 <div className="modal-metric-item">
-                  <div className="modal-metric-icon">📊</div>
+                  <div className="modal-metric-icon"><UiIcon name="calls" /></div>
                   <div className="modal-metric-label">月调用量</div>
                   <div className="modal-metric-value">{monthlyCallsText(selectedApp)}</div>
                 </div>
                 <div className="modal-metric-item">
-                  <div className="modal-metric-icon">📅</div>
+                  <div className="modal-metric-icon"><UiIcon name="date" /></div>
                   <div className="modal-metric-label">上线时间</div>
                   <div className="modal-metric-value">{selectedApp.release_date}</div>
                 </div>
@@ -1083,18 +1084,18 @@ function HomePage({
             <div className="modal-footer">
               {selectedApp.section === 'group' && selectedApp.access_mode === 'direct' && Boolean(selectedApp.access_url) ? (
                 <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
-                  <span>🚀</span>
+                  <UiIcon name="trial" />
                   <span>申请试用</span>
                 </a>
               ) : (
                 <button className="modal-btn primary" disabled>
-                  <span>🔒</span>
+                  <UiIcon name="locked" />
                   <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
                 </button>
               )}
               {selectedApp.section === 'province' && selectedApp.detail_doc_url && (
                 <a href={resolveMediaUrl(selectedApp.detail_doc_url)} target="_blank" rel="noreferrer" className="modal-btn secondary">
-                  <span>📄</span>
+                  <UiIcon name="doc" />
                   <span>{selectedApp.detail_doc_name || '详细文档'}</span>
                 </a>
               )}

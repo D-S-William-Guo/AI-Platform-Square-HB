@@ -9,6 +9,7 @@ import {
 import type { Submission } from '../types'
 import { resolveMediaUrl } from '../utils/media'
 import { buildAppPath } from '../utils/basePath'
+import UiIcon from '../components/UiIcon'
 
 const statusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待审核', color: '#f59e0b' },
@@ -261,13 +262,13 @@ export default function SubmissionReviewPage() {
           </div>
         ) : error ? (
           <div className="error-container">
-            <span className="error-icon">❌</span>
+            <span className="error-icon"><UiIcon name="error" /></span>
             <span>{error}</span>
             <button className="retry-btn" onClick={loadSubmissions}>重试</button>
           </div>
         ) : filteredSubmissions.length === 0 ? (
           <div className="empty-container">
-            <span className="empty-icon">📋</span>
+            <span className="empty-icon"><UiIcon name="my" /></span>
             <span>暂无申报数据</span>
           </div>
         ) : (
@@ -353,7 +354,7 @@ export default function SubmissionReviewPage() {
 
                 {submission.status === 'approved' && (
                   <div className="submission-actions">
-                    <span className="approved-text">✅ 已通过审核，已创建应用</span>
+                    <span className="approved-text"><UiIcon name="review" /> 已通过审核，已创建应用</span>
                     <button className="btn-secondary">查看详情</button>
                   </div>
                 )}

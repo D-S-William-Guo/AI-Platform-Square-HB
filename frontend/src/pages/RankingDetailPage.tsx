@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { fetchRankingConfigWithDimensions, fetchRankingsByConfig, fetchRankingDimensions } from '../api/client'
 import type { RankingItem, RankingDimension } from '../types'
+import UiIcon from '../components/UiIcon'
 
 interface DimensionConfig {
   dim_id: number
@@ -123,7 +124,7 @@ export default function RankingDetailPage() {
     return (
       <div className="ranking-detail-page">
         <div className="error-container">
-          <span className="error-icon">❌</span>
+          <span className="error-icon"><UiIcon name="error" /></span>
           <p>{error || '榜单不存在'}</p>
           <Link to="/" className="back-link">返回首页</Link>
         </div>
@@ -150,7 +151,7 @@ export default function RankingDetailPage() {
         <div className="config-header">
           <h1 className="config-title">
             <span className="config-icon">
-              {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+              {config.id === 'excellent' ? <UiIcon name="trophy" /> : config.id === 'trend' ? <UiIcon name="trend" /> : <UiIcon name="medal" />}
             </span>
             {config.name}
           </h1>
@@ -225,7 +226,7 @@ export default function RankingDetailPage() {
 
         {rankings.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-icon">📊</span>
+            <span className="empty-icon"><UiIcon name="empty" /></span>
             <p>暂无排名数据</p>
           </div>
         ) : (

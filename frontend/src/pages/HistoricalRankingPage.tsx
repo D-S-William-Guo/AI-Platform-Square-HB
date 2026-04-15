@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { fetchHistoricalRankings, fetchAvailableRankingDates, fetchRankingDimensions, fetchDimensionScores } from '../api/client'
 import type { HistoricalRanking, RankingDimension } from '../types'
 import { buildAppPath } from '../utils/basePath'
+import UiIcon from '../components/UiIcon'
 
 const valueDimensionLabel: Record<string, string> = {
   cost_reduction: '降本',
@@ -230,18 +231,18 @@ export default function HistoricalRankingPage() {
           </div>
         ) : error ? (
           <div className="error-container">
-            <span className="error-icon">❌</span>
+            <span className="error-icon"><UiIcon name="error" /></span>
             <span>{error}</span>
             <button className="retry-btn" onClick={loadRankings}>重试</button>
           </div>
         ) : !selectedDate ? (
           <div className="empty-container">
-            <span className="empty-icon">📅</span>
+            <span className="empty-icon"><UiIcon name="date" /></span>
             <span>请选择要查看的榜单日期</span>
           </div>
         ) : rankings.length === 0 ? (
           <div className="empty-container">
-            <span className="empty-icon">📊</span>
+            <span className="empty-icon"><UiIcon name="empty" /></span>
             <span>该日期暂无榜单数据</span>
           </div>
         ) : (

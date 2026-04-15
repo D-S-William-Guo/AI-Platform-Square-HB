@@ -24,6 +24,7 @@ import {
 } from '../api/client'
 import Pagination from '../components/Pagination'
 import { buildAppPath } from '../utils/basePath'
+import UiIcon from '../components/UiIcon'
 
 type RankingConfig = RankingConfigRecord
 
@@ -743,42 +744,42 @@ const RankingManagementPage = ({
               className={`tab-button ${activeTab === 'configs' ? 'active' : ''}`}
               onClick={() => setActiveTab('configs')}
             >
-              <span>🏆</span>
+              <UiIcon name="trophy" />
               <span>榜单配置</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'app-settings' ? 'active' : ''}`}
               onClick={() => setActiveTab('app-settings')}
             >
-              <span>📱</span>
+              <UiIcon name="platform" />
               <span>应用参与</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'app-management' ? 'active' : ''}`}
               onClick={() => setActiveTab('app-management')}
             >
-              <span>🗂️</span>
+              <UiIcon name="history" />
               <span>应用管理</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'group-apps' ? 'active' : ''}`}
               onClick={() => setActiveTab('group-apps')}
             >
-              <span>🏢</span>
+              <UiIcon name="group" />
               <span>集团应用录入</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'dimensions' ? 'active' : ''}`}
               onClick={() => setActiveTab('dimensions')}
             >
-              <span>📊</span>
+              <UiIcon name="empty" />
               <span>评价维度</span>
             </button>
             <button
               className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`}
               onClick={() => setActiveTab('logs')}
             >
-              <span>📋</span>
+              <UiIcon name="history" />
               <span>变更日志</span>
             </button>
           </div>
@@ -814,7 +815,7 @@ const RankingManagementPage = ({
                 <div className="config-list">
                   {rankingConfigs.length === 0 ? (
                     <div className="empty-state">
-                      <span>🏆</span>
+                      <UiIcon name="trophy" />
                       <p>暂无榜单配置</p>
                     </div>
                   ) : (
@@ -832,7 +833,7 @@ const RankingManagementPage = ({
                           <div key={config.id} className={`config-card ${config.is_active ? 'active' : 'inactive'}`}>
                             <div className="config-card-header">
                               <h3 className="config-card-title">
-                                {config.id === 'excellent' ? '🏆' : config.id === 'trend' ? '📈' : '🏅'}
+                                {config.id === 'excellent' ? <UiIcon name="trophy" /> : config.id === 'trend' ? <UiIcon name="trend" /> : <UiIcon name="medal" />}
                                 {config.name}
                               </h3>
                               <span className={`config-status ${config.is_active ? 'active' : 'inactive'}`}>
@@ -898,7 +899,7 @@ const RankingManagementPage = ({
                   onClick={() => handleSyncRankings()}
                   disabled={syncing}
                 >
-                  {syncing ? '🔄 发布中...' : '🚀 发布榜单'}
+                  {syncing ? <><UiIcon name="sync" /> 发布中...</> : <><UiIcon name="trial" /> 发布榜单</>}
                 </button>
               </div>
               <p className="section-note">
@@ -917,7 +918,7 @@ const RankingManagementPage = ({
                 <div className="app-settings-list">
                   {apps.length === 0 ? (
                     <div className="empty-state">
-                      <span>📱</span>
+                      <UiIcon name="platform" />
                       <p>暂无应用数据</p>
                     </div>
                   ) : (
@@ -1076,7 +1077,7 @@ const RankingManagementPage = ({
                 <div className="app-management-list">
                   {adminApps.length === 0 ? (
                     <div className="empty-state">
-                      <span>🗂️</span>
+                      <UiIcon name="history" />
                       <p>暂无匹配应用</p>
                     </div>
                   ) : (
@@ -1412,7 +1413,7 @@ const RankingManagementPage = ({
                 <div className="dimension-list">
                   {dimensions.length === 0 ? (
                     <div className="empty-state">
-                      <span>📊</span>
+                      <UiIcon name="empty" />
                       <p>暂无评价维度</p>
                     </div>
                   ) : (
@@ -1476,7 +1477,7 @@ const RankingManagementPage = ({
               <div className="logs-list">
                 {logs.length === 0 ? (
                   <div className="empty-state">
-                    <span>📋</span>
+                    <UiIcon name="history" />
                     <p>暂无变更日志</p>
                   </div>
                 ) : (
