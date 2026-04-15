@@ -20,6 +20,7 @@ import {
 } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
+import PlatformIntroPage from './pages/PlatformIntroPage'
 import RankingManagementPage from './pages/RankingManagementPage'
 import SubmissionReviewPage from './pages/SubmissionReviewPage'
 import MySubmissionsPage from './pages/MySubmissionsPage'
@@ -647,6 +648,10 @@ function HomePage({
           />
         </div>
         <div className="header-actions">
+          <Link to="/platform-intro" className="secondary">
+            <span>🧭</span>
+            <span>平台介绍</span>
+          </Link>
           <Link to="/my-submissions" className="secondary">
             <span>📋</span>
             <span>我的申报</span>
@@ -739,6 +744,10 @@ function HomePage({
 
           <div className="quick-links">
             <div className="nav-section-title">快速入口</div>
+            <Link to="/platform-intro" className="quick-link">
+              <span>🧭</span>
+              <span>平台介绍</span>
+            </Link>
             <Link to="/guide" className="quick-link">
               <span>📋</span>
               <span>申报指南</span>
@@ -1585,6 +1594,7 @@ function App() {
           />
         }
       />
+      <Route path="/platform-intro" element={<PlatformIntroPage />} />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
       <Route path="/my-submissions" element={<MySubmissionsPage />} />

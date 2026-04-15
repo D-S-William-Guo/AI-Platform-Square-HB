@@ -5,10 +5,11 @@ const RulePage = () => {
   const [activeSection, setActiveSection] = useState('overview')
 
   const sections = [
-    { id: 'overview', title: '规则概览' },
-    { id: 'ranking', title: '排行榜规则' },
-    { id: 'evaluation', title: '评估标准' },
-    { id: 'updates', title: '规则更新' }
+    { id: 'overview', title: '规则总览' },
+    { id: 'dimensions', title: '维度与权重' },
+    { id: 'truth-source', title: '真相源说明' },
+    { id: 'boundary', title: '管理边界' },
+    { id: 'updates', title: '变更记录' },
   ]
 
   return (
@@ -45,63 +46,79 @@ const RulePage = () => {
         <main className="guide-content">
           {activeSection === 'overview' && (
             <section className="guide-section">
-              <h2>规则概览</h2>
-              <p>AI 应用广场榜单规则旨在公平、公正、公开地评估和展示平台上的优秀 AI 应用，为用户提供参考，促进应用质量的提升。</p>
-              
+              <h2>规则总览</h2>
+              <p>当前榜单制度按治理基线执行，面向首页展示与管理端配置保持一致。</p>
               <div className="guide-card">
-                <h3>榜单目的</h3>
+                <h3>固定榜单范围</h3>
                 <ul>
-                  <li>识别和推广优秀的 AI 应用</li>
-                  <li>为用户提供应用选择的参考依据</li>
-                  <li>激励开发者持续优化应用</li>
-                  <li>促进 AI 技术在公司内部的应用和创新</li>
+                  <li><strong>excellent</strong>：总应用榜</li>
+                  <li><strong>trend</strong>：增长趋势榜</li>
                 </ul>
               </div>
-
               <div className="guide-card">
-                <h3>适用范围</h3>
-                <p>本规则适用于 AI 应用广场上所有已上线的 AI 应用，包括集团应用和省内应用。</p>
-              </div>
-
-              <div className="guide-card">
-                <h3>更新频率</h3>
-                <p>榜单数据每周更新一次，确保数据的及时性和准确性。</p>
+                <h3>当前制度边界</h3>
+                <ul>
+                  <li>一期聚焦双榜单，不扩展其他榜单类型。</li>
+                  <li>榜单展示与管理能力通过统一管理页维护。</li>
+                  <li>普通用户可浏览榜单，管理员负责配置与发布。</li>
+                </ul>
               </div>
             </section>
           )}
 
-          {activeSection === 'ranking' && (
+          {activeSection === 'dimensions' && (
             <section className="guide-section">
-              <h2>排行榜规则</h2>
-              <p>AI 应用广场当前聚焦两个榜单：总应用榜看综合推广效果，增长趋势榜看近期增长表现。</p>
-              
+              <h2>维度与权重</h2>
               <div className="guide-card">
-                <h3>排行榜类型</h3>
+                <h3>默认核心维度</h3>
                 <ul>
-                  <li><strong>总应用榜</strong>：默认看用户满意度、业务价值、使用活跃度、稳定性和安全性</li>
-                  <li><strong>增长趋势榜</strong>：默认看使用活跃度、增长趋势、用户增长</li>
-                  <li>一期不开放分类榜单、月度之星等额外榜单能力</li>
+                  <li>总应用榜：用户满意度、业务价值、使用活跃度、稳定性和安全性。</li>
+                  <li>增长趋势榜：使用活跃度、增长趋势、用户增长。</li>
                 </ul>
               </div>
-
               <div className="guide-card">
-                <h3>上榜条件</h3>
+                <h3>权重口径</h3>
+                <p>系统默认权重统一为 <strong>1.0</strong>，具体配置以管理端当前发布结果为准。</p>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'truth-source' && (
+            <section className="guide-section">
+              <h2>真相源说明</h2>
+              <div className="guide-card">
+                <h3>榜单参与与控制输入</h3>
+                <p>唯一真相源：<code>AppRankingSetting</code>。</p>
+              </div>
+              <div className="guide-card">
+                <h3>对外榜单读取</h3>
+                <p>唯一真相源：<code>HistoricalRanking</code>。</p>
+              </div>
+              <div className="guide-card">
+                <h3>兼容字段说明</h3>
+                <p>
+                  <code>App</code> / <code>Submission</code> 中的 <code>ranking_*</code> 字段仅保留兼容或展示用途，不作为榜单口径真相源。
+                </p>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'boundary' && (
+            <section className="guide-section">
+              <h2>管理边界</h2>
+              <div className="guide-card">
+                <h3>普通用户</h3>
                 <ul>
-                  <li>应用必须已正式上线</li>
-                  <li>应用必须通过安全性和合规性审核</li>
-                  <li>应用必须有一定的用户基础和使用数据</li>
-                  <li>应用必须符合相关法律法规和公司政策</li>
+                  <li>可在首页与榜单详情查看榜单结果。</li>
+                  <li>不可进入排行榜管理页。</li>
                 </ul>
               </div>
-
               <div className="guide-card">
-                <h3>榜单展示</h3>
-                <p>榜单将在 AI 应用广场首页展示，用户可以点击查看详细排名和评估数据。</p>
-              </div>
-
-              <div className="guide-card">
-                <h3>维度管理</h3>
-                <p>排行维度和计算方法已整合到统一的排行榜管理系统中，您可以通过以下链接访问：</p>
+                <h3>管理员</h3>
+                <ul>
+                  <li>可进入排行榜管理页维护维度、配置、应用参与并执行发布。</li>
+                  <li>可联动应用状态和审核流程维护榜单数据质量。</li>
+                </ul>
                 <Link to="/ranking-management" className="btn-primary">
                   前往排行榜管理
                 </Link>
@@ -109,79 +126,15 @@ const RulePage = () => {
             </section>
           )}
 
-          {activeSection === 'evaluation' && (
-            <section className="guide-section">
-              <h2>评估标准</h2>
-              <p>应用评估基于多个维度的综合考量，确保评估结果的全面性和客观性。</p>
-              
-              <div className="guide-card">
-                <h3>核心评估指标</h3>
-                <ul>
-                  <li><strong>用户满意度</strong>：基于用户反馈和评分</li>
-                  <li><strong>业务价值</strong>：评估应用对业务的提升作用</li>
-                  <li><strong>使用活跃度</strong>：基于应用的使用频率和用户数</li>
-                  <li><strong>稳定性和安全性</strong>：评估应用的可靠性和安全性</li>
-                  <li><strong>增长趋势 / 用户增长</strong>：用于增长趋势榜观察新近起量情况</li>
-                </ul>
-              </div>
-
-              <div className="guide-card">
-                <h3>数据来源</h3>
-                <ul>
-                  <li>用户使用数据和反馈</li>
-                  <li>技术专家评估</li>
-                  <li>业务部门反馈</li>
-                  <li>系统监控数据</li>
-                </ul>
-              </div>
-
-              <div className="guide-card">
-                <h3>评估流程</h3>
-                <ol className="process-steps">
-                  <li>数据收集：收集应用的各项指标数据</li>
-                  <li>数据处理：对收集到的数据进行标准化处理</li>
-                  <li>综合评估：根据评估模型进行综合评分</li>
-                  <li>结果审核：由专家团队对评估结果进行审核</li>
-                  <li>榜单发布：在平台上发布最终的排行榜</li>
-                </ol>
-              </div>
-            </section>
-          )}
-
           {activeSection === 'updates' && (
             <section className="guide-section">
-              <h2>规则更新</h2>
-              <p>为适应技术发展和业务需求的变化，榜单规则会定期进行评估和更新。</p>
-              
+              <h2>变更记录</h2>
               <div className="guide-card">
-                <h3>更新机制</h3>
+                <h3>2026-04-15</h3>
                 <ul>
-                  <li>每季度评估一次规则的适用性</li>
-                  <li>根据业务需求和技术发展进行调整</li>
-                  <li>广泛征求用户和专家的意见</li>
-                  <li>发布规则更新公告</li>
-                </ul>
-              </div>
-
-              <div className="guide-card">
-                <h3>历史更新记录</h3>
-                <div className="faq-item">
-                  <h4>2024年12月</h4>
-                  <p>首次发布榜单规则，建立基本的评估体系</p>
-                </div>
-                <div className="faq-item">
-                  <h4>2026年3月</h4>
-                  <p>榜单口径收口为“总应用榜 + 增长趋势榜”，默认权重统一为 1.0。</p>
-                </div>
-              </div>
-
-              <div className="guide-card">
-                <h3>反馈渠道</h3>
-                <p>如果您对榜单规则有任何建议或意见，欢迎通过以下渠道反馈：</p>
-                <ul>
-                  <li>邮箱：aiapps@hebei.cn</li>
-                  <li>系统内反馈功能</li>
-                  <li>定期举办的用户座谈会</li>
+                  <li>页面内容按现网治理口径重构为“制度说明”结构。</li>
+                  <li>固定双榜单、默认权重与真相源说明同步到页面。</li>
+                  <li>移除原型期遗留的非现网承诺描述。</li>
                 </ul>
               </div>
             </section>
@@ -190,7 +143,7 @@ const RulePage = () => {
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2024-12-11 · 联系邮箱：aiapps@hebei.cn</div>
+        <div>最近更新时间：2026-04-15 · 榜单规则按治理基线维护</div>
       </footer>
     </div>
   )
