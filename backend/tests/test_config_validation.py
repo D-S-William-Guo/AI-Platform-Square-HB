@@ -3,12 +3,14 @@ from pydantic import ValidationError
 
 from app.config import (
     Settings,
+    get_app_category_options,
     get_allowed_hosts,
     get_allowed_origins,
     is_api_docs_enabled,
     is_auth_cookie_secure,
     validate_settings,
 )
+from app.identity import get_identity_provider
 
 MYSQL_URL = "mysql+pymysql://tester:secret@127.0.0.1:3306/ai_app_square?charset=utf8mb4"
 
@@ -70,6 +72,38 @@ def test_validate_settings_rejects_unknown_auth_provider_mode():
 
     with pytest.raises(ValueError, match="AUTH_PROVIDER_MODE"):
         validate_settings(settings)
+
+
+def test_get_app_category_options_from_csv():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        app_category_options="前端市场类,客户服务类,云网运营类,管理支撑类",
+    )
+
+    assert get_app_category_options(settings) == ["前端市场类", "客户服务类", "云网运营类", "管理支撑类"]
+
+
+def test_get_app_category_options_rejects_duplicates():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        app_category_options="前端市场类,客户服务类,前端市场类",
+    )
+
+    with pytest.raises(ValueError, match="duplicated"):
+        get_app_category_options(settings)
+
+
+def test_get_identity_provider_rejects_unknown_auth_provider_mode():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+    )
+    settings.auth_provider_mode = "legacy"
+
+    with pytest.raises(ValueError, match="Unsupported AUTH_PROVIDER_MODE"):
+        get_identity_provider(settings)
 
 
 def test_get_allowed_origins_defaults_to_dev_frontend_hosts():

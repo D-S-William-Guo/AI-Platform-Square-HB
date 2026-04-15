@@ -100,5 +100,10 @@ def get_identity_provider(settings_obj: Settings) -> BaseIdentityProvider:
         "oa": OAIdentityProvider,
         "external_sso": ExternalSSOIdentityProvider,
     }
-    provider_cls = provider_map.get(settings_obj.auth_provider_mode, LocalIdentityProvider)
+    provider_cls = provider_map.get(settings_obj.auth_provider_mode)
+    if provider_cls is None:
+        raise ValueError(
+            "Unsupported AUTH_PROVIDER_MODE value: "
+            f"{settings_obj.auth_provider_mode}. Expected one of: local, oa, external_sso"
+        )
     return provider_cls(settings_obj)

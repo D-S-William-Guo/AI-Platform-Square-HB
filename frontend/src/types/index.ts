@@ -66,6 +66,15 @@ export type RuleLink = {
   href: string
 }
 
+export type MetaEnums = {
+  app_status: string[]
+  app_category: string[]
+  app_difficulty: string[]
+  ranking_metric_type: string[]
+  value_dimension: string[]
+  data_level: string[]
+}
+
 export type PaginatedResponse<T> = {
   items: T[]
   page: number

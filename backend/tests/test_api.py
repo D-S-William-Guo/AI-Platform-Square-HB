@@ -37,6 +37,36 @@ def test_health():
     assert resp.json()['status'] == 'ok'
 
 
+def test_meta_enums_returns_configured_categories():
+    resp = client.get('/api/meta/enums')
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["app_category"] == ["前端市场类", "客户服务类", "云网运营类", "管理支撑类"]
+
+
+def test_submission_rejects_legacy_category_value():
+    payload = {
+        'category': '办公类',
+        'app_name': f'旧分类拦截测试应用-{uuid.uuid4().hex[:8]}',
+        'unit_name': '测试单位',
+        'contact': '张三',
+        'scenario': '该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
+        'embedded_system': '客服工单系统',
+        'problem_statement': '人工分发慢且准确率不稳定，影响处理效率。',
+        'effectiveness_type': 'efficiency_gain',
+        'effectiveness_metric': '工单流转时长下降20%',
+        'data_level': 'L2',
+        'expected_benefit': '预计每月节省人工排班工时并提升用户满意度。',
+        'ranking_enabled': True,
+        'ranking_weight': 1.0,
+        'ranking_tags': '',
+        'ranking_dimensions': ''
+    }
+    resp = create_submission_as_user(payload)
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Invalid category"
+
+
 def test_auth_login_me_logout_flow():
     client.cookies.clear()
     login_resp = client.post("/api/auth/login", json=DEFAULT_USER_LOGIN)
@@ -108,6 +138,30 @@ def test_auth_login_rejects_password_flow_when_external_provider_enabled(monkeyp
     finally:
         monkeypatch.setattr(settings, "auth_provider_mode", "local")
         monkeypatch.setattr(settings, "oa_sso_login_url", "")
+        main_module.identity_provider = main_module.get_identity_provider(settings)
+
+
+def test_auth_provider_external_sso_descriptor(monkeypatch):
+    monkeypatch.setattr(settings, "auth_provider_mode", "external_sso")
+    monkeypatch.setattr(settings, "external_sso_login_url", "https://sso.example.internal/login")
+
+    from app import main as main_module
+
+    main_module.identity_provider = main_module.get_identity_provider(settings)
+    try:
+        provider_resp = client.get("/api/auth/provider")
+        assert provider_resp.status_code == 200
+        payload = provider_resp.json()
+        assert payload["mode"] == "external_sso"
+        assert payload["local_login_enabled"] is False
+        assert payload["configured"] is True
+        assert payload["login_url"] == "https://sso.example.internal/login"
+
+        exchange_resp = client.post("/api/auth/sso/exchange", json={"assertion": "ticket-2"})
+        assert exchange_resp.status_code == 501
+    finally:
+        monkeypatch.setattr(settings, "auth_provider_mode", "local")
+        monkeypatch.setattr(settings, "external_sso_login_url", "")
         main_module.identity_provider = main_module.get_identity_provider(settings)
 
 
@@ -183,7 +237,7 @@ def test_submission_records_submitter_user_from_session():
     token = login_resp.json()["access_token"]
 
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'申报人绑定测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -226,7 +280,7 @@ def test_approve_submission_records_admin_actor_fields():
     user_token = user_login.json()["access_token"]
 
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'审批人绑定测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -283,7 +337,7 @@ def test_reject_submission_records_admin_and_reason():
     user_token = user_login.json()["access_token"]
 
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'拒绝原因测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -369,7 +423,7 @@ def test_user_without_submit_permission_cannot_create_submission():
         "contact": "测试人员",
         "contact_phone": "13800000099",
         "contact_email": "submit-block@example.com",
-        "category": "办公类",
+        "category": "前端市场类",
         "scenario": "这是一个用于验证无提交权限用户无法提交申报的测试场景描述，长度超过二十个字符。",
         "embedded_system": "测试系统",
         "problem_statement": "用于验证提交权限控制是否生效。",
@@ -519,7 +573,7 @@ def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
             "contact": "快照用户",
             "contact_phone": "13800009999",
             "contact_email": "snapshot@example.com",
-            "category": "办公类",
+            "category": "前端市场类",
             "scenario": "用于验证用户组织信息调整后，历史申报快照仍然保持创建当时的归属信息。",
             "embedded_system": "快照系统",
             "problem_statement": "验证用户编辑不会改穿历史申报和应用归属。",
@@ -699,7 +753,7 @@ def test_external_user_sync_requires_and_validates_sync_token():
 
 def test_list_apps():
     seed_payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': '种子应用',
         'unit_name': '种子单位',
         'contact': '张三',
@@ -736,7 +790,7 @@ def test_public_apps_default_excludes_offline_but_supports_explicit_filter():
         json={
             "name": app_name,
             "org": "测试单位",
-            "category": "办公类",
+            "category": "前端市场类",
             "description": "用于验证公开应用列表默认隐藏下架状态",
             "status": "offline",
             "monthly_calls": 0,
@@ -777,7 +831,7 @@ def test_public_apps_support_company_filter_for_province_apps():
         '/api/submissions',
         headers=auth_headers_for_user("zhangsan"),
         json={
-            'category': '办公类',
+            'category': '前端市场类',
             'app_name': f'公司筛选省内应用-{uuid.uuid4().hex[:8]}',
             'unit_name': '将被覆盖',
             'contact': '张三',
@@ -886,7 +940,7 @@ def test_historical_rankings_return_company_department_and_support_company_filte
 
 def test_submission_flow():
     payload = {
-            'category': '办公类',
+            'category': '前端市场类',
         'app_name': '测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -913,7 +967,7 @@ def test_submission_flow():
 
 def test_submission_create_requires_login():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': '未登录提交测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -932,7 +986,7 @@ def test_submission_create_requires_login():
 
 def test_submission_mine_flow_with_owner_scope():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'我的申报测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -982,7 +1036,7 @@ def test_submission_mine_flow_with_owner_scope():
 
 def test_submission_self_manage_flow():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'申报自助管理测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1054,7 +1108,7 @@ def test_rules_oa_links():
 
 def test_reject_submission_changes_status_to_rejected():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': '待拒绝测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1085,7 +1139,7 @@ def test_reject_submission_changes_status_to_rejected():
 
 def test_reject_submission_requires_non_empty_reason():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'拒绝原因必填测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1114,7 +1168,7 @@ def test_reject_submission_requires_non_empty_reason():
 
 def test_approve_maps_detail_doc_fields_to_app():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': '文档映射测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1150,7 +1204,7 @@ def test_approve_maps_detail_doc_fields_to_app():
 
 def test_approve_uses_submission_monthly_calls_and_difficulty_by_default():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'审批继承字段测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1186,7 +1240,7 @@ def test_approve_creates_app_with_disabled_ranking_eligibility_settings():
             app_name='测试应用-审批设置初始化',
             unit_name='测试单位',
             contact='李四',
-            category='办公类',
+            category='前端市场类',
             scenario='该应用用于客服工单智能分发与答案推荐，覆盖一线客服日常工作场景。',
             embedded_system='测试系统',
             problem_statement='人工分发慢且准确率不稳定，影响处理效率。',
@@ -1245,7 +1299,7 @@ def test_create_group_app_rejects_invalid_category():
 
 def test_offline_province_app_disables_ranking_and_blocks_new_participation():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'下架联动测试应用-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1336,7 +1390,7 @@ def test_offline_province_app_disables_ranking_and_blocks_new_participation():
 
 def test_update_app_dimension_score_accepts_json_body():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': '维度改分测试应用',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1384,7 +1438,7 @@ def test_delete_ranking_config_cleans_downstream_records():
     config_id = f"cfg-{unique_suffix}"
 
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'删配置联动测试应用-{unique_suffix}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1459,7 +1513,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
     config_id = f"cfg-dim-{unique_suffix}"
 
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'删维度联动测试应用-{unique_suffix}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1570,7 +1624,7 @@ def test_admin_ranking_configs_pagination_returns_metadata():
 
 def test_submission_ranking_dimensions_write_is_deprecated():
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'停写维度字段测试-{uuid.uuid4().hex[:8]}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1595,7 +1649,7 @@ def test_save_app_ranking_setting_atomic_success():
     unique = uuid.uuid4().hex[:8]
     app_name = f"原子保存测试应用-{unique}"
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': app_name,
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1657,7 +1711,7 @@ def test_save_app_ranking_setting_atomic_success():
 def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
     unique = uuid.uuid4().hex[:8]
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'原子回滚测试应用-{unique}',
         'unit_name': '测试单位',
         'contact': '张三',
@@ -1728,7 +1782,7 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
 def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
     unique = uuid.uuid4().hex[:8]
     payload = {
-        'category': '办公类',
+        'category': '前端市场类',
         'app_name': f'原子幂等测试应用-{unique}',
         'unit_name': '测试单位',
         'contact': '张三',

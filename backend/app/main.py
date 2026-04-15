@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .auth_utils import generate_session_token, hash_password, verify_password
 from .config import (
+    get_app_category_options,
     get_allowed_hosts,
     get_allowed_origins,
     is_api_docs_enabled,
@@ -101,7 +102,8 @@ from .schemas import (
 from .venv_utils import venv_reader
 
 APP_STATUS_VALUES = {"available", "approval", "beta", "offline"}
-APP_CATEGORY_VALUES = {"办公类", "业务前台", "运维后台", "企业管理"}
+APP_CATEGORY_OPTIONS = get_app_category_options(settings)
+APP_CATEGORY_VALUES = set(APP_CATEGORY_OPTIONS)
 APP_DIFFICULTY_VALUES = {"Low", "Medium", "High"}
 METRIC_TYPES = {"composite", "growth_rate", "likes"}
 VALUE_DIMENSIONS = {"cost_reduction", "efficiency_gain", "perception_uplift", "revenue_growth"}
@@ -1661,7 +1663,7 @@ def withdraw_submission_self(
 def list_enums():
     return {
         "app_status": sorted(APP_STATUS_VALUES),
-        "app_category": sorted(APP_CATEGORY_VALUES),
+        "app_category": APP_CATEGORY_OPTIONS,
         "app_difficulty": sorted(APP_DIFFICULTY_VALUES),
         "ranking_metric_type": sorted(METRIC_TYPES),
         "value_dimension": sorted(VALUE_DIMENSIONS),

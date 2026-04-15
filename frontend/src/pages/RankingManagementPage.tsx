@@ -45,8 +45,6 @@ interface DimensionConfig {
   weight: number
 }
 
-const APP_CATEGORY_OPTIONS = ['办公类', '业务前台', '运维后台', '企业管理'] as const
-
 function resolveAdminError(err: unknown, fallback: string): string {
   if (isMissingAdminTokenError(err)) {
     return `缺少管理员认证信息。${getAdminTokenSetupHint()}`
@@ -77,7 +75,17 @@ function resolveAdminError(err: unknown, fallback: string): string {
   return fallback
 }
 
-const RankingManagementPage = () => {
+const RankingManagementPage = ({
+  appCategories,
+  categoryOptionsLoading,
+  categoryOptionsError,
+  defaultAppCategory,
+}: {
+  appCategories: string[]
+  categoryOptionsLoading: boolean
+  categoryOptionsError: string | null
+  defaultAppCategory: string
+}) => {
   // 维度管理状态
   const [dimensions, setDimensions] = useState<RankingDimension[]>([])
   const [logs, setLogs] = useState<any[]>([])
@@ -155,7 +163,7 @@ const RankingManagementPage = () => {
   const [groupAppForm, setGroupAppForm] = useState({
     name: '',
     org: '',
-    category: '办公类',
+    category: defaultAppCategory,
     description: '',
     status: 'available',
     monthly_calls: 0,
@@ -196,6 +204,14 @@ const RankingManagementPage = () => {
   useEffect(() => {
     loadAdminAppsPage()
   }, [adminAppsPage, adminAppsPageSize, manageSectionFilter, manageStatusFilter, manageCompanyFilter, manageKeyword])
+
+  useEffect(() => {
+    if (!defaultAppCategory) return
+    setGroupAppForm((prev) => {
+      if (appCategories.includes(prev.category)) return prev
+      return { ...prev, category: defaultAppCategory }
+    })
+  }, [appCategories, defaultAppCategory])
 
   const loadBaseData = async () => {
     setLoading(true)
@@ -572,7 +588,7 @@ const RankingManagementPage = () => {
     setGroupAppForm({
       name: '',
       org: '',
-      category: '办公类',
+      category: defaultAppCategory,
       description: '',
       status: 'available',
       monthly_calls: 0,
@@ -592,6 +608,10 @@ const RankingManagementPage = () => {
   }
 
   const handleSaveGroupApp = async () => {
+    if (categoryOptionsLoading || categoryOptionsError || appCategories.length === 0) {
+      setError(categoryOptionsError || '分类配置加载中，请稍后重试')
+      return
+    }
     const name = groupAppForm.name.trim()
     const org = groupAppForm.org.trim()
     const category = groupAppForm.category.trim()
@@ -1133,7 +1153,11 @@ const RankingManagementPage = () => {
             <section className="group-app-section">
               <div className="section-header">
                 <h2>集团应用录入</h2>
-                <button className="primary-button" onClick={handleSaveGroupApp} disabled={groupAppSubmitting}>
+                <button
+                  className="primary-button"
+                  onClick={handleSaveGroupApp}
+                  disabled={groupAppSubmitting || categoryOptionsLoading || Boolean(categoryOptionsError)}
+                >
                   {groupAppSubmitting ? '保存中...' : '保存集团应用'}
                 </button>
               </div>
@@ -1143,6 +1167,9 @@ const RankingManagementPage = () => {
 
               {groupAppMessage && (
                 <div className="sync-message success">{groupAppMessage}</div>
+              )}
+              {categoryOptionsError && (
+                <div className="sync-message">{categoryOptionsError}</div>
               )}
 
               <form className="group-app-form">
@@ -1176,8 +1203,9 @@ const RankingManagementPage = () => {
                       id="group-category"
                       value={groupAppForm.category}
                       onChange={(e) => setGroupAppForm(prev => ({ ...prev, category: e.target.value }))}
+                      disabled={categoryOptionsLoading || Boolean(categoryOptionsError)}
                     >
-                      {APP_CATEGORY_OPTIONS.map((category) => (
+                      {appCategories.map((category) => (
                         <option key={category} value={category}>{category}</option>
                       ))}
                     </select>

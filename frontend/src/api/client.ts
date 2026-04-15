@@ -11,6 +11,7 @@ import type {
   RankingItem,
   Recommendation,
   RuleLink,
+  MetaEnums,
   Stats,
   SubmissionPayload,
   ImageUploadResponse,
@@ -101,6 +102,11 @@ export async function fetchStats() {
 
 export async function fetchRules() {
   const { data } = await client.get<RuleLink[]>(`${apiBasePath}/rules`)
+  return data
+}
+
+export async function fetchMetaEnums() {
+  const { data } = await client.get<MetaEnums>(`${apiBasePath}/meta/enums`)
   return data
 }
 

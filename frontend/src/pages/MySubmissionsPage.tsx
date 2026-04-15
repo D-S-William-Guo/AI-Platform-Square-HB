@@ -9,7 +9,7 @@ const defaultForm: SubmissionPayload = {
   contact: '',
   contact_phone: '',
   contact_email: '',
-  category: '办公类',
+  category: '前端市场类',
   scenario: '',
   embedded_system: '',
   problem_statement: '',

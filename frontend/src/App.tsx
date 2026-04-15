@@ -15,7 +15,8 @@ import {
   uploadDocument,
   fetchRankingDimensions,
   fetchDimensionScores,
-  fetchRankingConfigs
+  fetchRankingConfigs,
+  fetchMetaEnums,
 } from './api/client'
 import GuidePage from './pages/GuidePage'
 import RulePage from './pages/RulePage'
@@ -29,7 +30,7 @@ import UserManagementPage from './pages/UserManagementPage'
 import type { AppItem, AuthUser, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 
-const categories = ['全部', '办公类', '业务前台', '运维后台', '企业管理']
+const DEFAULT_APP_CATEGORIES = ['前端市场类', '客户服务类', '云网运营类', '管理支撑类'] as const
 const statusOptions = [
   { value: '', label: '全部状态' },
   { value: 'available', label: '可用' },
@@ -44,34 +45,35 @@ const valueDimensionLabel: Record<ValueDimension, string> = {
   revenue_growth: '拉动收入'
 }
 
-const defaultSubmission: SubmissionPayload = {
-  app_name: '',
-  unit_name: '',
-  contact: '',
-  contact_phone: '',
-  contact_email: '',
-  category: '办公类',
-  scenario: '',
-  embedded_system: '',
-  problem_statement: '',
-  effectiveness_type: 'efficiency_gain',
-  effectiveness_metric: '',
-  data_level: 'L2',
-  expected_benefit: '',
-  monthly_calls: 0,
-  difficulty: 'Medium',
-  cover_image_url: '',
-  detail_doc_url: '',
-  detail_doc_name: ''
-}
-
-function createSubmissionDraft(currentUser: AuthUser, overrides?: Partial<SubmissionPayload>): SubmissionPayload {
+function createSubmissionDraft(
+  currentUser: AuthUser,
+  defaultCategory: string,
+  overrides?: Partial<SubmissionPayload>,
+): SubmissionPayload {
   const company = currentUser.company || ''
-  return {
-    ...defaultSubmission,
+  const draft: SubmissionPayload = {
+    app_name: '',
+    unit_name: '',
+    contact: '',
+    contact_phone: '',
+    contact_email: '',
+    category: defaultCategory,
+    scenario: '',
+    embedded_system: '',
+    problem_statement: '',
+    effectiveness_type: 'efficiency_gain',
+    effectiveness_metric: '',
+    data_level: 'L2',
+    expected_benefit: '',
+    monthly_calls: 0,
+    difficulty: 'Medium',
+    cover_image_url: '',
+    detail_doc_url: '',
+    detail_doc_name: '',
     ...overrides,
-    unit_name: company || overrides?.unit_name || '',
   }
+  draft.unit_name = company || overrides?.unit_name || ''
+  return draft
 }
 
 const submissionStatusLabel: Record<Submission['status'], string> = {
@@ -136,7 +138,23 @@ const validationRules: Record<string, ValidationRule> = {
 }
 
 // 主页面组件
-function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: () => Promise<void> }) {
+function HomePage({
+  currentUser,
+  onLogout,
+  appCategories,
+  categoryOptionsLoading,
+  categoryOptionsError,
+}: {
+  currentUser: AuthUser
+  onLogout: () => Promise<void>
+  appCategories: string[]
+  categoryOptionsLoading: boolean
+  categoryOptionsError: string | null
+}) {
+  const defaultCategory = appCategories[0] || ''
+  const categories = useMemo(() => ['全部', ...appCategories], [appCategories])
+  const submissionCategoryUnavailable =
+    categoryOptionsLoading || Boolean(categoryOptionsError) || appCategories.length === 0
   const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('全部')
@@ -153,7 +171,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   const [statsError, setStatsError] = useState<string | null>(null)
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
   const [showSubmission, setShowSubmission] = useState(false)
-  const [submission, setSubmission] = useState<SubmissionPayload>(() => createSubmissionDraft(currentUser))
+  const [submission, setSubmission] = useState<SubmissionPayload>(() => createSubmissionDraft(currentUser, defaultCategory))
   const [errors, setErrors] = useState<FormErrors>({})
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -216,6 +234,14 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   useEffect(() => {
     setSubmission((prev) => ({ ...prev, unit_name: currentUser.company || prev.unit_name }))
   }, [currentUser.company])
+
+  useEffect(() => {
+    if (!defaultCategory) return
+    setSubmission((prev) => {
+      if (appCategories.includes(prev.category)) return prev
+      return { ...prev, category: defaultCategory }
+    })
+  }, [appCategories, defaultCategory])
 
   useEffect(() => {
     if (activeNav === 'ranking') {
@@ -520,13 +546,13 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
       return
     }
     setEditingSubmissionMeta({ id: managedSubmission.id, manageToken: manageToken.trim() })
-    setSubmission(createSubmissionDraft(currentUser, {
+    setSubmission(createSubmissionDraft(currentUser, defaultCategory, {
       app_name: managedSubmission.app_name,
       unit_name: managedSubmission.company || managedSubmission.unit_name,
       contact: managedSubmission.contact,
       contact_phone: managedSubmission.contact_phone,
       contact_email: managedSubmission.contact_email,
-      category: managedSubmission.category,
+      category: appCategories.includes(managedSubmission.category) ? managedSubmission.category : defaultCategory,
       scenario: managedSubmission.scenario,
       embedded_system: managedSubmission.embedded_system,
       problem_statement: managedSubmission.problem_statement,
@@ -557,6 +583,10 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
   }
 
   async function onSubmit() {
+    if (submissionCategoryUnavailable) {
+      alert(categoryOptionsError || '分类配置加载中，请稍后重试')
+      return
+    }
     if (!validateForm()) {
       alert('请检查表单填写是否正确')
       return
@@ -581,7 +611,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
         )
       }
       setShowSubmission(false)
-      setSubmission(createSubmissionDraft(currentUser))
+      setSubmission(createSubmissionDraft(currentUser, defaultCategory))
       setImagePreview(null)
       setDocumentMeta(null)
       setErrors({})
@@ -593,7 +623,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
 
   function closeSubmission() {
     setShowSubmission(false)
-    setSubmission(createSubmissionDraft(currentUser))
+    setSubmission(createSubmissionDraft(currentUser, defaultCategory))
     setImagePreview(null)
     setDocumentMeta(null)
     setErrors({})
@@ -625,9 +655,11 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
             <button
               className="primary"
               onClick={() => {
-                setSubmission(createSubmissionDraft(currentUser))
+                setSubmission(createSubmissionDraft(currentUser, defaultCategory))
                 setShowSubmission(true)
               }}
+              disabled={submissionCategoryUnavailable}
+              title={categoryOptionsError || (categoryOptionsLoading ? '分类配置加载中' : undefined)}
             >
               <span>+</span>
               <span>我要申报</span>
@@ -692,6 +724,7 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
 
           <div className="filter-section">
             <div className="nav-section-title">分类筛选</div>
+            {categoryOptionsError && <div className="stats-error">{categoryOptionsError}</div>}
             {categories.map((item) => (
               <div 
                 key={item} 
@@ -1289,6 +1322,11 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                 </div>
 
                 <div className="form-row">
+                  {categoryOptionsError && (
+                    <div className="form-group">
+                      <span className="error-message">{categoryOptionsError}</span>
+                    </div>
+                  )}
                   <div className="form-group">
                     <label className="form-label">联系邮箱</label>
                     <input 
@@ -1305,11 +1343,15 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
                       className="form-select"
                       value={submission.category} 
                       onChange={(e) => handleFieldChange('category', e.target.value)}
+                      disabled={submissionCategoryUnavailable}
                     >
-                      <option value="办公类">办公类</option>
-                      <option value="业务前台">业务前台</option>
-                      <option value="运维后台">运维后台</option>
-                      <option value="企业管理">企业管理</option>
+                      {appCategories.length === 0 ? (
+                        <option value="">分类配置不可用</option>
+                      ) : (
+                        appCategories.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))
+                      )}
                     </select>
                   </div>
                 </div>
@@ -1441,7 +1483,11 @@ function HomePage({ currentUser, onLogout }: { currentUser: AuthUser; onLogout: 
 
             <div className="modal-footer">
               <button className="modal-btn secondary" onClick={closeSubmission}>取消</button>
-              <button className="modal-btn primary" onClick={onSubmit} disabled={uploading || manageLoading}>
+              <button
+                className="modal-btn primary"
+                onClick={onSubmit}
+                disabled={uploading || manageLoading || submissionCategoryUnavailable}
+              >
                 {uploading ? '上传中...' : editingSubmissionMeta ? '保存修改' : '提交申报'}
               </button>
             </div>
@@ -1457,6 +1503,9 @@ function App() {
   const location = useLocation()
   const [authLoading, setAuthLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const [appCategories, setAppCategories] = useState<string[]>([])
+  const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(true)
+  const [categoryOptionsError, setCategoryOptionsError] = useState<string | null>(null)
 
   const loadCurrentUser = useCallback(async () => {
     try {
@@ -1473,6 +1522,27 @@ function App() {
   useEffect(() => {
     loadCurrentUser()
   }, [loadCurrentUser])
+
+  useEffect(() => {
+    const loadMetaEnums = async () => {
+      try {
+        setCategoryOptionsLoading(true)
+        setCategoryOptionsError(null)
+        const data = await fetchMetaEnums()
+        if (!Array.isArray(data.app_category) || data.app_category.length === 0) {
+          throw new Error('category options empty')
+        }
+        setAppCategories(data.app_category)
+      } catch (error) {
+        console.error('Failed to fetch category options:', error)
+        setAppCategories([])
+        setCategoryOptionsError('分类配置加载失败，请稍后重试')
+      } finally {
+        setCategoryOptionsLoading(false)
+      }
+    }
+    loadMetaEnums()
+  }, [])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -1503,13 +1573,35 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/" element={<HomePage currentUser={currentUser} onLogout={handleLogout} />} />
+      <Route
+        path="/"
+        element={
+          <HomePage
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            appCategories={appCategories}
+            categoryOptionsLoading={categoryOptionsLoading}
+            categoryOptionsError={categoryOptionsError}
+          />
+        }
+      />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
       <Route path="/my-submissions" element={<MySubmissionsPage />} />
       <Route
         path="/ranking-management"
-        element={currentUser.role === 'admin' ? <RankingManagementPage /> : <Navigate to="/" replace />}
+        element={
+          currentUser.role === 'admin' ? (
+            <RankingManagementPage
+              appCategories={appCategories}
+              categoryOptionsLoading={categoryOptionsLoading}
+              categoryOptionsError={categoryOptionsError}
+              defaultAppCategory={appCategories[0] || DEFAULT_APP_CATEGORIES[0]}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
       />
       <Route
         path="/submission-review"

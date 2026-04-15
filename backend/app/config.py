@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     user_default_password: str = "ChangeMe_User_123!"
     admin_default_password: str = "ChangeMe_Admin_123!"
     user_sync_token: str = ""
+    app_category_options: str = "前端市场类,客户服务类,云网运营类,管理支撑类"
 
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
@@ -58,6 +59,7 @@ def validate_settings(settings_obj: Settings) -> None:
         raise ValueError("TEST_DATABASE_URL must use the mysql+pymysql:// scheme")
     if settings_obj.auth_provider_mode not in {"local", "oa", "external_sso"}:
         raise ValueError("AUTH_PROVIDER_MODE must be one of: local, oa, external_sso")
+    _ = get_app_category_options(settings_obj)
     if is_production_environment(settings_obj):
         if settings_obj.user_default_password == "ChangeMe_User_123!":
             raise ValueError("USER_DEFAULT_PASSWORD must be changed in production")
@@ -81,6 +83,15 @@ def is_development_environment(settings_obj: Settings) -> bool:
 
 def parse_csv_setting(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def get_app_category_options(settings_obj: Settings) -> list[str]:
+    categories = parse_csv_setting(settings_obj.app_category_options)
+    if not categories:
+        raise ValueError("APP_CATEGORY_OPTIONS must contain at least one category")
+    if len(set(categories)) != len(categories):
+        raise ValueError("APP_CATEGORY_OPTIONS contains duplicated categories")
+    return categories
 
 
 def get_allowed_origins(settings_obj: Settings) -> list[str]:
