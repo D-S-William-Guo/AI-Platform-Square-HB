@@ -87,6 +87,8 @@ make backend-install
 make app-run
 ```
 
+建议在 `backend/.env` 中配置 `UVICORN_WORKERS=2` 及数据库连接池参数（`DB_POOL_*`、`DB_*_TIMEOUT`），以降低长时间运行后的连接抖动影响。
+
 正式服务常用命令：
 
 ```bash

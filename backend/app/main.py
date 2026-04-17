@@ -258,16 +258,18 @@ def enforce_rate_limit(
     bucket: str,
     limit: int,
     window_seconds: int,
+    key_suffix: str = "",
+    detail: str = "请求过于频繁，请稍后再试",
 ) -> None:
     client_ip = request.client.host if request.client else "unknown"
     now = monotonic()
-    key = f"{bucket}:{client_ip}"
+    key = f"{bucket}:{client_ip}:{key_suffix.strip().lower()}"
     with rate_limit_lock:
         entries = rate_limit_buckets[key]
         while entries and now - entries[0] >= window_seconds:
             entries.popleft()
         if len(entries) >= limit:
-            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+            raise HTTPException(status_code=429, detail=detail)
         entries.append(now)
 
 
@@ -998,9 +1000,16 @@ def auth_login(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    enforce_rate_limit(request, bucket="auth_login", limit=10, window_seconds=60)
     identity_provider.ensure_password_login_allowed()
     username = payload.username.strip()
+    enforce_rate_limit(
+        request,
+        bucket="auth_login",
+        limit=10,
+        window_seconds=60,
+        key_suffix=username.lower(),
+        detail="登录尝试过于频繁，请约1分钟后重试",
+    )
     user = (
         db.query(User)
         .filter(func.lower(User.username) == username.lower())

@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str
     test_database_url: str | None = None
+    db_pool_size: int = 10
+    db_pool_max_overflow: int = 20
+    db_pool_timeout: int = 10
+    db_pool_recycle_seconds: int = 300
+    db_connect_timeout: int = 5
+    db_read_timeout: int = 10
+    db_write_timeout: int = 10
     app_host: str = "0.0.0.0"
     app_port: int = 80
     backend_dev_port: int = 8000
@@ -57,6 +64,17 @@ def validate_settings(settings_obj: Settings) -> None:
         raise ValueError("DATABASE_URL must use the mysql+pymysql:// scheme")
     if settings_obj.test_database_url and not settings_obj.test_database_url.startswith(MYSQL_URL_PREFIX):
         raise ValueError("TEST_DATABASE_URL must use the mysql+pymysql:// scheme")
+    for name, value in (
+        ("DB_POOL_SIZE", settings_obj.db_pool_size),
+        ("DB_POOL_MAX_OVERFLOW", settings_obj.db_pool_max_overflow),
+        ("DB_POOL_TIMEOUT", settings_obj.db_pool_timeout),
+        ("DB_POOL_RECYCLE_SECONDS", settings_obj.db_pool_recycle_seconds),
+        ("DB_CONNECT_TIMEOUT", settings_obj.db_connect_timeout),
+        ("DB_READ_TIMEOUT", settings_obj.db_read_timeout),
+        ("DB_WRITE_TIMEOUT", settings_obj.db_write_timeout),
+    ):
+        if value < 1:
+            raise ValueError(f"{name} must be >= 1")
     if settings_obj.auth_provider_mode not in {"local", "oa", "external_sso"}:
         raise ValueError("AUTH_PROVIDER_MODE must be one of: local, oa, external_sso")
     _ = get_app_category_options(settings_obj)

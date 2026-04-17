@@ -27,8 +27,9 @@ fi
 
 APP_HOST="${APP_HOST:-0.0.0.0}"
 APP_PORT="${APP_PORT:-80}"
+UVICORN_WORKERS="${UVICORN_WORKERS:-2}"
 
 cd "$ROOT_DIR/backend"
 PYTHONPATH=. "$VENV_DIR/bin/alembic" upgrade head
 PYTHONPATH=. "$VENV_DIR/bin/python" -m app.bootstrap init-base
-exec "$VENV_DIR/bin/uvicorn" app.main:app --host "$APP_HOST" --port "$APP_PORT"
+exec "$VENV_DIR/bin/uvicorn" app.main:app --host "$APP_HOST" --port "$APP_PORT" --workers "$UVICORN_WORKERS"
