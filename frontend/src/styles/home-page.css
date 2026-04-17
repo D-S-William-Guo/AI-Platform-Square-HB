@@ -152,6 +152,16 @@
   color: var(--primary-color);
 }
 
+.home-page .quick-link-note {
+  display: block;
+  margin-top: 8px;
+  color: #8a6914;
+  background: #fff7db;
+  border: 1px solid #efd58a;
+  line-height: 1.5;
+  white-space: normal;
+}
+
 /* 中间内容区 - 重置全局 .main 样式的影响 */
 .home-page .main {
   display: flex;
@@ -536,6 +546,35 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.home-page .permission-hint {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+  font-size: 12px;
+  color: #8a6914;
+  background: #fff7db;
+  border: 1px solid #efd58a;
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  line-height: 1.4;
+}
+
+.home-page .route-permission-banner {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 110;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid #efd58a;
+  background: #fff7db;
+  color: #8a6914;
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* 加载和错误状态 */

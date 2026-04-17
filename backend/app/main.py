@@ -1438,7 +1438,7 @@ def create_submission(
 
 @app.get(f"{settings.api_prefix}/submissions/mine", response_model=list[SubmissionOut])
 def list_my_submissions(
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     """当前登录用户查看自己的申报记录。"""

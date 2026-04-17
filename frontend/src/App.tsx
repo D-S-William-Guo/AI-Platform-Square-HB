@@ -153,6 +153,11 @@ function HomePage({
   categoryOptionsLoading: boolean
   categoryOptionsError: string | null
 }) {
+  const location = useLocation()
+  const routeState = (location.state || {}) as { noSubmitPermission?: boolean }
+  const noSubmitPermissionHint = '当前账号暂无申报权限。请联系管理员开通后重新登录。'
+  const canUseSubmission = currentUser.role === 'admin' || currentUser.can_submit
+  const canAccessMySubmissions = currentUser.role === 'admin' || currentUser.can_submit
   const defaultCategory = appCategories[0] || ''
   const categories = useMemo(() => ['全部', ...appCategories], [appCategories])
   const submissionCategoryUnavailable =
@@ -653,11 +658,13 @@ function HomePage({
             <UiIcon name="platform" />
             <span>平台介绍</span>
           </Link>
-          <Link to="/my-submissions" className="secondary">
-            <UiIcon name="my" />
-            <span>我的申报</span>
-          </Link>
-          {currentUser.can_submit ? (
+          {canAccessMySubmissions && (
+            <Link to="/my-submissions" className="secondary">
+              <UiIcon name="my" />
+              <span>我的申报</span>
+            </Link>
+          )}
+          {canUseSubmission && (
             <button
               className="primary"
               onClick={() => {
@@ -670,12 +677,8 @@ function HomePage({
               <span>+</span>
               <span>我要申报</span>
             </button>
-          ) : (
-            <button className="primary" type="button" disabled title="当前账号没有申报权限">
-              <span>+</span>
-              <span>我要申报</span>
-            </button>
           )}
+          {!canUseSubmission && <span className="permission-hint">{noSubmitPermissionHint}</span>}
           <button className="secondary" onClick={onLogout}>
             <span>退出登录</span>
           </button>
@@ -757,10 +760,12 @@ function HomePage({
               <UiIcon name="rule" />
               <span>榜单规则</span>
             </Link>
-            <Link to="/my-submissions" className="quick-link">
-              <UiIcon name="my" />
-              <span>我的申报</span>
-            </Link>
+            {canAccessMySubmissions && (
+              <Link to="/my-submissions" className="quick-link">
+                <UiIcon name="my" />
+                <span>我的申报</span>
+              </Link>
+            )}
             {currentUser.role === 'admin' && (
               <Link to="/ranking-management" className="quick-link">
                 <UiIcon name="ranking" />
@@ -783,6 +788,9 @@ function HomePage({
               <UiIcon name="history" />
               <span>历史榜单</span>
             </Link>
+            {!canUseSubmission && (
+              <div className="quick-link quick-link-note">{noSubmitPermissionHint}</div>
+            )}
           </div>
 
           <div className="quick-links stats-panel">
@@ -1504,6 +1512,9 @@ function HomePage({
           </div>
         </div>
       )}
+      {routeState.noSubmitPermission && (
+        <div className="route-permission-banner">{noSubmitPermissionHint}</div>
+      )}
     </div>
   )
 }
@@ -1598,7 +1609,16 @@ function App() {
       <Route path="/platform-intro" element={<PlatformIntroPage />} />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/rule" element={<RulePage />} />
-      <Route path="/my-submissions" element={<MySubmissionsPage />} />
+      <Route
+        path="/my-submissions"
+        element={
+          currentUser.role === 'admin' || currentUser.can_submit ? (
+            <MySubmissionsPage />
+          ) : (
+            <Navigate to="/" replace state={{ noSubmitPermission: true }} />
+          )
+        }
+      />
       <Route
         path="/ranking-management"
         element={

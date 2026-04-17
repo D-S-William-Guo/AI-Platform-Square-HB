@@ -453,6 +453,36 @@ def test_user_without_submit_permission_cannot_create_submission():
             db.close()
 
 
+def test_user_without_submit_permission_cannot_list_my_submissions():
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == "zhangsan").first()
+        assert user is not None
+        original_can_submit = bool(user.can_submit)
+        user.can_submit = False
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        token = login_and_get_token("zhangsan", settings.user_default_password)
+        resp = client.get(
+            "/api/submissions/mine",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "当前账号没有申报权限"
+    finally:
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.username == "zhangsan").first()
+            assert user is not None
+            user.can_submit = original_can_submit
+            db.commit()
+        finally:
+            db.close()
+
+
 def test_admin_can_create_user_and_manage_submit_permission():
     admin_token = login_and_get_token("lisi", settings.admin_default_password)
     username = f"user_{uuid.uuid4().hex[:8]}"
