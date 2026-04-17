@@ -179,6 +179,18 @@ def test_auth_login_rate_limit_after_repeated_attempts():
 
     blocked = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})
     assert blocked.status_code == 429
+    assert blocked.json()["detail"] == "登录尝试过于频繁，请约1分钟后重试"
+
+
+def test_auth_login_rate_limit_isolated_by_username_under_same_ip():
+    client.cookies.clear()
+    for _ in range(10):
+        resp = client.post("/api/auth/login", json={"username": "zhangsan", "password": "wrong-password"})
+        assert resp.status_code == 401
+
+    # same client IP but different username should not be blocked by zhangsan attempts
+    other_user_resp = client.post("/api/auth/login", json={"username": "lisi", "password": "wrong-password"})
+    assert other_user_resp.status_code == 401
 
 
 def test_admin_api_supports_admin_session_token():

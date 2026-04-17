@@ -132,6 +132,19 @@ make backend-install
 make service-start
 ```
 
+为降低长时间运行后的登录抖动，建议在 `backend/.env` 增加以下运行参数：
+
+```bash
+UVICORN_WORKERS=2
+DB_POOL_SIZE=10
+DB_POOL_MAX_OVERFLOW=20
+DB_POOL_TIMEOUT=10
+DB_POOL_RECYCLE_SECONDS=300
+DB_CONNECT_TIMEOUT=5
+DB_READ_TIMEOUT=10
+DB_WRITE_TIMEOUT=10
+```
+
 如果你是通过覆盖现有目录更新源码，也遵循同样原则：
 
 - 先停服务

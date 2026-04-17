@@ -69,6 +69,8 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         setError('用户名或密码错误')
       } else if (status === 403) {
         setError('当前用户不可用，请联系管理员')
+      } else if (status === 429) {
+        setError('登录尝试过于频繁，请稍后重试（约1分钟）')
       } else {
         setError('登录失败，请稍后重试')
       }
