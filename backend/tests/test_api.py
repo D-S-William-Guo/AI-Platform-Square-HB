@@ -193,6 +193,44 @@ def test_auth_login_rate_limit_isolated_by_username_under_same_ip():
     assert other_user_resp.status_code == 401
 
 
+def test_audit_event_allows_anonymous_and_persists_action_log():
+    client.cookies.clear()
+    resp = client.post(
+        "/api/audit/events",
+        json={
+            "event_name": "auth.intent.submit.click",
+            "intent": "submit",
+            "result": "redirect_login",
+            "return_to": "/",
+            "context": "test.anonymous.audit",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    logs_resp = client.get(
+        "/api/action-logs",
+        params={"action": "auth.intent.submit.click", "limit": 20},
+        headers=auth_headers_for_user("lisi"),
+    )
+    assert logs_resp.status_code == 200
+    assert any(item["action"] == "auth.intent.submit.click" for item in logs_resp.json())
+
+
+def test_audit_event_rejects_unsupported_event_name():
+    resp = client.post(
+        "/api/audit/events",
+        json={
+            "event_name": "unknown.event",
+            "intent": "submit",
+            "result": "redirect_login",
+            "return_to": "/",
+            "context": "test.invalid.audit",
+        },
+    )
+    assert resp.status_code == 422
+
+
 def test_admin_api_supports_admin_session_token():
     client.cookies.clear()
     login_resp = client.post("/api/auth/login", json={"username": "lisi", "password": settings.admin_default_password})
@@ -418,7 +456,7 @@ def test_admin_users_pagination_returns_metadata():
     assert len(payload["items"]) == 1
 
 
-def test_user_without_submit_permission_cannot_create_submission():
+def test_user_without_submit_permission_can_still_create_submission():
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == "zhangsan").first()
@@ -452,8 +490,8 @@ def test_user_without_submit_permission_cannot_create_submission():
 
     try:
         resp = create_submission_as_user(payload)
-        assert resp.status_code == 403
-        assert resp.json()["detail"] == "当前账号没有申报权限"
+        assert resp.status_code == 200
+        assert resp.json()["app_name"] == payload["app_name"]
     finally:
         db = SessionLocal()
         try:
@@ -465,7 +503,7 @@ def test_user_without_submit_permission_cannot_create_submission():
             db.close()
 
 
-def test_user_without_submit_permission_cannot_list_my_submissions():
+def test_user_without_submit_permission_can_still_list_my_submissions():
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == "zhangsan").first()
@@ -482,8 +520,8 @@ def test_user_without_submit_permission_cannot_list_my_submissions():
             "/api/submissions/mine",
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert resp.status_code == 403
-        assert resp.json()["detail"] == "当前账号没有申报权限"
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
     finally:
         db = SessionLocal()
         try:
@@ -1076,7 +1114,7 @@ def test_submission_mine_flow_with_owner_scope():
     assert target['status'] == 'withdrawn'
 
 
-def test_submission_self_manage_flow():
+def test_submission_self_manage_flow_removed():
     payload = {
         'category': '前端市场类',
         'app_name': f'申报自助管理测试应用-{uuid.uuid4().hex[:8]}',
@@ -1103,43 +1141,25 @@ def test_submission_self_manage_flow():
     assert len(manage_token) >= 16
 
     self_resp = client.get('/api/submissions/self', params={'manage_token': manage_token})
-    assert self_resp.status_code == 200
-    assert self_resp.json()['id'] == submission_id
+    assert self_resp.status_code == 404
 
-    updated_name = f"{payload['app_name']}-更新"
     user_headers = auth_headers_for_user()
     update_resp = client.put(
         f'/api/submissions/{submission_id}/self',
         json={
             **payload,
-            'app_name': updated_name,
             'manage_token': manage_token,
         },
         headers=user_headers,
     )
-    assert update_resp.status_code == 200
-    assert update_resp.json()['app_name'] == updated_name
+    assert update_resp.status_code in {404, 405}
 
     withdraw_resp = client.post(
         f'/api/submissions/{submission_id}/withdraw',
         json={'manage_token': manage_token},
         headers=user_headers,
     )
-    assert withdraw_resp.status_code == 200
-
-    after_resp = client.get('/api/submissions/self', params={'manage_token': manage_token})
-    assert after_resp.status_code == 200
-    assert after_resp.json()['status'] == 'withdrawn'
-
-    blocked_update_resp = client.put(
-        f'/api/submissions/{submission_id}/self',
-        json={
-            **payload,
-            'manage_token': manage_token,
-        },
-        headers=user_headers,
-    )
-    assert blocked_update_resp.status_code == 400
+    assert withdraw_resp.status_code in {404, 405}
 
 
 def test_rules_oa_links():

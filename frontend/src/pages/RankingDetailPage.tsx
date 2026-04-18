@@ -375,7 +375,7 @@ export default function RankingDetailPage() {
       )}
 
       <footer className="detail-footer">
-        <div>最近更新时间：{new Date().toLocaleDateString()} · 联系邮箱：aiapps@hebei.cn</div>
+        <div>最近更新时间：{new Date().toLocaleDateString()} · 联系邮箱：aiapps@chinatelecom.cn</div>
       </footer>
     </div>
   )

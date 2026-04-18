@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Navigate, Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Navigate, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
+  auditEvent,
   clearAuthToken,
   fetchAuthMe,
   fetchApps,
@@ -8,9 +9,6 @@ import {
   fetchStats,
   logout,
   submitApp,
-  fetchSubmissionSelf,
-  updateSubmissionSelf,
-  withdrawSubmissionSelf,
   uploadImage,
   uploadDocument,
   fetchRankingDimensions,
@@ -28,7 +26,7 @@ import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import LoginPage from './pages/LoginPage'
 import UserManagementPage from './pages/UserManagementPage'
-import type { AppItem, AuthUser, RankingItem, Stats, Submission, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import type { AppItem, AuthUser, RankingItem, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
 import { resolveMediaUrl } from './utils/media'
 import UiIcon from './components/UiIcon'
 
@@ -48,11 +46,11 @@ const valueDimensionLabel: Record<ValueDimension, string> = {
 }
 
 function createSubmissionDraft(
-  currentUser: AuthUser,
+  currentUser: AuthUser | null,
   defaultCategory: string,
   overrides?: Partial<SubmissionPayload>,
 ): SubmissionPayload {
-  const company = currentUser.company || ''
+  const company = currentUser?.company || ''
   const draft: SubmissionPayload = {
     app_name: '',
     unit_name: '',
@@ -76,13 +74,6 @@ function createSubmissionDraft(
   }
   draft.unit_name = company || overrides?.unit_name || ''
   return draft
-}
-
-const submissionStatusLabel: Record<Submission['status'], string> = {
-  pending: '待审核',
-  approved: '已通过',
-  rejected: '已拒绝',
-  withdrawn: '已撤回'
 }
 
 // 生成渐变色
@@ -147,17 +138,21 @@ function HomePage({
   categoryOptionsLoading,
   categoryOptionsError,
 }: {
-  currentUser: AuthUser
-  onLogout: () => Promise<void>
+  currentUser: AuthUser | null
+  onLogout: (() => Promise<void>) | null
   appCategories: string[]
   categoryOptionsLoading: boolean
   categoryOptionsError: string | null
 }) {
+  const navigate = useNavigate()
   const location = useLocation()
-  const routeState = (location.state || {}) as { noSubmitPermission?: boolean }
-  const noSubmitPermissionHint = '当前账号暂无申报权限。请联系管理员开通后重新登录。'
-  const canUseSubmission = currentUser.role === 'admin' || currentUser.can_submit
-  const canAccessMySubmissions = currentUser.role === 'admin' || currentUser.can_submit
+  const routeState = (location.state || {}) as {
+    noAdminPermission?: boolean
+    openSubmission?: boolean
+  }
+  const canUseSubmission = Boolean(currentUser)
+  const canAccessMySubmissions = Boolean(currentUser)
+  const isAdmin = currentUser?.role === 'admin'
   const defaultCategory = appCategories[0] || ''
   const categories = useMemo(() => ['全部', ...appCategories], [appCategories])
   const submissionCategoryUnavailable =
@@ -190,14 +185,6 @@ function HomePage({
     size: number
     mimeType: string
   } | null>(null)
-  const [showSubmissionManage, setShowSubmissionManage] = useState(false)
-  const [manageToken, setManageToken] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return window.localStorage.getItem('LATEST_SUBMISSION_MANAGE_TOKEN') || ''
-  })
-  const [managedSubmission, setManagedSubmission] = useState<Submission | null>(null)
-  const [manageLoading, setManageLoading] = useState(false)
-  const [editingSubmissionMeta, setEditingSubmissionMeta] = useState<{ id: number; manageToken: string } | null>(null)
 
   const companyOptions = useMemo(() => {
     const values =
@@ -239,8 +226,8 @@ function HomePage({
   }, [])
 
   useEffect(() => {
-    setSubmission((prev) => ({ ...prev, unit_name: currentUser.company || prev.unit_name }))
-  }, [currentUser.company])
+    setSubmission((prev) => ({ ...prev, unit_name: currentUser?.company || prev.unit_name }))
+  }, [currentUser?.company])
 
   useEffect(() => {
     if (!defaultCategory) return
@@ -249,6 +236,32 @@ function HomePage({
       return { ...prev, category: defaultCategory }
     })
   }, [appCategories, defaultCategory])
+
+  useEffect(() => {
+    if (!routeState.openSubmission) return
+    if (!currentUser) return
+    if (!canUseSubmission) return
+    setSubmission(createSubmissionDraft(currentUser, defaultCategory))
+    setShowSubmission(true)
+    auditEvent({
+      event_name: 'submission.modal.auto_open',
+      intent: 'submit',
+      result: 'success',
+      return_to: '/',
+      context: 'home.route_state.open_submission',
+    })
+  }, [routeState.openSubmission, currentUser, canUseSubmission, defaultCategory])
+
+  useEffect(() => {
+    if (!routeState.noAdminPermission) return
+    auditEvent({
+      event_name: 'route.guard.denied_admin',
+      intent: 'admin',
+      result: 'denied_role',
+      return_to: location.pathname,
+      context: 'home.route_state.no_admin_permission',
+    })
+  }, [routeState.noAdminPermission, location.pathname])
 
   useEffect(() => {
     if (activeNav === 'ranking') {
@@ -510,86 +523,18 @@ function HomePage({
     }
   }, [handleDocumentUpload])
 
-  async function lookupManagedSubmission() {
-    const token = manageToken.trim()
-    if (!token) {
-      alert('请输入申报管理令牌')
-      return
-    }
-    try {
-      setManageLoading(true)
-      const result = await fetchSubmissionSelf(token)
-      setManagedSubmission(result)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', token)
-      }
-    } catch (_error) {
-      setManagedSubmission(null)
-      alert('未找到对应申报，请检查管理令牌是否正确')
-    } finally {
-      setManageLoading(false)
-    }
-  }
-
-  async function withdrawManagedSubmission() {
-    if (!managedSubmission || managedSubmission.status !== 'pending') {
-      return
-    }
-    if (!confirm('确定撤回该申报吗？撤回后将不会进入审核。')) {
-      return
-    }
-    try {
-      await withdrawSubmissionSelf(managedSubmission.id, manageToken.trim())
-      const refreshed = await fetchSubmissionSelf(manageToken.trim())
-      setManagedSubmission(refreshed)
-      alert('申报已撤回。')
-    } catch (_error) {
-      alert('撤回失败，请稍后重试')
-    }
-  }
-
-  function editManagedSubmission() {
-    if (!managedSubmission || managedSubmission.status !== 'pending') {
-      return
-    }
-    setEditingSubmissionMeta({ id: managedSubmission.id, manageToken: manageToken.trim() })
-    setSubmission(createSubmissionDraft(currentUser, defaultCategory, {
-      app_name: managedSubmission.app_name,
-      unit_name: managedSubmission.company || managedSubmission.unit_name,
-      contact: managedSubmission.contact,
-      contact_phone: managedSubmission.contact_phone,
-      contact_email: managedSubmission.contact_email,
-      category: appCategories.includes(managedSubmission.category) ? managedSubmission.category : defaultCategory,
-      scenario: managedSubmission.scenario,
-      embedded_system: managedSubmission.embedded_system,
-      problem_statement: managedSubmission.problem_statement,
-      effectiveness_type: managedSubmission.effectiveness_type,
-      effectiveness_metric: managedSubmission.effectiveness_metric,
-      data_level: managedSubmission.data_level,
-      expected_benefit: managedSubmission.expected_benefit,
-      monthly_calls: managedSubmission.monthly_calls ?? 0,
-      difficulty: managedSubmission.difficulty ?? 'Medium',
-      cover_image_url: managedSubmission.cover_image_url || '',
-      detail_doc_url: managedSubmission.detail_doc_url || '',
-      detail_doc_name: managedSubmission.detail_doc_name || ''
-    }))
-    setImagePreview(managedSubmission.cover_image_url ? resolveMediaUrl(managedSubmission.cover_image_url) : null)
-    setDocumentMeta(
-      managedSubmission.detail_doc_url
-        ? {
-            url: managedSubmission.detail_doc_url,
-            name: managedSubmission.detail_doc_name || '详细文档',
-            size: 0,
-            mimeType: ''
-          }
-        : null
-    )
-    setErrors({})
-    setShowSubmissionManage(false)
-    setShowSubmission(true)
-  }
-
   async function onSubmit() {
+    if (!currentUser) {
+      auditEvent({
+        event_name: 'auth.intent.submit.click',
+        intent: 'submit',
+        result: 'redirect_login',
+        return_to: '/',
+        context: 'home.submit.modal.submit',
+      })
+      navigate('/login', { state: { intent: 'submit', returnTo: '/' } })
+      return
+    }
     if (submissionCategoryUnavailable) {
       alert(categoryOptionsError || '分类配置加载中，请稍后重试')
       return
@@ -600,29 +545,13 @@ function HomePage({
     }
 
     try {
-      if (editingSubmissionMeta) {
-        await updateSubmissionSelf(editingSubmissionMeta.id, {
-          ...submission,
-          manage_token: editingSubmissionMeta.manageToken
-        })
-        alert('申报已更新，等待审核。')
-      } else {
-        const created = await submitApp(submission)
-        if (typeof window !== 'undefined' && created.manage_token) {
-          window.localStorage.setItem('LATEST_SUBMISSION_MANAGE_TOKEN', created.manage_token)
-        }
-        alert(
-          created.manage_token
-            ? `申报已提交，等待审核。\n请保存管理令牌：${created.manage_token}`
-            : '申报已提交，等待审核。'
-        )
-      }
+      await submitApp(submission)
+      alert('申报已提交，等待审核。')
       setShowSubmission(false)
       setSubmission(createSubmissionDraft(currentUser, defaultCategory))
       setImagePreview(null)
       setDocumentMeta(null)
       setErrors({})
-      setEditingSubmissionMeta(null)
     } catch (error) {
       alert('提交失败，请重试')
     }
@@ -634,7 +563,6 @@ function HomePage({
     setImagePreview(null)
     setDocumentMeta(null)
     setErrors({})
-    setEditingSubmissionMeta(null)
   }
 
   return (
@@ -664,27 +592,56 @@ function HomePage({
               <span>我的申报</span>
             </Link>
           )}
-          {canUseSubmission && (
+          <button
+            className="primary"
+            onClick={() => {
+              if (!currentUser) {
+                auditEvent({
+                  event_name: 'auth.intent.submit.click',
+                  intent: 'submit',
+                  result: 'redirect_login',
+                  return_to: '/',
+                  context: 'home.header.submit_button',
+                })
+                navigate('/login', { state: { intent: 'submit', returnTo: '/' } })
+                return
+              }
+              setSubmission(createSubmissionDraft(currentUser, defaultCategory))
+              setShowSubmission(true)
+            }}
+            disabled={Boolean(currentUser) && submissionCategoryUnavailable}
+            title={categoryOptionsError || (categoryOptionsLoading ? '分类配置加载中' : undefined)}
+          >
+            <span>+</span>
+            <span>我要申报</span>
+          </button>
+          {!currentUser && (
             <button
-              className="primary"
+              className="secondary"
               onClick={() => {
-                setSubmission(createSubmissionDraft(currentUser, defaultCategory))
-                setShowSubmission(true)
+                auditEvent({
+                  event_name: 'auth.intent.admin.click',
+                  intent: 'admin',
+                  result: 'redirect_login',
+                  return_to: '/ranking-management',
+                  context: 'home.header.admin_login',
+                })
+                navigate('/login', { state: { intent: 'admin', returnTo: '/ranking-management' } })
               }}
-              disabled={submissionCategoryUnavailable}
-              title={categoryOptionsError || (categoryOptionsLoading ? '分类配置加载中' : undefined)}
             >
-              <span>+</span>
-              <span>我要申报</span>
+              <span>管理员登录</span>
             </button>
           )}
-          {!canUseSubmission && <span className="permission-hint">{noSubmitPermissionHint}</span>}
-          <button className="secondary" onClick={onLogout}>
-            <span>退出登录</span>
-          </button>
-          <div className="avatar" title={`${currentUser.chinese_name} (${currentUser.role === 'admin' ? '管理员' : '普通用户'})`}>
-            {(currentUser.chinese_name || currentUser.username).slice(0, 1)}
-          </div>
+          {currentUser && onLogout && (
+            <>
+              <button className="secondary" onClick={onLogout}>
+                <span>退出登录</span>
+              </button>
+              <div className="avatar" title={`${currentUser.chinese_name} (${currentUser.role === 'admin' ? '管理员' : '普通用户'})`}>
+                {(currentUser.chinese_name || currentUser.username).slice(0, 1)}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
@@ -766,19 +723,19 @@ function HomePage({
                 <span>我的申报</span>
               </Link>
             )}
-            {currentUser.role === 'admin' && (
+            {isAdmin && (
               <Link to="/ranking-management" className="quick-link">
                 <UiIcon name="ranking" />
                 <span>排行榜管理</span>
               </Link>
             )}
-            {currentUser.role === 'admin' && (
+            {isAdmin && (
               <Link to="/submission-review" className="quick-link">
                 <UiIcon name="review" />
                 <span>申报审核</span>
               </Link>
             )}
-            {currentUser.role === 'admin' && (
+            {isAdmin && (
               <Link to="/user-management" className="quick-link">
                 <UiIcon name="user" />
                 <span>用户管理</span>
@@ -788,8 +745,8 @@ function HomePage({
               <UiIcon name="history" />
               <span>历史榜单</span>
             </Link>
-            {!canUseSubmission && (
-              <div className="quick-link quick-link-note">{noSubmitPermissionHint}</div>
+            {!currentUser && (
+              <div className="quick-link quick-link-note">想申报请先登录账号</div>
             )}
           </div>
 
@@ -993,7 +950,7 @@ function HomePage({
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2024-12-11 · 联系邮箱：aiapps@hebei.cn</div>
+        <div>最近更新时间：2026-04-18 · 联系邮箱：aiapps@chinatelecom.cn</div>
         <div style={{ marginTop: '4px', fontSize: '12px' }}>数据来源于省公司各单位申报与集团应用目录</div>
       </footer>
 
@@ -1112,91 +1069,13 @@ function HomePage({
         </div>
       )}
 
-      {showSubmissionManage && (
-        <div className="modal-overlay" onClick={() => setShowSubmissionManage(false)}>
-          <div className="modal-container submission-manage-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-section">
-                <h3 className="modal-title">申报管理</h3>
-                <p className="modal-subtitle">输入管理令牌后可查看、修改、撤回申报</p>
-              </div>
-              <button className="modal-close" onClick={() => setShowSubmissionManage(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">管理令牌</label>
-                <div className="manage-token-row">
-                  <input
-                    className="form-input"
-                    value={manageToken}
-                    onChange={(e) => setManageToken(e.target.value)}
-                    placeholder="请输入提交后保存的管理令牌"
-                  />
-                  <button
-                    type="button"
-                    className="manage-token-query"
-                    onClick={lookupManagedSubmission}
-                    disabled={manageLoading}
-                  >
-                    {manageLoading ? '查询中...' : '查询'}
-                  </button>
-                </div>
-              </div>
-
-              {managedSubmission && (
-                <div className="manage-submission-card">
-                  <div className="manage-submission-header">
-                    <h4>{managedSubmission.app_name}</h4>
-                    <span className={`modal-status-badge ${managedSubmission.status}`}>
-                      {submissionStatusLabel[managedSubmission.status]}
-                    </span>
-                  </div>
-                  <div className="manage-submission-grid">
-                    <div><span className="label">所属公司</span><span>{managedSubmission.company || managedSubmission.unit_name}</span></div>
-                    <div><span className="label">所属部门</span><span>{managedSubmission.department || '未设置'}</span></div>
-                    <div><span className="label">联系人</span><span>{managedSubmission.contact}</span></div>
-                    <div><span className="label">嵌入系统</span><span>{managedSubmission.embedded_system}</span></div>
-                    <div><span className="label">更新时间</span><span>{new Date(managedSubmission.updated_at || managedSubmission.created_at).toLocaleString()}</span></div>
-                  </div>
-                  <div className="manage-submission-actions">
-                    <button
-                      type="button"
-                      className="modal-btn secondary"
-                      onClick={editManagedSubmission}
-                      disabled={managedSubmission.status !== 'pending'}
-                    >
-                      修改申报
-                    </button>
-                    <button
-                      type="button"
-                      className="modal-btn secondary danger"
-                      onClick={withdrawManagedSubmission}
-                      disabled={managedSubmission.status !== 'pending'}
-                    >
-                      撤回申报
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="modal-btn secondary" onClick={() => setShowSubmissionManage(false)}>
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showSubmission && (
         <div className="modal-overlay" onClick={closeSubmission}>
           <div className="modal-container submission-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-section">
-                <h3 className="modal-title">{editingSubmissionMeta ? '修改申报' : '应用申报'}</h3>
-                <p className="modal-subtitle">
-                  {editingSubmissionMeta ? '仅待审核申报可修改，修改后重新进入审核流程。' : '请填写完整的应用信息，带 * 的为必填项'}
-                </p>
+                <h3 className="modal-title">应用申报</h3>
+                <p className="modal-subtitle">请填写完整的应用信息，带 * 的为必填项</p>
               </div>
               <button className="modal-close" onClick={closeSubmission}>×</button>
             </div>
@@ -1310,7 +1189,7 @@ function HomePage({
                     <label className="form-label">所属部门</label>
                     <input
                       className="form-input"
-                      value={currentUser.department || '未设置'}
+                      value={currentUser?.department || '未设置'}
                       readOnly
                     />
                   </div>
@@ -1504,19 +1383,47 @@ function HomePage({
               <button
                 className="modal-btn primary"
                 onClick={onSubmit}
-                disabled={uploading || manageLoading || submissionCategoryUnavailable}
+                disabled={uploading || submissionCategoryUnavailable}
               >
-                {uploading ? '上传中...' : editingSubmissionMeta ? '保存修改' : '提交申报'}
+                {uploading ? '上传中...' : '提交申报'}
               </button>
             </div>
           </div>
         </div>
       )}
-      {routeState.noSubmitPermission && (
-        <div className="route-permission-banner">{noSubmitPermissionHint}</div>
+      {routeState.noAdminPermission && (
+        <div className="route-permission-banner">当前账号不是管理员，无法访问管理功能。</div>
       )}
     </div>
   )
+}
+
+function AuditRedirect({
+  to,
+  state,
+  eventName,
+  intent,
+  returnTo,
+  context,
+}: {
+  to: string
+  state?: Record<string, unknown>
+  eventName: string
+  intent: 'submit' | 'admin'
+  returnTo: string
+  context: string
+}) {
+  useEffect(() => {
+    auditEvent({
+      event_name: eventName,
+      intent,
+      result: 'redirect_login',
+      return_to: returnTo,
+      context,
+    })
+  }, [eventName, intent, returnTo, context])
+
+  return <Navigate to={to} replace state={state} />
 }
 
 // 主应用组件，包含路由配置
@@ -1582,24 +1489,15 @@ function App() {
     )
   }
 
-  if (!currentUser) {
-    return (
-      <Routes>
-        <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
-        <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
-      </Routes>
-    )
-  }
-
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
       <Route
         path="/"
         element={
           <HomePage
             currentUser={currentUser}
-            onLogout={handleLogout}
+            onLogout={currentUser ? handleLogout : null}
             appCategories={appCategories}
             categoryOptionsLoading={categoryOptionsLoading}
             categoryOptionsError={categoryOptionsError}
@@ -1612,35 +1510,87 @@ function App() {
       <Route
         path="/my-submissions"
         element={
-          currentUser.role === 'admin' || currentUser.can_submit ? (
+          currentUser ? (
             <MySubmissionsPage />
           ) : (
-            <Navigate to="/" replace state={{ noSubmitPermission: true }} />
+            <AuditRedirect
+              to="/login"
+              state={{ intent: 'submit', returnTo: '/my-submissions', from: location.pathname }}
+              eventName="route.guard.redirect_login.submit"
+              intent="submit"
+              returnTo="/my-submissions"
+              context="route.my_submissions.guard"
+            />
           )
         }
       />
       <Route
         path="/ranking-management"
         element={
-          currentUser.role === 'admin' ? (
-            <RankingManagementPage
-              appCategories={appCategories}
-              categoryOptionsLoading={categoryOptionsLoading}
-              categoryOptionsError={categoryOptionsError}
-              defaultAppCategory={appCategories[0] || DEFAULT_APP_CATEGORIES[0]}
-            />
+          currentUser ? (
+            currentUser.role === 'admin' ? (
+              <RankingManagementPage
+                appCategories={appCategories}
+                categoryOptionsLoading={categoryOptionsLoading}
+                categoryOptionsError={categoryOptionsError}
+                defaultAppCategory={appCategories[0] || DEFAULT_APP_CATEGORIES[0]}
+              />
+            ) : (
+              <Navigate to="/" replace state={{ noAdminPermission: true }} />
+            )
           ) : (
-            <Navigate to="/" replace />
+            <AuditRedirect
+              to="/login"
+              state={{ intent: 'admin', returnTo: '/ranking-management', from: location.pathname }}
+              eventName="route.guard.redirect_login.admin"
+              intent="admin"
+              returnTo="/ranking-management"
+              context="route.ranking_management.guard"
+            />
           )
         }
       />
       <Route
         path="/submission-review"
-        element={currentUser.role === 'admin' ? <SubmissionReviewPage /> : <Navigate to="/" replace />}
+        element={
+          currentUser ? (
+            currentUser.role === 'admin' ? (
+              <SubmissionReviewPage />
+            ) : (
+              <Navigate to="/" replace state={{ noAdminPermission: true }} />
+            )
+          ) : (
+            <AuditRedirect
+              to="/login"
+              state={{ intent: 'admin', returnTo: '/submission-review', from: location.pathname }}
+              eventName="route.guard.redirect_login.admin"
+              intent="admin"
+              returnTo="/submission-review"
+              context="route.submission_review.guard"
+            />
+          )
+        }
       />
       <Route
         path="/user-management"
-        element={currentUser.role === 'admin' ? <UserManagementPage /> : <Navigate to="/" replace />}
+        element={
+          currentUser ? (
+            currentUser.role === 'admin' ? (
+              <UserManagementPage />
+            ) : (
+              <Navigate to="/" replace state={{ noAdminPermission: true }} />
+            )
+          ) : (
+            <AuditRedirect
+              to="/login"
+              state={{ intent: 'admin', returnTo: '/user-management', from: location.pathname }}
+              eventName="route.guard.redirect_login.admin"
+              intent="admin"
+              returnTo="/user-management"
+              context="route.user_management.guard"
+            />
+          )
+        }
       />
       <Route path="/historical-ranking" element={<HistoricalRankingPage />} />
       <Route path="/ranking/:configId" element={<RankingDetailPage />} />

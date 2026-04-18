@@ -248,7 +248,7 @@ const UserManagementPage = () => {
           <div className="panel-header">
             <div>
               <h2>用户管理</h2>
-              <p>管理员可创建测试账号，并配置哪些用户具备应用申报权限。</p>
+              <p>管理员可创建与维护账号、角色和启用状态；申报能力当前以“登录后可申报”为准。</p>
             </div>
           </div>
 
@@ -262,7 +262,7 @@ const UserManagementPage = () => {
               <strong>{visibleSummary.activeCount}</strong>
             </div>
             <div className="summary-card">
-              <span className="summary-label">当前页可申报</span>
+              <span className="summary-label">当前页申报兼容开关开启</span>
               <strong>{visibleSummary.submitEnabledCount}</strong>
             </div>
             <div className="summary-card">
@@ -276,7 +276,7 @@ const UserManagementPage = () => {
               className={`user-management-tab ${activeTab === 'users' ? 'active' : ''}`}
               onClick={() => setActiveTab('users')}
             >
-              <span>用户列表 / 权限管理</span>
+              <span>用户列表 / 角色与状态</span>
             </button>
             <button
               className={`user-management-tab ${activeTab === 'create' ? 'active' : ''}`}
@@ -330,7 +330,7 @@ const UserManagementPage = () => {
                           <th>部门</th>
                           <th>角色</th>
                           <th>启用</th>
-                          <th>可申报</th>
+                          <th>申报开关（兼容）</th>
                           <th>操作</th>
                         </tr>
                       </thead>
@@ -364,7 +364,7 @@ const UserManagementPage = () => {
                               </td>
                               <td>
                                 <span className={`status-badge ${user.can_submit ? 'active' : 'inactive'}`}>
-                                  {user.can_submit ? '允许申报' : '仅浏览'}
+                                  {user.can_submit ? '兼容开启' : '兼容关闭'}
                                 </span>
                               </td>
                               <td>
@@ -383,11 +383,11 @@ const UserManagementPage = () => {
                                       mutateUser(
                                         user.id,
                                         () => updateAdminUserSubmitPermission(user.id, !user.can_submit),
-                                        user.can_submit ? '已关闭申报权限' : '已开启申报权限',
+                                        user.can_submit ? '已关闭申报兼容开关' : '已开启申报兼容开关',
                                       )
                                     }
                                   >
-                                    {user.can_submit ? '关闭申报' : '开启申报'}
+                                    {user.can_submit ? '关闭兼容开关' : '开启兼容开关'}
                                   </button>
                                   <button
                                     className="secondary"
@@ -443,7 +443,7 @@ const UserManagementPage = () => {
               <div className="card-header-row">
                 <div>
                   <h3>新增用户</h3>
-                  <p>测试阶段可通过本地账号快速发放访问权限，后续也可作为单点登录的兜底入口。</p>
+                  <p>可通过本地账号快速创建与维护角色；后续可继续作为统一登录的兜底入口。</p>
                 </div>
               </div>
               <div className="user-create-grid">
@@ -511,7 +511,7 @@ const UserManagementPage = () => {
                     checked={Boolean(formData.can_submit)}
                     onChange={(e) => setFormData((prev) => ({ ...prev, can_submit: e.target.checked }))}
                   />
-                  <span>允许申报</span>
+                  <span>申报兼容开关（历史字段）</span>
                 </label>
               </div>
               <div className="panel-actions">
@@ -530,7 +530,7 @@ const UserManagementPage = () => {
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">编辑用户</h3>
-                <p className="modal-subtitle">更新用户基础资料、权限和可申报状态。历史申报和已生成应用归属不会随之改动。</p>
+                <p className="modal-subtitle">更新用户基础资料、角色和账号状态。历史申报与已生成应用归属不会随之改动。</p>
               </div>
               <button className="modal-close" onClick={closeEditUser}>×</button>
             </div>
@@ -614,7 +614,7 @@ const UserManagementPage = () => {
                   checked={editFormData.can_submit}
                   onChange={(e) => setEditFormData((prev) => ({ ...prev, can_submit: e.target.checked }))}
                 />
-                <span>允许申报</span>
+                <span>申报兼容开关（历史字段）</span>
               </label>
             </div>
             <div className="modal-footer">

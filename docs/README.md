@@ -26,7 +26,7 @@
 ## 治理规范
 
 - [docs/GOVERNANCE.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/GOVERNANCE.md)
-  - 当前产品边界、榜单规则、数据真相源、部署与身份模式治理基线
+  - 当前产品边界、榜单规则、数据真相源、部署与身份模式治理基线（含匿名浏览与登录后申报/管理分层）
 
 ## 历史归档
 
