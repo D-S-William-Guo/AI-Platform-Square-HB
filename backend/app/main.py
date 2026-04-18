@@ -58,6 +58,7 @@ from .schemas import (
     AuthLoginRequest,
     AuthLoginResponse,
     AuthAssertionExchangeRequest,
+    AuditEventIn,
     AuthMeResponse,
     AuthProviderInfoResponse,
     ImageUploadResponse,
@@ -68,8 +69,6 @@ from .schemas import (
     Stats,
     SubmissionCreate,
     SubmissionOut,
-    SubmissionManageTokenPayload,
-    SubmissionSelfUpdate,
     SubmissionApprovePayload,
     RankingDimensionCreate,
     RankingDimensionUpdate,
@@ -128,6 +127,18 @@ ALLOWED_DOC_MIME_TYPES = {
     "text/plain",
     "text/markdown",
     "text/x-markdown",
+}
+AUDIT_EVENT_WHITELIST = {
+    "auth.intent.submit.click",
+    "auth.intent.admin.click",
+    "route.guard.redirect_login.submit",
+    "route.guard.redirect_login.admin",
+    "auth.login.success",
+    "auth.login.denied_admin_role",
+    "submission.modal.auto_open",
+    "submission.create.success",
+    "submission.create.failed",
+    "route.guard.denied_admin",
 }
 
 
@@ -474,10 +485,7 @@ def require_auth_session(
 def require_submit_permission(
     auth_session: AuthSession = Depends(require_auth_session),
 ) -> AuthSession:
-    if auth_session.user.role == "admin":
-        return auth_session
-    if not auth_session.user.can_submit:
-        raise HTTPException(status_code=403, detail="当前账号没有申报权限")
+    # Phase 2: 登录用户统一可申报，管理员也可沿用同一链路。
     return auth_session
 
 
@@ -552,6 +560,26 @@ def structured_error_detail(
         "message": message,
         "field_errors": field_errors or [],
     }
+
+
+def build_audit_payload_summary(
+    *,
+    intent: str = "",
+    result: str = "",
+    return_to: str = "",
+    context: str = "",
+    user_role: str = "anonymous",
+) -> str:
+    return json.dumps(
+        {
+            "intent": intent,
+            "result": result,
+            "return_to": return_to,
+            "context": context,
+            "user_role": user_role,
+        },
+        ensure_ascii=False,
+    )
 
 
 def load_single_dimension_score(
@@ -1044,6 +1072,20 @@ def auth_login(
         request_id=request.headers.get("X-Request-Id", ""),
         payload_summary="login_success",
     )
+    write_action_log(
+        db,
+        action="auth.login.success",
+        actor_user=user,
+        resource_type="auth",
+        resource_id=user.username,
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=build_audit_payload_summary(
+            intent="",
+            result="success",
+            context="auth.login",
+            user_role=user.role,
+        ),
+    )
     db.commit()
 
     response.set_cookie(
@@ -1437,9 +1479,38 @@ def create_submission(
             request_id=request.headers.get("X-Request-Id", ""),
             payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
         )
+        write_action_log(
+            db,
+            action="submission.create.success",
+            actor_user=submitter,
+            resource_type="submission",
+            resource_id=str(submission.id),
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=build_audit_payload_summary(
+                intent="submit",
+                result="success",
+                context="api.submissions.create",
+                user_role=submitter.role,
+            ),
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
+        write_action_log(
+            db,
+            action="submission.create.failed",
+            actor_user=submitter,
+            resource_type="submission",
+            resource_id="",
+            request_id=request.headers.get("X-Request-Id", ""),
+            payload_summary=build_audit_payload_summary(
+                intent="submit",
+                result="failed",
+                context="api.submissions.create.integrity_error",
+                user_role=submitter.role,
+            ),
+        )
+        db.commit()
         raise HTTPException(status_code=409, detail="检测到重复申报，请勿重复提交")
     db.refresh(submission)
     return submission
@@ -1523,7 +1594,7 @@ def update_my_submission(
 def withdraw_my_submission(
     submission_id: int,
     request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
+    auth_session: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     """当前登录用户撤回本人申报（仅 pending）。"""
@@ -1539,125 +1610,6 @@ def withdraw_my_submission(
     write_action_log(
         db,
         action="submission.withdraw_mine",
-        actor_user=auth_session.user,
-        resource_type="submission",
-        resource_id=str(submission.id),
-        request_id=request.headers.get("X-Request-Id", ""),
-        payload_summary=f"status={submission.status}",
-    )
-    db.commit()
-    return {"message": "申报已撤回", "submission_id": submission_id}
-
-
-@app.get(f"{settings.api_prefix}/submissions/self", response_model=SubmissionOut)
-def get_submission_self(
-    manage_token: str = Query(..., min_length=16, max_length=128),
-    db: Session = Depends(get_db)
-):
-    """
-    通过管理令牌查询本人申报（用于申报人查看/修改/撤回）。
-    """
-    submission = db.query(Submission).filter(Submission.manage_token == manage_token).first()
-    if not submission:
-        raise HTTPException(status_code=404, detail="未找到对应申报")
-    return submission
-
-
-@app.put(f"{settings.api_prefix}/submissions/{{submission_id}}/self", response_model=SubmissionOut)
-def update_submission_self(
-    submission_id: int,
-    payload: SubmissionSelfUpdate,
-    request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
-    db: Session = Depends(get_db)
-):
-    """
-    申报人修改本人申报（仅 pending）。
-    """
-    submission = db.query(Submission).filter(Submission.id == submission_id).first()
-    if not submission:
-        raise HTTPException(status_code=404, detail="申报不存在")
-    if submission.submitter_user_id is not None:
-        if submission.submitter_user_id != auth_session.user.id:
-            raise HTTPException(status_code=403, detail="无权限修改他人申报")
-    elif submission.manage_token != payload.manage_token:
-        # 历史兼容：旧匿名申报仍允许通过 manage_token 修改
-        raise HTTPException(status_code=403, detail="管理令牌无效")
-    if submission.status != "pending":
-        raise HTTPException(status_code=400, detail="仅待审核申报允许修改")
-
-    resolved_company = (auth_session.user.company or payload.unit_name).strip()
-    resolved_department = (auth_session.user.department or "").strip()
-    if not resolved_company:
-        raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法更新申报")
-
-    normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(resolved_company)
-    duplicate = (
-        db.query(Submission)
-        .filter(
-            Submission.id != submission_id,
-            func.lower(func.trim(Submission.app_name)) == normalized_name,
-            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
-            Submission.status.in_(("pending", "approved")),
-        )
-        .first()
-    )
-    if duplicate:
-        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
-
-    create_payload = SubmissionCreate(**payload.model_dump(exclude={"manage_token"}))
-    validate_submission_payload(create_payload)
-
-    update_fields = create_payload.model_dump()
-    update_fields["company"] = resolved_company
-    update_fields["department"] = resolved_department
-    update_fields["unit_name"] = resolved_company
-    # 收敛：ranking_dimensions 停写。
-    update_fields["ranking_dimensions"] = ""
-    for key, value in update_fields.items():
-        setattr(submission, key, value)
-
-    write_action_log(
-        db,
-        action="submission.update_self",
-        actor_user=auth_session.user,
-        resource_type="submission",
-        resource_id=str(submission.id),
-        request_id=request.headers.get("X-Request-Id", ""),
-        payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
-    )
-    db.commit()
-    db.refresh(submission)
-    return submission
-
-
-@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/withdraw")
-def withdraw_submission_self(
-    submission_id: int,
-    payload: SubmissionManageTokenPayload,
-    request: Request,
-    auth_session: AuthSession = Depends(require_auth_session),
-    db: Session = Depends(get_db)
-):
-    """
-    申报人撤回本人申报（仅 pending）。
-    """
-    submission = db.query(Submission).filter(Submission.id == submission_id).first()
-    if not submission:
-        raise HTTPException(status_code=404, detail="申报不存在")
-    if submission.submitter_user_id is not None:
-        if submission.submitter_user_id != auth_session.user.id:
-            raise HTTPException(status_code=403, detail="无权限撤回他人申报")
-    elif submission.manage_token != payload.manage_token:
-        raise HTTPException(status_code=403, detail="管理令牌无效")
-    if submission.status != "pending":
-        raise HTTPException(status_code=400, detail="仅待审核申报可撤回")
-
-    submission.status = "withdrawn"
-    write_action_log(
-        db,
-        action="submission.withdraw",
         actor_user=auth_session.user,
         resource_type="submission",
         resource_id=str(submission.id),
@@ -2215,6 +2167,44 @@ def get_action_logs(
         )
         for row in rows
     ]
+
+
+@app.post(f"{settings.api_prefix}/audit/events")
+def create_audit_event(
+    payload: AuditEventIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth_session: AuthSession | None = Depends(get_optional_auth_session),
+):
+    enforce_rate_limit(
+        request,
+        bucket="audit_events",
+        limit=60,
+        window_seconds=60,
+    )
+    event_name = payload.event_name.strip()
+    if event_name not in AUDIT_EVENT_WHITELIST:
+        raise HTTPException(status_code=422, detail="unsupported audit event")
+
+    actor_user = auth_session.user if auth_session else None
+    user_role = actor_user.role if actor_user else "anonymous"
+    write_action_log(
+        db,
+        action=event_name,
+        actor_user=actor_user,
+        resource_type="audit_event",
+        resource_id=(payload.context or "").strip()[:80],
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=build_audit_payload_summary(
+            intent=payload.intent.strip(),
+            result=payload.result.strip(),
+            return_to=payload.return_to.strip(),
+            context=payload.context.strip(),
+            user_role=user_role,
+        ),
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @app.get(f"{settings.api_prefix}/admin/users", response_model=PaginatedResponse[UserPublic])
@@ -3317,6 +3307,7 @@ def associate_image(
     file_size: int,
     mime_type: str = "",
     is_cover: bool = False,
+    _: AuthSession = Depends(require_submit_permission),
     db: Session = Depends(get_db),
 ):
     """Associate uploaded image with submission"""

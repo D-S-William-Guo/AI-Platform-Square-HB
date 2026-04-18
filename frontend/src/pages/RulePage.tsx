@@ -60,7 +60,7 @@ const RulePage = () => {
                 <ul>
                   <li>一期聚焦双榜单，不扩展其他榜单类型。</li>
                   <li>榜单展示与管理能力通过统一管理页维护。</li>
-                  <li>普通用户可浏览榜单，管理员负责配置与发布。</li>
+                  <li>匿名用户可浏览榜单；管理员负责配置与发布。</li>
                 </ul>
               </div>
             </section>
@@ -107,10 +107,11 @@ const RulePage = () => {
             <section className="guide-section">
               <h2>管理边界</h2>
               <div className="guide-card">
-                <h3>普通用户</h3>
+                <h3>匿名/登录用户</h3>
                 <ul>
                   <li>可在首页与榜单详情查看榜单结果。</li>
                   <li>不可进入排行榜管理页。</li>
+                  <li>登录后可申报，但榜单规则配置仍仅管理员可操作。</li>
                 </ul>
               </div>
               <div className="guide-card">
@@ -130,11 +131,11 @@ const RulePage = () => {
             <section className="guide-section">
               <h2>变更记录</h2>
               <div className="guide-card">
-                <h3>2026-04-15</h3>
+                <h3>2026-04-18</h3>
                 <ul>
-                  <li>页面内容按现网治理口径重构为“制度说明”结构。</li>
-                  <li>固定双榜单、默认权重与真相源说明同步到页面。</li>
-                  <li>移除原型期遗留的非现网承诺描述。</li>
+                  <li>同步账号分层口径：匿名可读、登录可申报、管理员可管理。</li>
+                  <li>保持双榜单与真相源说明与治理文档一致。</li>
+                  <li>更新页面角色描述，避免历史权限文案歧义。</li>
                 </ul>
               </div>
             </section>
@@ -143,7 +144,7 @@ const RulePage = () => {
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2026-04-15 · 榜单规则按治理基线维护</div>
+        <div>最近更新时间：2026-04-18 · 榜单规则按治理基线维护</div>
       </footer>
     </div>
   )

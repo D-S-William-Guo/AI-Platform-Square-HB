@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { fetchAuthProviderInfo, login } from '../api/client'
+import { auditEvent, fetchAuthProviderInfo, login } from '../api/client'
 import type { AuthProviderInfo, AuthUser } from '../types'
 
 type LoginPageProps = {
@@ -10,9 +10,17 @@ type LoginPageProps = {
 export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const fromPath = useMemo(() => {
-    const state = location.state as { from?: string } | null
-    return state?.from && state.from !== '/login' ? state.from : '/'
+  const loginState = useMemo(() => {
+    const state = location.state as { from?: string; returnTo?: string; intent?: 'submit' | 'admin' } | null
+    const returnTo = state?.returnTo && state.returnTo !== '/login'
+      ? state.returnTo
+      : state?.from && state.from !== '/login'
+        ? state.from
+        : '/'
+    return {
+      returnTo,
+      intent: state?.intent,
+    }
   }, [location.state])
 
   const [username, setUsername] = useState('')
@@ -62,7 +70,29 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
       setSubmitting(true)
       const data = await login(username.trim(), password)
       onLoginSuccess(data.user)
-      navigate(fromPath, { replace: true })
+      await auditEvent({
+        event_name: 'auth.login.success',
+        intent: loginState.intent || '',
+        result: 'success',
+        return_to: loginState.returnTo || '/',
+        context: 'login.form.submit',
+      })
+      if (loginState.intent === 'admin' && data.user.role !== 'admin') {
+        await auditEvent({
+          event_name: 'auth.login.denied_admin_role',
+          intent: 'admin',
+          result: 'denied_role',
+          return_to: loginState.returnTo || '/',
+          context: 'login.intent.admin.role_check',
+        })
+        navigate('/', { replace: true, state: { noAdminPermission: true } })
+        return
+      }
+      if (loginState.intent === 'submit') {
+        navigate(loginState.returnTo || '/', { replace: true, state: { openSubmission: true } })
+        return
+      }
+      navigate(loginState.returnTo || '/', { replace: true })
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 401) {
@@ -114,13 +144,13 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
           <h1>HEBEI · AI 应用广场</h1>
           <p>
             {provider?.local_login_enabled
-              ? '请先登录后访问应用首页、申报链路与排行榜能力。'
+              ? '登录后可提交申报，未登录仅可浏览。'
               : '当前环境已切换到统一登录入口，本地账号仅保留为兼容兜底能力。'}
           </p>
           {provider?.local_login_enabled ? (
             <div className="login-default-hint">
-              <div>默认测试用户：zhangsan / lisi</div>
-              <div>密码以服务端环境变量配置为准</div>
+              <div>账号由管理员统一维护与配置</div>
+              <div>如需重置密码请联系管理员</div>
             </div>
           ) : null}
         </div>

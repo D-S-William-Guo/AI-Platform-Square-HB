@@ -124,6 +124,14 @@ class AuthAssertionExchangeRequest(BaseModel):
     assertion: str = Field(..., min_length=1, max_length=4096)
 
 
+class AuditEventIn(BaseModel):
+    event_name: str = Field(..., min_length=1, max_length=80)
+    intent: str = Field(default="", max_length=20)
+    result: str = Field(default="", max_length=40)
+    return_to: str = Field(default="", max_length=255)
+    context: str = Field(default="", max_length=120)
+
+
 class ActionLogOut(BaseModel):
     id: int
     actor_user_id: int | None

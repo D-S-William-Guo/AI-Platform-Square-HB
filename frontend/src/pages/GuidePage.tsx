@@ -49,9 +49,9 @@ const GuidePage = () => {
               <div className="guide-card">
                 <h3>账号与权限</h3>
                 <ul>
-                  <li>需使用已开通账号登录系统。</li>
-                  <li>仅开通申报权限的账号可见并使用“我要申报”“我的申报”。</li>
-                  <li>若入口不可见，请联系管理员开通申报权限并重新登录。</li>
+                  <li>未登录可浏览首页、详情和榜单。</li>
+                  <li>要提交申报，需先登录账号。</li>
+                  <li>管理员功能需要管理员账号登录后访问。</li>
                 </ul>
               </div>
               <div className="guide-card">
@@ -78,16 +78,16 @@ const GuidePage = () => {
                 <h3>操作步骤</h3>
                 <ol className="process-steps">
                   <li>在首页右上角点击“我要申报”。</li>
+                  <li>若未登录，系统会自动跳转到登录页；登录成功后自动回首页并打开申报弹窗。</li>
                   <li>按页面分组填写基础信息、应用信息、成效相关信息。</li>
                   <li>确认必填项无误后点击“提交申报”。</li>
-                  <li>提交成功后请保存系统提示的管理令牌（用于无“我的申报”场景下的维护）。</li>
                 </ol>
               </div>
               <div className="guide-card">
                 <h3>提交后去哪里看</h3>
                 <ul>
-                  <li>已开通申报权限时，可在“我的申报”查看本人记录。</li>
-                  <li>也可通过“申报管理 + 管理令牌”查询单条记录。</li>
+                  <li>可在“我的申报”查看本人记录。</li>
+                  <li>支持在“我的申报”中继续修改或撤回待审核记录。</li>
                 </ul>
               </div>
             </section>
@@ -102,14 +102,6 @@ const GuidePage = () => {
                   <li>进入“我的申报”，定位目标记录。</li>
                   <li>仅 `pending` 状态支持修改与撤回。</li>
                   <li>修改保存后记录继续进入待审核流转。</li>
-                </ul>
-              </div>
-              <div className="guide-card">
-                <h3>通过管理令牌</h3>
-                <ul>
-                  <li>首页打开“申报管理”，输入管理令牌查询记录。</li>
-                  <li>仅 `pending` 状态支持修改与撤回。</li>
-                  <li>若令牌丢失，建议联系管理员协助处理。</li>
                 </ul>
               </div>
             </section>
@@ -135,11 +127,11 @@ const GuidePage = () => {
               <h2>常见问题</h2>
               <div className="guide-card">
                 <h3>Q: 为什么看不到“我要申报”？</h3>
-                <p>A: 当前账号可能未开通申报权限，或权限已关闭。请联系管理员开通后重新登录。</p>
+                <p>A: 当前通常是未登录状态。登录后会显示“我要申报”和“我的申报”。</p>
               </div>
               <div className="guide-card">
                 <h3>Q: 提交后发现写错了怎么办？</h3>
-                <p>A: 只要状态还是 `pending`，可以在“我的申报”或“申报管理”中修改。</p>
+                <p>A: 只要状态还是 `pending`，可以在“我的申报”中修改。</p>
               </div>
               <div className="guide-card">
                 <h3>Q: 分类为什么和以前不一样？</h3>
@@ -151,7 +143,7 @@ const GuidePage = () => {
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2026-04-15 · 申报指南按现网能力维护</div>
+        <div>最近更新时间：2026-04-18 · 申报指南按现网能力维护</div>
       </footer>
     </div>
   )

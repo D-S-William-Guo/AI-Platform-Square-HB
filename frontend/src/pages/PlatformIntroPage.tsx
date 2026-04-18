@@ -53,7 +53,7 @@ const PlatformIntroPage = () => {
                 <ul>
                   <li>应用来源：集团应用与省内申报应用</li>
                   <li>榜单范围：总应用榜（excellent）与增长趋势榜（trend）</li>
-                  <li>申报入口：普通用户可发起申报，管理员负责审核与管理</li>
+                  <li>访问分层：匿名可浏览，登录后可申报，管理员负责审核与管理</li>
                   <li>管理员能力与普通用户能力严格隔离</li>
                 </ul>
               </div>
@@ -74,8 +74,8 @@ const PlatformIntroPage = () => {
               <div className="guide-card">
                 <h3>申报模块</h3>
                 <ul>
-                  <li>开通申报权限后可见“我要申报”并提交应用信息</li>
-                  <li>开通申报权限后可见“我的申报”并维护本人申报记录</li>
+                  <li>未登录点击“我要申报”将跳转登录</li>
+                  <li>登录后可见并使用“我要申报”“我的申报”</li>
                   <li>支持待审核记录修改、撤回</li>
                 </ul>
               </div>
@@ -96,8 +96,8 @@ const PlatformIntroPage = () => {
               <div className="guide-card">
                 <h3>普通用户</h3>
                 <ul>
-                  <li>可浏览首页应用与榜单</li>
-                  <li>开通申报权限后可发起申报并查看“我的申报”</li>
+                  <li>匿名状态可浏览首页应用与榜单</li>
+                  <li>登录后可发起申报并查看“我的申报”</li>
                   <li>不可进入管理员页面</li>
                 </ul>
               </div>
@@ -119,8 +119,8 @@ const PlatformIntroPage = () => {
                 <h3>普通用户路径</h3>
                 <ol className="process-steps">
                   <li>首页浏览应用与榜单</li>
-                  <li>联系管理员开通申报权限后重新登录</li>
-                  <li>点击“我要申报”提交应用，并在“我的申报”跟进状态</li>
+                  <li>点击“我要申报”后登录账号</li>
+                  <li>提交应用，并在“我的申报”跟进状态</li>
                 </ol>
               </div>
               <div className="guide-card">
@@ -137,7 +137,7 @@ const PlatformIntroPage = () => {
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2026-04-15 · 平台内容按当前系统能力维护</div>
+        <div>最近更新时间：2026-04-18 · 平台内容按当前系统能力维护</div>
       </footer>
     </div>
   )

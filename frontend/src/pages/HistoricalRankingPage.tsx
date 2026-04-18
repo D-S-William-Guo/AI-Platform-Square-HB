@@ -309,7 +309,7 @@ export default function HistoricalRankingPage() {
       </div>
 
       <footer className="footer">
-        <div>最近更新时间：2024-12-11 · 联系邮箱：aiapps@hebei.cn</div>
+        <div>最近更新时间：2026-04-18 · 联系邮箱：aiapps@chinatelecom.cn</div>
       </footer>
     </div>
   )

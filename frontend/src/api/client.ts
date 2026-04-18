@@ -27,6 +27,20 @@ const client = axios.create({ baseURL: '/', withCredentials: true })
 const apiBasePath = buildApiPath('/api')
 const MISSING_ADMIN_TOKEN_ERROR_CODE = 'MISSING_ADMIN_TOKEN'
 
+function buildRequestId() {
+  const rand = Math.random().toString(36).slice(2, 10)
+  return `req_${Date.now()}_${rand}`
+}
+
+client.interceptors.request.use((config) => {
+  const headers = config.headers || {}
+  if (!headers['X-Request-Id']) {
+    headers['X-Request-Id'] = buildRequestId()
+  }
+  config.headers = headers
+  return config
+})
+
 export class MissingAdminTokenError extends Error {
   code = MISSING_ADMIN_TOKEN_ERROR_CODE
 
@@ -75,6 +89,20 @@ export async function logout() {
   await client.post(`${apiBasePath}/auth/logout`)
 }
 
+export async function auditEvent(payload: {
+  event_name: string
+  intent?: string
+  result?: string
+  return_to?: string
+  context?: string
+}) {
+  try {
+    await client.post(`${apiBasePath}/audit/events`, payload)
+  } catch {
+    // 审计不阻断主流程
+  }
+}
+
 export async function fetchApps(params?: Record<string, string>) {
   const { data } = await client.get<AppItem[]>(`${apiBasePath}/apps`, { params })
   return data
@@ -115,35 +143,13 @@ export async function submitApp(payload: SubmissionPayload) {
   return data
 }
 
-export async function fetchSubmissionSelf(manageToken: string) {
-  const { data } = await client.get<Submission>(`${apiBasePath}/submissions/self`, {
-    params: { manage_token: manageToken }
-  })
-  return data
-}
-
 export async function fetchMySubmissions() {
   const { data } = await client.get<Submission[]>(`${apiBasePath}/submissions/mine`)
   return data
 }
 
-export async function updateSubmissionSelf(
-  submissionId: number,
-  payload: SubmissionPayload & { manage_token: string }
-) {
-  const { data } = await client.put<Submission>(`${apiBasePath}/submissions/${submissionId}/self`, payload)
-  return data
-}
-
 export async function updateMySubmission(submissionId: number, payload: SubmissionPayload) {
   const { data } = await client.put<Submission>(`${apiBasePath}/submissions/${submissionId}/mine`, payload)
-  return data
-}
-
-export async function withdrawSubmissionSelf(submissionId: number, manageToken: string) {
-  const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/withdraw`, {
-    manage_token: manageToken
-  })
   return data
 }
 

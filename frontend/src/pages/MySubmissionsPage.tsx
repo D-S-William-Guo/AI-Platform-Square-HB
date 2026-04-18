@@ -147,7 +147,7 @@ export default function MySubmissionsPage() {
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">我的申报</h1>
-          <p className="page-subtitle">查看本人申报状态，并对待审核记录进行修改或撤回</p>
+          <p className="page-subtitle">登录后可查看本人申报状态，并对待审核记录进行修改或撤回</p>
         </div>
 
         <div className="filter-bar">
