@@ -46,7 +46,7 @@ jobs:
           python -m pytest -q tests
 
   frontend:
-    name: frontend (build)
+    name: frontend (build + e2e list)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,3 +70,7 @@ jobs:
       - name: Build (tsc + vite)
         run: |
           npm run build
+
+      - name: E2E smoke (discover tests only)
+        run: |
+          npm run test:e2e -- --list
