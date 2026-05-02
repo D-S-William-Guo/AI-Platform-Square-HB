@@ -127,6 +127,7 @@ make service-logs
 - [README.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/README.md)
 - [AGENTS.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/AGENTS.md)
 - [docs/README.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/README.md)
+- [docs/user-manual.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/user-manual.md)
 - [docs/dev-setup.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/dev-setup.md)
 - [docs/db-migration-sop.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/db-migration-sop.md)
 - [docs/dev-workflow.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/dev-workflow.md)

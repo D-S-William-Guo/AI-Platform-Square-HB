@@ -1,5 +1,7 @@
 # AUDIT REPORT（治理规则对照审计）
 
+> **历史审计快照。** 部分 P0/P1 问题已在后续 PR 中修复（如审批后创建 AppRankingSetting、管理接口权限保护）。当前实现状态以代码和 `GOVERNANCE.md` 为准。
+
 ## 审计范围
 - 代码层：`backend/app/main.py`、`backend/app/models.py`、`backend/app/schemas.py`、`backend/app/seed.py`
 - 文档层：`README.md`（新增治理摘要）与 `docs/GOVERNANCE.md`（本次定版）

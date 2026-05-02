@@ -8,11 +8,11 @@
 - [ ] 关键变更点（面向审阅者，列文件/模块/行为变化）
 
 ## How to verify
-- [ ] 已跑 doctor（Linux: `bash backend/scripts/dev/doctor.sh` / Windows: `powershell -ExecutionPolicy Bypass -File backend\\scripts\\dev\\doctor.ps1`）
-- [ ] backend tests：`python -m pytest -q tests`
-- [ ] frontend build：`npm run build`
+- [ ] 已跑 doctor：`make doctor`
+- [ ] backend tests：`make backend-test`
+- [ ] frontend build：`make frontend-build`
 - [ ] 若涉及 migrations：已说明新增/变更 migration 文件 + 验证方式
-- [ ] docs/README 是否需要同步（如有则已更新）
+- [ ] 已检查 docs/README.md 和 docs/GOVERNANCE.md 是否需要同步
 
 ## Definition of Done (DoD)
 - [ ] PR 描述已完整（What/Why/Changes/Verify）

@@ -39,6 +39,8 @@ python -m app.bootstrap seed-demo
 
 - `dedupe_data.py`
   - 基于 SQLAlchemy 的数据去重工具。
+- `import_users_from_csv.py`
+  - 从规整 CSV 批量导入/更新 `users`，支持 `--dry-run`、分批 upsert 与 JSON 报告输出。
 - `test_sync.py`
   - 针对本地运行中的 HTTP 接口做简单同步调试。
 - `dev/doctor.sh`

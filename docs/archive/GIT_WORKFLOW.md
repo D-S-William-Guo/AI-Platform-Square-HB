@@ -1,5 +1,7 @@
 # Git 工作流程规范
 
+> **历史规范 — 当前以 [docs/dev-workflow.md](../dev-workflow.md) 为准。** 本文保留提交信息规范（Conventional Commits）供参考。
+
 > 即使是单人项目，也要遵循规范的 Git 工作流程
 
 ## 分支策略

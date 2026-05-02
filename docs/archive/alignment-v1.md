@@ -1,5 +1,7 @@
 # 前后端需求对齐清单（v1）
 
+> **历史文档。** 文中分类枚举（`办公类/业务前台/运维后台/企业管理`）为旧版，当前以 `backend/.env` 中 `APP_CATEGORY_OPTIONS` 为准。status 值域也已扩展为 4 种（available/approval/beta/offline）。当前字段契约以代码和 `GOVERNANCE.md` 为准。
+>
 > 用途：逐条确认并冻结，确认后进入下一轮编码。
 > 范围：AI 应用广场（列表、榜单、详情抽屉、申报）
 

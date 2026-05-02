@@ -8,6 +8,8 @@
   - 项目首页，提供总览、最短启动和主文档跳转
 - [AGENTS.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/AGENTS.md)
   - 仓库级智能体工作契约、文档分层和最近关键文档变更
+- [docs/user-manual.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/user-manual.md)
+  - 面向业务同事的用户操作手册，按匿名/登录/管理员角色编排，含逐步骤截图占位
 
 ## 开发运行
 

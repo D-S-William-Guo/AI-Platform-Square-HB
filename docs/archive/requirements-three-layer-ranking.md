@@ -1,5 +1,7 @@
 # 三层架构排行榜系统需求文档
 
+> **历史需求文档 — 功能已实现。** RankingConfig / AppRankingSetting / HistoricalRanking 三层架构已落地。当前真相源与治理以 `GOVERNANCE.md` 为准。
+
 ## 1. 项目背景
 
 ### 1.1 当前系统现状
