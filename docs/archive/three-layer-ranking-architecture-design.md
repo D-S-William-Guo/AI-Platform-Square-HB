@@ -1,5 +1,7 @@
 # 三层架构排行榜系统设计文档
 
+> **历史设计文档 — 功能已实现。** 三层架构（RankingDimension → RankingConfig → AppRankingSetting）已落地于代码。本文描述的是设计阶段的"待解决问题"和"目标架构"，可能与实现细节有偏差。当前真相源与规则以 `GOVERNANCE.md` 为准。
+
 ## 1. 设计背景与目标
 
 ### 1.1 当前问题

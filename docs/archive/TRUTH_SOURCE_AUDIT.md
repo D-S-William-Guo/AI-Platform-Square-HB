@@ -1,5 +1,7 @@
 # Truth Source Audit（Phase-2）
 
+> **历史审计快照。** 结论是否完全落地以代码现状为准。"管理接口需 token 鉴权"为当时基准，后续已变更为基于用户角色的权限模型。当前规则以 `GOVERNANCE.md` 为准。
+>
 > 范围：仅审计与文档固化，不改动业务逻辑/模型/API 返回。
 > 审计基准：Phase-1 冻结规则（App 展示独立、审批创建 Setting 且默认关闭、唯一真相源为 AppRankingSetting、榜单按 HistoricalRanking 快照读取、管理接口需 token 鉴权）。
 
