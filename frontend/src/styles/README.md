@@ -8,8 +8,8 @@
 
 ### 全局样式
 
-- `frontend/src/styles.css` — CSS 变量、基础元素重置、通用组件（btn/card/modal/form）、布局框架（header/footer/page-container）。由 `main.tsx` 导入。
-- `frontend/src/styles/global-layout.css` — 全局布局补充样式。
+- `frontend/src/styles.css` — CSS 变量、基础元素重置、通用组件（btn/card/modal/form）。由 `main.tsx` 导入。页面样式通过 `@import './styles/xxx.css'` 在此文件中按序引入。
+- `frontend/src/styles/global-layout.css` — CSS 变量定义与全局布局（`:root`）。
 
 ### 页面样式（命名空间 = 页面根类名）
 
@@ -47,6 +47,6 @@
 
 ## 添加新页面样式
 
-1. `styles/` 下新建 `[name]-page.css`
-2. 所有选择器使用对应命名空间前缀
-3. 在页面组件根元素添加类名
+1. `styles/` 下新建 `[name]-page.css`，所有选择器使用对应命名空间前缀
+2. 在 `frontend/src/styles.css` 末尾添加 `@import './styles/[name]-page.css';`
+3. 在页面组件根元素添加对应类名

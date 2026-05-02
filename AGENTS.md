@@ -55,13 +55,13 @@
 - 2026-04-10 补充“前端支持根路径/子路径构建发布”的部署口径，主入口仍保持不变
 - 当前有效入口：
   - 根 `README.md`
+  - `AGENTS.md`（本文件）
   - `docs/README.md`
   - `docs/GOVERNANCE.md`
   - `docs/user-manual.md`
   - `docs/dev-setup.md`
   - `docs/db-migration-sop.md`
   - `docs/dev-workflow.md`
-  - `docs/GOVERNANCE.md`
 - 已明确不是当前规则入口：
   - `docs/archive/*`
   - `backend/scripts/README.md`
