@@ -4,10 +4,10 @@ const GuidePage = () => {
   const [activeSection, setActiveSection] = useState('precheck')
 
   const sections = [
-    { id: 'precheck', title: '申报前确认' },
-    { id: 'submit', title: '如何提交申报' },
-    { id: 'update-withdraw', title: '如何修改/撤回' },
-    { id: 'status', title: '审核状态说明' },
+    { id: 'precheck', title: '先准备什么' },
+    { id: 'submit', title: '怎么提交' },
+    { id: 'update-withdraw', title: '提交后怎么管' },
+    { id: 'status', title: '状态怎么看' },
     { id: 'faq', title: '常见问题' },
   ]
 
@@ -47,25 +47,25 @@ const GuidePage = () => {
             <section className="guide-section">
               <h2>申报前确认</h2>
               <div className="guide-card">
-                <h3>账号与权限</h3>
+                <h3>先确认账号</h3>
                 <ul>
-                  <li>未登录可浏览首页、详情和榜单。</li>
-                  <li>要提交申报，需先登录账号。</li>
-                  <li>管理员功能需要管理员账号登录后访问。</li>
+                  <li>未登录可以浏览首页榜单、应用视图和应用详情。</li>
+                  <li>提交申报和查看“我的申报”需要先登录。</li>
+                  <li>如果登录后仍不能申报，请联系管理员确认账号权限。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>关键字段准备</h3>
+                <h3>准备好应用信息</h3>
                 <ul>
-                  <li>应用名称、联系人、应用场景、嵌入系统、问题描述、预期收益等必填字段。</li>
-                  <li>封面图片与详细文档可按需要上传，建议准备好后一次提交。</li>
-                  <li>所属公司来自当前账号信息，页面会自动带入。</li>
+                  <li>应用名称、联系人、应用场景、嵌入系统、问题描述和预期收益。</li>
+                  <li>建议提前准备封面图和详细文档，方便一次提交完整。</li>
+                  <li>所属公司会优先使用当前账号信息自动带入。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>分类口径</h3>
+                <h3>理解展示定位</h3>
                 <p>
-                  应用分类由系统统一配置维护，当前使用：前端市场类、客户服务类、云网运营类、管理支撑类。提交时只能选择系统当前可选项。
+                  申报通过后的应用会进入应用视图作为展示内容。平台展示应用信息和成效，不承诺在首页或详情中提供跳转使用入口。
                 </p>
               </div>
             </section>
@@ -79,7 +79,7 @@ const GuidePage = () => {
                 <ol className="process-steps">
                   <li>在首页右上角点击“我要申报”。</li>
                   <li>若未登录，系统会自动跳转到登录页；登录成功后自动回首页并打开申报弹窗。</li>
-                  <li>按页面分组填写基础信息、应用信息、成效相关信息。</li>
+                  <li>按页面分组填写基础信息、应用信息和成效评估。</li>
                   <li>确认必填项无误后点击“提交申报”。</li>
                 </ol>
               </div>
@@ -99,9 +99,9 @@ const GuidePage = () => {
               <div className="guide-card">
                 <h3>通过“我的申报”</h3>
                 <ul>
-                  <li>进入“我的申报”，定位目标记录。</li>
-                  <li>仅 `pending` 状态支持修改与撤回。</li>
-                  <li>修改保存后记录继续进入待审核流转。</li>
+                  <li>登录后进入“我的申报”，定位自己的申报记录。</li>
+                  <li>仅 <strong>pending</strong> 状态支持修改与撤回。</li>
+                  <li>修改保存后记录继续进入待审核流转；撤回后不再进入本轮审核。</li>
                 </ul>
               </div>
             </section>
@@ -127,15 +127,15 @@ const GuidePage = () => {
               <h2>常见问题</h2>
               <div className="guide-card">
                 <h3>Q: 为什么看不到“我要申报”？</h3>
-                <p>A: 当前通常是未登录状态。登录后会显示“我要申报”和“我的申报”。</p>
+                <p>A: 请先确认是否已登录。登录后仍不可用时，请联系管理员确认账号是否允许申报。</p>
               </div>
               <div className="guide-card">
                 <h3>Q: 提交后发现写错了怎么办？</h3>
-                <p>A: 只要状态还是 `pending`，可以在“我的申报”中修改。</p>
+                <p>A: 只要状态还是 <strong>pending</strong>，可以在“我的申报”中修改。</p>
               </div>
               <div className="guide-card">
-                <h3>Q: 分类为什么和以前不一样？</h3>
-                <p>A: 分类由系统统一配置维护，页面会自动读取当前生效分类列表。</p>
+                <h3>Q: 申报通过后能直接使用应用吗？</h3>
+                <p>A: 当前平台定位是展示和运营管理，不提供平台内跳转使用入口。具体使用方式请按业务侧安排执行。</p>
               </div>
             </section>
           )}

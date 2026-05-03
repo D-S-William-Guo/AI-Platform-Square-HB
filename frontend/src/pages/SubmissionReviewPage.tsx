@@ -41,6 +41,13 @@ function resolveAdminError(err: unknown, fallback: string): string {
   return fallback
 }
 
+function getEmptyReviewMessage(filter: 'all' | 'pending' | 'approved' | 'rejected' | 'withdrawn', total: number): string {
+  if (total === 0) return '当前还没有应用申报。用户提交申报后，会在这里进入审核流转。'
+  if (filter === 'pending') return '当前没有待审核申报，可以切换到其他状态查看历史记录。'
+  if (filter === 'all') return '暂无申报数据。'
+  return '当前筛选条件下暂无记录，可以切换状态筛选查看。'
+}
+
 export default function SubmissionReviewPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
@@ -269,7 +276,8 @@ export default function SubmissionReviewPage() {
         ) : filteredSubmissions.length === 0 ? (
           <div className="empty-container">
             <span className="empty-icon"><UiIcon name="my" /></span>
-            <span>暂无申报数据</span>
+            <strong>{filter === 'pending' ? '暂无待审核申报' : '暂无申报数据'}</strong>
+            <span>{getEmptyReviewMessage(filter, stats.total)}</span>
           </div>
         ) : (
           <div className="submission-list">

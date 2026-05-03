@@ -1,11 +1,5 @@
-.user-management-page {
-  background:
-    radial-gradient(circle at top right, rgba(79, 124, 255, 0.14), transparent 28%),
-    linear-gradient(180deg, #f8fbff 0%, #eef3fb 100%);
-}
-
 .user-management-body {
-  padding: 36px 24px 56px;
+  padding: 32px 24px;
   display: flex;
   justify-content: center;
 }
@@ -19,8 +13,8 @@
 
 .user-management-panel .panel-header h2 {
   margin: 0 0 8px;
-  font-size: 42px;
-  line-height: 1.08;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
 .user-management-panel .panel-header p {
@@ -39,28 +33,27 @@
 .user-management-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 4px;
+  padding: 0 12px;
   width: fit-content;
   max-width: 100%;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(10px);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .user-management-tab {
   min-height: 48px;
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 0 18px;
   background: transparent;
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .user-management-tab:hover {
@@ -69,18 +62,16 @@
 }
 
 .user-management-tab.active {
-  color: #fff;
-  background: linear-gradient(135deg, #4f7cff, #325cf0);
-  box-shadow: 0 14px 30px rgba(50, 92, 240, 0.2);
+  color: var(--primary-color);
+  background: rgba(79, 124, 255, 0.1);
 }
 
 .summary-card {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   padding: 18px 20px;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
 }
 
 .summary-label {
@@ -101,10 +92,10 @@
   gap: 16px;
   align-items: center;
   padding: 18px 22px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .toolbar-search-group {
@@ -119,8 +110,8 @@
 .user-management-page .form-select {
   width: 100%;
   min-height: 46px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   padding: 0 14px;
   background: #fff;
   color: var(--text-primary);
@@ -144,7 +135,7 @@
 .user-management-page .secondary,
 .user-management-page .ghost {
   min-height: 42px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 0 16px;
   font-size: 14px;
   font-weight: 600;
@@ -154,14 +145,12 @@
 }
 
 .user-management-page .primary {
-  background: linear-gradient(135deg, #4f7cff, #325cf0);
+  background: var(--primary-color);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(50, 92, 240, 0.22);
 }
 
 .user-management-page .primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 34px rgba(50, 92, 240, 0.28);
+  background: var(--primary-hover);
 }
 
 .user-management-page .secondary {
@@ -174,7 +163,6 @@
 .user-management-page .ghost:hover:not(:disabled) {
   border-color: rgba(79, 124, 255, 0.42);
   color: var(--primary-color);
-  transform: translateY(-1px);
 }
 
 .user-management-page .ghost {
@@ -192,32 +180,12 @@
   box-shadow: none;
 }
 
-.page-message {
-  padding: 14px 16px;
-  border-radius: 14px;
-  font-size: 14px;
-  border: 1px solid transparent;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
-}
-
-.page-message.success {
-  background: #ecfdf3;
-  color: #027a48;
-  border-color: rgba(2, 122, 72, 0.16);
-}
-
-.page-message.error {
-  background: #fef3f2;
-  color: #b42318;
-  border-color: rgba(180, 35, 24, 0.14);
-}
-
 .user-create-card,
 .user-table-wrapper {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 22px;
-  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.08);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: 24px;
 }
 
@@ -231,7 +199,7 @@
 
 .card-header-row h3 {
   margin: 0 0 6px;
-  font-size: 26px;
+  font-size: 20px;
 }
 
 .card-header-row p {
@@ -461,7 +429,7 @@
   }
 
   .user-management-panel .panel-header h2 {
-    font-size: 34px;
+    font-size: 24px;
   }
 
   .user-management-tabs {

@@ -22,6 +22,7 @@ export default function HistoricalRankingPage() {
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
+  const hasAvailableDates = availableDates.length > 0
 
   const companyOptions = useMemo(() => {
     const values = rankings
@@ -33,16 +34,26 @@ export default function HistoricalRankingPage() {
   // 获取可用日期列表
   const loadAvailableDates = useCallback(async () => {
     try {
+      setLoading(true)
+      setError(null)
       const data = await fetchAvailableRankingDates(rankingType)
       setAvailableDates(data.dates)
-      // 默认选择最新的日期
-      if (data.dates.length > 0 && !selectedDate) {
+      if (data.dates.length > 0) {
         setSelectedDate(data.dates[0])
+      } else {
+        setSelectedDate('')
+        setRankings([])
+        setLoading(false)
       }
     } catch (err) {
       console.error('Failed to fetch available dates:', err)
+      setAvailableDates([])
+      setSelectedDate('')
+      setRankings([])
+      setError('获取历史榜单日期失败')
+      setLoading(false)
     }
-  }, [rankingType, selectedDate])
+  }, [rankingType])
 
   // 获取历史榜单
   const loadRankings = useCallback(async () => {
@@ -106,7 +117,7 @@ export default function HistoricalRankingPage() {
     if (selectedDate) {
       loadRankings()
     }
-  }, [loadRankings, selectedDate, rankingDimension])
+  }, [loadRankings, selectedDate])
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date)
@@ -164,8 +175,9 @@ export default function HistoricalRankingPage() {
               className="filter-select"
               value={selectedDate}
               onChange={(e) => handleDateChange(e.target.value)}
+              disabled={!hasAvailableDates}
             >
-              <option value="">请选择日期</option>
+              <option value="">{hasAvailableDates ? '请选择日期' : '暂无可选日期'}</option>
               {availableDates.map((date) => (
                 <option key={date} value={date}>
                   {date}
@@ -234,6 +246,11 @@ export default function HistoricalRankingPage() {
             <span className="error-icon"><UiIcon name="error" /></span>
             <span>{error}</span>
             <button className="retry-btn" onClick={loadRankings}>重试</button>
+          </div>
+        ) : !hasAvailableDates ? (
+          <div className="empty-container">
+            <span className="empty-icon"><UiIcon name="empty" /></span>
+            <span>暂无历史榜单。系统初始化后，请先在排行榜管理中发布榜单。</span>
           </div>
         ) : !selectedDate ? (
           <div className="empty-container">
