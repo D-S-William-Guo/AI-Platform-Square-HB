@@ -176,7 +176,13 @@ export default function MySubmissionsPage() {
         ) : error ? (
           <div className="error-container">{error}</div>
         ) : filtered.length === 0 ? (
-          <div className="empty-container">暂无申报记录</div>
+          <div className="empty-container">
+            <strong>{submissions.length === 0 ? '暂无申报记录' : '当前筛选下暂无记录'}</strong>
+            <span>{submissions.length === 0 ? '可回到首页点击“我要申报”，提交后将在这里跟进审核状态。' : '可以切换状态筛选，查看其他申报记录。'}</span>
+            {submissions.length === 0 && (
+              <Link to="/" className="btn-primary">返回首页申报</Link>
+            )}
+          </div>
         ) : (
           <div className="submission-list">
             {filtered.map((item) => (

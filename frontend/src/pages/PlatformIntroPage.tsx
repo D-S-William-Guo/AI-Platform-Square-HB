@@ -4,10 +4,10 @@ const PlatformIntroPage = () => {
   const [activeSection, setActiveSection] = useState('overview')
 
   const sections = [
-    { id: 'overview', title: '平台定位' },
-    { id: 'modules', title: '模块说明' },
-    { id: 'roles', title: '角色与权限' },
-    { id: 'paths', title: '典型路径' },
+    { id: 'overview', title: '这是做什么的' },
+    { id: 'home', title: '首页怎么看' },
+    { id: 'roles', title: '谁能做什么' },
+    { id: 'paths', title: '第一次怎么用' },
   ]
 
   return (
@@ -46,45 +46,45 @@ const PlatformIntroPage = () => {
             <section className="guide-section">
               <h2>平台定位</h2>
               <p>
-                AI 应用广场面向企业内部，聚焦“应用展示 + 申报管理 + 榜单展示”三类能力。首页当前对外聚焦集团应用、省内应用、双榜单与申报入口。
+                AI 应用广场是企业内部 AI 应用的集中展示、申报审核和榜单运营入口。它帮助大家先看到已发布的优秀应用榜单，再按需查看集团应用和省内应用展示信息。
               </p>
               <div className="guide-card">
-                <h3>当前边界</h3>
+                <h3>你可以用它做什么</h3>
                 <ul>
-                  <li>应用来源：集团应用与省内申报应用</li>
-                  <li>榜单范围：总应用榜（excellent）与增长趋势榜（trend）</li>
-                  <li>访问分层：匿名可浏览，登录后可申报，管理员负责审核与管理</li>
-                  <li>管理员能力与普通用户能力严格隔离</li>
+                  <li>看最新发布的总应用榜和增长趋势榜。</li>
+                  <li>在应用视图中查看集团应用和省内应用展示信息。</li>
+                  <li>登录后提交新的 AI 应用申报，并跟进审核状态。</li>
+                  <li>管理员可审核申报、发布榜单和管理用户。</li>
                 </ul>
               </div>
             </section>
           )}
 
-          {activeSection === 'modules' && (
+          {activeSection === 'home' && (
             <section className="guide-section">
-              <h2>模块说明</h2>
+              <h2>首页怎么看</h2>
               <div className="guide-card">
-                <h3>首页浏览</h3>
+                <h3>先看榜单</h3>
                 <ul>
-                  <li>查看集团应用、省内应用与双榜单</li>
-                  <li>支持状态、分类、公司、关键词等筛选</li>
-                  <li>查看应用详情与核心信息</li>
+                  <li>首页默认展示最新一次正式发布的榜单结果。</li>
+                  <li>总应用榜用于看综合表现好的省内应用。</li>
+                  <li>增长趋势榜用于看近期增长和活跃变化更明显的省内应用。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>申报模块</h3>
+                <h3>再看应用视图</h3>
                 <ul>
-                  <li>未登录点击“我要申报”将跳转登录</li>
-                  <li>登录后可见并使用“我要申报”“我的申报”</li>
-                  <li>支持待审核记录修改、撤回</li>
+                  <li>应用视图统一展示集团应用和省内应用。</li>
+                  <li>可通过应用来源、状态、分类、公司和关键词筛选。</li>
+                  <li>应用详情只做信息展示，不提供平台内跳转使用。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>管理员模块</h3>
+                <h3>需要更多说明时</h3>
                 <ul>
-                  <li>排行榜管理：榜单配置、应用参与、集团应用录入</li>
-                  <li>申报审核：审批省内申报并创建应用</li>
-                  <li>用户管理：维护用户角色与权限</li>
+                  <li>看“申报指南”了解如何提交应用。</li>
+                  <li>看“榜单规则”了解榜单口径和发布逻辑。</li>
+                  <li>看“历史榜单”追溯过去发布的榜单快照。</li>
                 </ul>
               </div>
             </section>
@@ -96,17 +96,17 @@ const PlatformIntroPage = () => {
               <div className="guide-card">
                 <h3>普通用户</h3>
                 <ul>
-                  <li>匿名状态可浏览首页应用与榜单</li>
-                  <li>登录后可发起申报并查看“我的申报”</li>
-                  <li>不可进入管理员页面</li>
+                  <li>未登录可浏览首页榜单、应用视图、应用详情和历史榜单。</li>
+                  <li>登录后可发起申报，并在“我的申报”查看状态。</li>
+                  <li>普通用户不可进入管理员页面。</li>
                 </ul>
               </div>
               <div className="guide-card">
                 <h3>管理员</h3>
                 <ul>
-                  <li>拥有普通用户全部能力</li>
-                  <li>可进入排行榜管理、申报审核、用户管理</li>
-                  <li>对应用状态、榜单发布与申报审批负责</li>
+                  <li>拥有普通用户全部浏览和申报能力。</li>
+                  <li>可进入申报审核、排行榜管理和用户管理。</li>
+                  <li>负责申报审批、榜单发布和账号权限维护。</li>
                 </ul>
               </div>
             </section>
@@ -116,19 +116,19 @@ const PlatformIntroPage = () => {
             <section className="guide-section">
               <h2>典型路径</h2>
               <div className="guide-card">
-                <h3>普通用户路径</h3>
+                <h3>只想了解应用</h3>
                 <ol className="process-steps">
-                  <li>首页浏览应用与榜单</li>
-                  <li>点击“我要申报”后登录账号</li>
-                  <li>提交应用，并在“我的申报”跟进状态</li>
+                  <li>打开首页，先看总应用榜和增长趋势榜。</li>
+                  <li>进入应用视图，按来源或关键词查找应用。</li>
+                  <li>点击应用卡片查看详情。</li>
                 </ol>
               </div>
               <div className="guide-card">
-                <h3>管理员路径</h3>
+                <h3>想提交应用</h3>
                 <ol className="process-steps">
-                  <li>在“申报审核”处理待审记录</li>
-                  <li>在“排行榜管理”维护应用与榜单</li>
-                  <li>在“用户管理”维护账号权限</li>
+                  <li>点击“我要申报”，未登录时先完成登录。</li>
+                  <li>填写应用信息、场景、成效和附件。</li>
+                  <li>提交后在“我的申报”跟进审核状态。</li>
                 </ol>
               </div>
             </section>

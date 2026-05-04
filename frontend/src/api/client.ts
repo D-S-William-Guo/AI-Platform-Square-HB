@@ -108,6 +108,11 @@ export async function fetchApps(params?: Record<string, string>) {
   return data
 }
 
+export async function fetchAppDetail(appId: number) {
+  const { data } = await client.get<AppItem>(`${apiBasePath}/apps/${appId}`)
+  return data
+}
+
 export async function fetchRankings(
   ranking_type: 'excellent' | 'trend',
   company?: string

@@ -13,6 +13,7 @@ const valueDimensionLabel: Record<string, string> = {
 }
 
 export default function HistoricalRankingPage() {
+  const [allRankings, setAllRankings] = useState<HistoricalRanking[]>([])
   const [rankings, setRankings] = useState<HistoricalRanking[]>([])
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,38 +23,47 @@ export default function HistoricalRankingPage() {
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
+  const hasAvailableDates = availableDates.length > 0
 
   const companyOptions = useMemo(() => {
-    const values = rankings
+    const values = allRankings
       .map((item) => item.company || item.app_org)
       .filter(Boolean)
     return ['全部', ...Array.from(new Set(values))]
-  }, [rankings])
+  }, [allRankings])
 
   // 获取可用日期列表
   const loadAvailableDates = useCallback(async () => {
     try {
+      setLoading(true)
+      setError(null)
       const data = await fetchAvailableRankingDates(rankingType)
       setAvailableDates(data.dates)
-      // 默认选择最新的日期
-      if (data.dates.length > 0 && !selectedDate) {
+      if (data.dates.length > 0) {
         setSelectedDate(data.dates[0])
+      } else {
+        setSelectedDate('')
+        setAllRankings([])
+        setRankings([])
+        setLoading(false)
       }
     } catch (err) {
       console.error('Failed to fetch available dates:', err)
+      setAvailableDates([])
+      setSelectedDate('')
+      setAllRankings([])
+      setRankings([])
+      setError('获取历史榜单日期失败')
+      setLoading(false)
     }
-  }, [rankingType, selectedDate])
+  }, [rankingType])
 
   // 获取历史榜单
   const loadRankings = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      let data = await fetchHistoricalRankings(
-        rankingType,
-        selectedDate || undefined,
-        companyFilter !== '全部' ? companyFilter : undefined
-      )
+      let data = await fetchHistoricalRankings(rankingType, selectedDate || undefined)
       
       // 如果选择了特定维度，获取该维度的评分并重新排序
       if (rankingDimension !== 'overall') {
@@ -85,7 +95,12 @@ export default function HistoricalRankingPage() {
         }
       }
       
-      setRankings(data)
+      setAllRankings(data)
+      setRankings(
+        companyFilter === '全部'
+          ? data
+          : data.filter((item) => (item.company || item.app_org) === companyFilter)
+      )
     } catch (err) {
       setError('获取历史榜单失败')
       console.error('Failed to fetch historical rankings:', err)
@@ -106,7 +121,7 @@ export default function HistoricalRankingPage() {
     if (selectedDate) {
       loadRankings()
     }
-  }, [loadRankings, selectedDate, rankingDimension])
+  }, [loadRankings, selectedDate])
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date)
@@ -164,8 +179,9 @@ export default function HistoricalRankingPage() {
               className="filter-select"
               value={selectedDate}
               onChange={(e) => handleDateChange(e.target.value)}
+              disabled={!hasAvailableDates}
             >
-              <option value="">请选择日期</option>
+              <option value="">{hasAvailableDates ? '请选择日期' : '暂无可选日期'}</option>
               {availableDates.map((date) => (
                 <option key={date} value={date}>
                   {date}
@@ -234,6 +250,11 @@ export default function HistoricalRankingPage() {
             <span className="error-icon"><UiIcon name="error" /></span>
             <span>{error}</span>
             <button className="retry-btn" onClick={loadRankings}>重试</button>
+          </div>
+        ) : !hasAvailableDates ? (
+          <div className="empty-container">
+            <span className="empty-icon"><UiIcon name="empty" /></span>
+            <span>暂无历史榜单。系统初始化后，请先在排行榜管理中发布榜单。</span>
           </div>
         ) : !selectedDate ? (
           <div className="empty-container">

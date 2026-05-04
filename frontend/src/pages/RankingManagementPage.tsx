@@ -816,7 +816,8 @@ const RankingManagementPage = ({
                   {rankingConfigs.length === 0 ? (
                     <div className="empty-state">
                       <UiIcon name="trophy" />
-                      <p>暂无榜单配置</p>
+                      <strong>暂无榜单配置</strong>
+                      <p>请先新增总应用榜或增长趋势榜配置，再维护应用参与并发布榜单。</p>
                     </div>
                   ) : (
                     <div className="config-cards">
@@ -919,7 +920,8 @@ const RankingManagementPage = ({
                   {apps.length === 0 ? (
                     <div className="empty-state">
                       <UiIcon name="platform" />
-                      <p>暂无应用数据</p>
+                      <strong>暂无应用数据</strong>
+                      <p>申报审核通过或录入集团应用后，可在这里维护应用参与设置。</p>
                     </div>
                   ) : (
                     <table className="app-settings-table">
@@ -1078,7 +1080,8 @@ const RankingManagementPage = ({
                   {adminApps.length === 0 ? (
                     <div className="empty-state">
                       <UiIcon name="history" />
-                      <p>暂无匹配应用</p>
+                      <strong>暂无匹配应用</strong>
+                      <p>请调整筛选条件，或先完成应用申报审核/集团应用录入。</p>
                     </div>
                   ) : (
                     <table className="app-management-table">
@@ -1414,7 +1417,8 @@ const RankingManagementPage = ({
                   {dimensions.length === 0 ? (
                     <div className="empty-state">
                       <UiIcon name="empty" />
-                      <p>暂无评价维度</p>
+                      <strong>暂无评价维度</strong>
+                      <p>请创建评价维度后，再将其配置到总应用榜或增长趋势榜。</p>
                     </div>
                   ) : (
                     <table className="dimension-table">
@@ -1478,7 +1482,8 @@ const RankingManagementPage = ({
                 {logs.length === 0 ? (
                   <div className="empty-state">
                     <UiIcon name="history" />
-                    <p>暂无变更日志</p>
+                    <strong>暂无变更日志</strong>
+                    <p>完成榜单配置、应用参与、维度维护或发布后，这里会记录操作痕迹。</p>
                   </div>
                 ) : (
                   <table className="logs-table">
@@ -1727,7 +1732,8 @@ const RankingManagementPage = ({
                     <div className="loading">加载维度评分中...</div>
                   ) : selectedConfigDimensions.length === 0 ? (
                     <div className="empty-state">
-                      <p>当前榜单未配置有效维度</p>
+                      <strong>当前榜单未配置有效维度</strong>
+                      <p>请先在榜单配置中选择有效维度，再维护应用评分。</p>
                     </div>
                   ) : (
                     <div className="dimension-score-grid">

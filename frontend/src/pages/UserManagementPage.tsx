@@ -252,6 +252,10 @@ const UserManagementPage = () => {
             </div>
           </div>
 
+          <div className="notice-panel">
+            本页用于维护本地账号、管理员角色和启用状态。普通用户用于申报与查看本人记录，管理员账号可进入申报审核、排行榜管理和用户管理。
+          </div>
+
           <div className="user-management-summary">
             <div className="summary-card">
               <span className="summary-label">用户总数</span>

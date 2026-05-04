@@ -1,22 +1,15 @@
 /* ==================== 排行榜管理页面样式 ==================== */
 
-/* 页面容器 - 确保宽度一致 (使用更高优先级) */
 div.page.ranking-management-page div.page-container {
-  max-width: 1400px !important;
-  margin: 0 auto !important;
-  padding: 32px 40px !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
+  max-width: 1400px;
+  padding: 32px 40px;
 }
 
-/* 页面内容区域 - 覆盖全局限制 (使用更高优先级) */
 div.page.ranking-management-page div.page-content {
-  max-width: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 24px !important;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 24px;
 }
 
 /* 页面标题区域 */
@@ -27,7 +20,7 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .page-title {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0 0 12px 0;
@@ -48,27 +41,28 @@ div.page.ranking-management-page div.page-content {
 .ranking-management-page .tab-navigation {
   display: flex;
   gap: 4px;
-  margin-bottom: 32px;
-  border-bottom: 2px solid var(--border-color);
+  margin-bottom: 24px;
+  border: 1px solid var(--border-color);
   background: var(--card-bg);
-  padding: 0 24px;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 0 12px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .ranking-management-page .tab-button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 28px;
+  padding: 14px 18px;
   background: transparent;
   border: none;
-  border-bottom: 3px solid transparent;
+  border-bottom: none;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  margin-bottom: -2px;
+  border-radius: var(--radius-md);
 }
 
 .ranking-management-page .tab-button:hover {
@@ -78,7 +72,6 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .tab-button.active {
   color: var(--primary-color);
-  border-bottom-color: var(--primary-color);
   background: rgba(79, 124, 255, 0.1);
 }
 
@@ -981,11 +974,11 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .empty-state {
   text-align: center;
-  padding: 80px 24px;
+  padding: 48px 24px;
   color: var(--text-secondary);
-  background: var(--bg-color);
+  background: var(--card-bg);
   border-radius: var(--radius-lg);
-  border: 2px dashed var(--border-color);
+  border: 1px dashed var(--border-color);
 }
 
 .ranking-management-page .empty-state span {
@@ -996,7 +989,13 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .empty-state p {
   margin: 8px 0;
-  font-size: 16px;
+  font-size: 14px;
+}
+
+.ranking-management-page .empty-state strong {
+  display: block;
+  color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
 .ranking-management-page .loading {
@@ -1054,7 +1053,7 @@ div.page.ranking-management-page div.page-content {
 
 @media (max-width: 1200px) {
   div.page.ranking-management-page div.page-container {
-    padding: 24px 32px !important;
+    padding: 24px 32px;
   }
 
   .ranking-management-page .config-cards {
@@ -1078,7 +1077,7 @@ div.page.ranking-management-page div.page-content {
 
 @media (max-width: 768px) {
   div.page.ranking-management-page div.page-container {
-    padding: 20px 16px !important;
+    padding: 20px 16px;
   }
 
   .ranking-management-page .page-title {

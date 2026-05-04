@@ -4,8 +4,9 @@ import {
   auditEvent,
   clearAuthToken,
   fetchAuthMe,
+  fetchAppDetail,
   fetchApps,
-  fetchRankings,
+  fetchHistoricalRankings,
   fetchStats,
   logout,
   submitApp,
@@ -26,7 +27,7 @@ import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import LoginPage from './pages/LoginPage'
 import UserManagementPage from './pages/UserManagementPage'
-import type { AppItem, AuthUser, RankingItem, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension } from './types'
+import type { AppItem, AuthUser, RankingItem, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension, HistoricalRanking } from './types'
 import { resolveMediaUrl } from './utils/media'
 import UiIcon from './components/UiIcon'
 
@@ -38,6 +39,15 @@ const statusOptions = [
   { value: 'beta', label: '试运行' },
   { value: 'offline', label: '已下线' }
 ]
+const appSourceOptions = [
+  { value: 'all', label: '全部应用' },
+  { value: 'group', label: '集团应用' },
+  { value: 'province', label: '省内应用' },
+] as const
+
+type HomeView = 'ranking' | 'library'
+type AppSource = typeof appSourceOptions[number]['value']
+
 const valueDimensionLabel: Record<ValueDimension, string> = {
   cost_reduction: '降本',
   efficiency_gain: '增效',
@@ -104,6 +114,82 @@ function monthlyCallsText(app: AppItem) {
   return app.section === 'province' ? '展示应用' : '0k/月'
 }
 
+function appCompanyLabel(app: AppItem) {
+  return app.company || app.org
+}
+
+function appFromHistoricalRanking(row: HistoricalRanking): AppItem {
+  return {
+    id: row.app_id,
+    name: row.app_name,
+    org: row.app_org,
+    company: row.company || row.app_org,
+    department: row.department || '',
+    section: 'province',
+    category: '',
+    description: '该应用来自最新一次正式发布榜单，可进入详情查看已沉淀的展示信息。',
+    status: 'available',
+    monthly_calls: row.usage_30d,
+    release_date: row.period_date,
+    api_open: false,
+    difficulty: '',
+    contact_name: '',
+    highlight: '',
+    access_mode: 'profile',
+    access_url: '',
+    detail_doc_url: '',
+    detail_doc_name: '',
+    target_system: '',
+    target_users: '',
+    problem_statement: '',
+    effectiveness_type: row.value_dimension,
+    effectiveness_metric: `综合得分 ${row.score}`,
+    cover_image_url: '',
+    ranking_enabled: true,
+    ranking_weight: 1,
+    ranking_tags: row.tag,
+    last_ranking_update: row.created_at,
+  }
+}
+
+function rankingItemFromHistorical(row: HistoricalRanking, appDetail?: AppItem): RankingItem {
+  return {
+    ranking_config_id: row.ranking_type,
+    position: row.position,
+    tag: row.tag,
+    score: row.score,
+    likes: null,
+    metric_type: row.metric_type,
+    value_dimension: row.value_dimension,
+    usage_30d: row.usage_30d,
+    declared_at: row.period_date,
+    updated_at: row.created_at,
+    app: appDetail
+      ? {
+          ...appDetail,
+          ranking_enabled: true,
+          ranking_tags: row.tag,
+          last_ranking_update: row.created_at,
+        }
+      : appFromHistoricalRanking(row),
+  }
+}
+
+async function enrichHistoricalRankingApps(rows: HistoricalRanking[]) {
+  const appDetails = await Promise.all(
+    rows.map(async (row) => {
+      try {
+        const app = await fetchAppDetail(row.app_id)
+        return [row.app_id, app] as const
+      } catch (error) {
+        console.warn(`Failed to fetch app detail for historical ranking app ${row.app_id}:`, error)
+        return [row.app_id, null] as const
+      }
+    })
+  )
+  return new Map(appDetails.filter(([, app]) => app !== null) as Array<readonly [number, AppItem]>)
+}
+
 // 表单验证规则类型定义
 type ValidationRule = {
   required?: boolean;
@@ -157,13 +243,18 @@ function HomePage({
   const categories = useMemo(() => ['全部', ...appCategories], [appCategories])
   const submissionCategoryUnavailable =
     categoryOptionsLoading || Boolean(categoryOptionsError) || appCategories.length === 0
-  const [activeNav, setActiveNav] = useState<'group' | 'province' | 'ranking'>('group')
+  const [activeNav, setActiveNav] = useState<HomeView>('ranking')
+  const [appSource, setAppSource] = useState<AppSource>('all')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('全部')
   const [companyFilter, setCompanyFilter] = useState<string>('全部')
   const [keyword, setKeyword] = useState('')
   const [apps, setApps] = useState<AppItem[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
+  const [rankingCompanyOptions, setRankingCompanyOptions] = useState<string[]>(['全部'])
+  const [rankingLoading, setRankingLoading] = useState(false)
+  const [rankingError, setRankingError] = useState<string | null>(null)
+  const [rankingPublishedDate, setRankingPublishedDate] = useState<string>('')
   const [rankingType, setRankingType] = useState<'excellent' | 'trend'>('excellent')
   const [rankingDimension, setRankingDimension] = useState<string>('overall')
   const [rankingDimensions, setRankingDimensions] = useState<RankingDimension[]>([])
@@ -187,15 +278,15 @@ function HomePage({
   } | null>(null)
 
   const companyOptions = useMemo(() => {
+    if (activeNav === 'ranking') return rankingCompanyOptions
+
     const values =
-      activeNav === 'ranking'
-        ? rankings.map((row) => row.app.company || row.app.org).filter(Boolean)
-        : apps
-            .filter((app) => app.section === 'province')
-            .map((app) => app.company || app.org)
-            .filter(Boolean)
+      apps
+        .filter((app) => app.section === 'province')
+        .map(appCompanyLabel)
+        .filter(Boolean)
     return ['全部', ...Array.from(new Set(values))]
-  }, [activeNav, apps, rankings])
+  }, [activeNav, apps, rankingCompanyOptions])
 
   useEffect(() => {
     fetchRankingDimensions()
@@ -264,57 +355,81 @@ function HomePage({
   }, [routeState.noAdminPermission, location.pathname])
 
   useEffect(() => {
+    if (appSource === 'group' && companyFilter !== '全部') {
+      setCompanyFilter('全部')
+    }
+  }, [appSource, companyFilter])
+
+  useEffect(() => {
     if (activeNav === 'ranking') {
-      // 获取榜单数据
-      fetchRankings(rankingType, companyFilter !== '全部' ? companyFilter : undefined).then(async (data) => {
-        let processedRankings = [...data]
-        
-        // 如果选择了特定维度，获取该维度的评分并重新排序
-        if (rankingDimension !== 'overall') {
-          const dimensionId = parseInt(rankingDimension.replace('dimension-', ''))
-          if (!isNaN(dimensionId)) {
-            try {
-              // 获取该维度的所有应用评分
-              const dimensionScores = await fetchDimensionScores(dimensionId, undefined, rankingType)
-              // 创建应用ID到维度评分的映射
-              const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
-              
-              // 为每个榜单项添加维度评分
-              processedRankings = processedRankings.map(row => ({
-                ...row,
-                dimensionScore: scoreMap.get(row.app.id) || 0
-              }))
-              
-              // 按维度评分重新排序
-              processedRankings.sort((a, b) => (b.dimensionScore || 0) - (a.dimensionScore || 0))
-              
-              // 重新分配排名位置
-              processedRankings = processedRankings.map((row, index) => ({
-                ...row,
-                position: index + 1
-              }))
-            } catch (error) {
-              console.error('Failed to fetch dimension scores:', error)
+      const loadPublishedRankings = async () => {
+        try {
+          setRankingLoading(true)
+          setRankingError(null)
+          const snapshot = await fetchHistoricalRankings(rankingType)
+          const appDetailMap = await enrichHistoricalRankingApps(snapshot)
+          let processedRankings = snapshot.map((row) =>
+            rankingItemFromHistorical(row, appDetailMap.get(row.app_id))
+          )
+          const latestDate = snapshot[0]?.period_date || ''
+          setRankingPublishedDate(latestDate)
+          setRankingCompanyOptions([
+            '全部',
+            ...Array.from(new Set(processedRankings.map((row) => appCompanyLabel(row.app)).filter(Boolean))),
+          ])
+
+          if (companyFilter !== '全部') {
+            processedRankings = processedRankings.filter((row) => appCompanyLabel(row.app) === companyFilter)
+          }
+
+          if (rankingDimension !== 'overall' && latestDate) {
+            const dimensionId = parseInt(rankingDimension.replace('dimension-', ''))
+            if (!isNaN(dimensionId)) {
+              try {
+                const dimensionScores = await fetchDimensionScores(dimensionId, latestDate, rankingType)
+                const scoreMap = new Map(dimensionScores.map(ds => [ds.app_id, ds.score]))
+                processedRankings = processedRankings.map(row => ({
+                  ...row,
+                  dimensionScore: scoreMap.get(row.app.id) || 0
+                }))
+                processedRankings.sort((a, b) => (b.dimensionScore || 0) - (a.dimensionScore || 0))
+                processedRankings = processedRankings.map((row, index) => ({
+                  ...row,
+                  position: index + 1
+                }))
+              } catch (error) {
+                console.error('Failed to fetch dimension scores:', error)
+              }
             }
           }
+
+          if (keyword.trim()) {
+            processedRankings = processedRankings.filter((row) =>
+              row.app.name.toLowerCase().includes(keyword.toLowerCase())
+            )
+          }
+
+          setRankings(processedRankings)
+        } catch (error) {
+          console.error('Failed to fetch published rankings:', error)
+          setRankingError('获取最新发布榜单失败')
+          setRankings([])
+          setRankingPublishedDate('')
+          setRankingCompanyOptions(['全部'])
+        } finally {
+          setRankingLoading(false)
         }
-        
-        // 根据搜索关键字过滤榜单中的应用名称
-        if (keyword.trim()) {
-          processedRankings = processedRankings.filter((row) =>
-            row.app.name.toLowerCase().includes(keyword.toLowerCase())
-          )
-        }
-        
-        setRankings(processedRankings)
-      })
+      }
+
+      loadPublishedRankings()
       return
     }
 
-    const params: Record<string, string> = { section: activeNav }
+    const params: Record<string, string> = {}
+    if (appSource !== 'all') params.section = appSource
     if (statusFilter) params.status = statusFilter
     if (categoryFilter && categoryFilter !== '全部') params.category = categoryFilter
-    if (activeNav === 'province' && companyFilter !== '全部') params.company = companyFilter
+    if (appSource !== 'group' && companyFilter !== '全部') params.company = companyFilter
     if (keyword) params.q = keyword
 
     fetchApps(params).then((data) => {
@@ -328,18 +443,16 @@ function HomePage({
         setApps(data)
       }
     })
-  }, [activeNav, statusFilter, categoryFilter, companyFilter, keyword, rankingType, rankingDimension])
+  }, [activeNav, appSource, statusFilter, categoryFilter, companyFilter, keyword, rankingType, rankingDimension])
 
   const blockTitle = useMemo(() => {
-    if (activeNav === 'group') return '集团应用整合'
-    if (activeNav === 'province') return '河北省自研应用 / 可调用应用'
+    if (activeNav === 'library') return 'AI 应用视图'
     return 'AI 应用龙虎榜'
   }, [activeNav])
 
   const blockSubtitle = useMemo(() => {
-    if (activeNav === 'group') return '汇聚集团内各单位优质 AI 应用，一站式查看和申请使用'
-    if (activeNav === 'province') return '省内各单位自研 AI 应用，支持 API 调用和系统集成'
-    return '展示优秀应用和增长趋势，发现最具价值的 AI 应用'
+    if (activeNav === 'library') return '统一展示集团应用与省内应用，支持按来源、分类、单位和关键词检索'
+    return '展示省内应用总榜与增长趋势榜，帮助运营发现值得推广的 AI 应用'
   }, [activeNav])
 
   // 表单验证
@@ -647,32 +760,12 @@ function HomePage({
 
       <div className="body">
         <aside className="left">
-          <div className="nav-section">
-            <div className="nav-section-title">导航</div>
-            <button 
-              className={`nav-item ${activeNav === 'group' ? 'active' : ''}`} 
-              onClick={() => setActiveNav('group')}
-            >
-              <span className="nav-icon"><UiIcon name="group" /></span>
-              <span>集团应用</span>
-            </button>
-            <button 
-              className={`nav-item ${activeNav === 'province' ? 'active' : ''}`} 
-              onClick={() => setActiveNav('province')}
-            >
-              <span className="nav-icon"><UiIcon name="province" /></span>
-              <span>省内应用</span>
-            </button>
-          </div>
-
-          {/* 动态榜单导航 */}
-          {rankingConfigs.length > 0 && (
-            <div className="nav-section">
-              <div className="nav-section-title">应用榜单</div>
+          <div className="side-panel">
+            <div className="side-section">
+              <div className="nav-section-title">核心视图</div>
               {rankingConfigs.map((config) => (
-                <Link
+                <button
                   key={config.id}
-                  to={`/ranking/${config.id}`}
                   className={`nav-item ${activeNav === 'ranking' && rankingType === config.id ? 'active' : ''}`}
                   onClick={() => {
                     setActiveNav('ranking')
@@ -683,120 +776,112 @@ function HomePage({
                     {config.id === 'excellent' ? <UiIcon name="trophy" /> : config.id === 'trend' ? <UiIcon name="trend" /> : <UiIcon name="medal" />}
                   </span>
                   <span>{config.name}</span>
-                </Link>
+                </button>
               ))}
-            </div>
-          )}
-
-          <div className="filter-section">
-            <div className="nav-section-title">分类筛选</div>
-            {categoryOptionsError && <div className="stats-error">{categoryOptionsError}</div>}
-            {categories.map((item) => (
-              <div 
-                key={item} 
-                className={`filter-item ${categoryFilter === item ? 'active' : ''}`}
-                onClick={() => setCategoryFilter(item)}
+              <button 
+                className={`nav-item ${activeNav === 'library' ? 'active' : ''}`} 
+                onClick={() => setActiveNav('library')}
               >
-                <div className="filter-checkbox"></div>
-                <span className="filter-label">{item}</span>
-              </div>
-            ))}
-          </div>
+                <span className="nav-icon"><UiIcon name="platform" /></span>
+                <span>应用视图</span>
+              </button>
+            </div>
 
-          <div className="quick-links">
-            <div className="nav-section-title">快速入口</div>
-            <Link to="/platform-intro" className="quick-link">
-              <UiIcon name="platform" />
-              <span>平台介绍</span>
-            </Link>
-            <Link to="/guide" className="quick-link">
-              <UiIcon name="guide" />
-              <span>申报指南</span>
-            </Link>
-            <Link to="/rule" className="quick-link">
-              <UiIcon name="rule" />
-              <span>榜单规则</span>
-            </Link>
-            {canAccessMySubmissions && (
-              <Link to="/my-submissions" className="quick-link">
-                <UiIcon name="my" />
-                <span>我的申报</span>
+            <div className="side-section">
+              <div className="nav-section-title">常用功能</div>
+              <Link to="/platform-intro" className="quick-link">
+                <UiIcon name="platform" />
+                <span>平台介绍</span>
               </Link>
-            )}
-            {isAdmin && (
-              <Link to="/ranking-management" className="quick-link">
-                <UiIcon name="ranking" />
-                <span>排行榜管理</span>
+              <Link to="/guide" className="quick-link">
+                <UiIcon name="guide" />
+                <span>申报指南</span>
               </Link>
-            )}
-            {isAdmin && (
-              <Link to="/submission-review" className="quick-link">
-                <UiIcon name="review" />
-                <span>申报审核</span>
+              <Link to="/rule" className="quick-link">
+                <UiIcon name="rule" />
+                <span>榜单规则</span>
               </Link>
-            )}
-            {isAdmin && (
-              <Link to="/user-management" className="quick-link">
-                <UiIcon name="user" />
-                <span>用户管理</span>
+              <Link to="/historical-ranking" className="quick-link">
+                <UiIcon name="history" />
+                <span>历史榜单</span>
               </Link>
-            )}
-            <Link to="/historical-ranking" className="quick-link">
-              <UiIcon name="history" />
-              <span>历史榜单</span>
-            </Link>
-            {!currentUser && (
-              <div className="quick-link quick-link-note">想申报请先登录账号</div>
-            )}
-          </div>
-
-          <div className="quick-links stats-panel">
-            <div className="nav-section-title">申报统计</div>
-            <div className="stats-grid">
-              {statsLoading ? (
-                <div className="stats-loading">
-                  <div className="loading-spinner"></div>
-                  <span>加载中...</span>
-                </div>
-              ) : statsError ? (
-                <div className="stats-error">
-                  <span className="error-icon"><UiIcon name="error" /></span>
-                  <span>{statsError}</span>
-                  <button
-                    className="retry-button"
-                    onClick={async () => {
-                      try {
-                        setStatsLoading(true)
-                        setStatsError(null)
-                        const data = await fetchStats()
-                        setStats(data)
-                      } catch (error) {
-                        console.error('Failed to fetch stats:', error)
-                        setStatsError('获取统计数据失败')
-                      } finally {
-                        setStatsLoading(false)
-                      }
-                    }}
-                  >
-                    重试
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="stat-item">
-                    <span className="stat-label">待审核</span>
-                    <span className="stat-value pending">{stats.pending}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">本期已通过</span>
-                    <span className="stat-value approved">{stats.approved_period}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">累计应用</span>
-                    <span className="stat-value total">{stats.total_apps}</span>
-                  </div>
-                </>
+              {canAccessMySubmissions && (
+                <Link to="/my-submissions" className="quick-link">
+                  <UiIcon name="my" />
+                  <span>我的申报</span>
+                </Link>
               )}
+              {isAdmin && (
+                <Link to="/submission-review" className="quick-link">
+                  <UiIcon name="review" />
+                  <span>申报审核</span>
+                </Link>
+              )}
+              {isAdmin && (
+                <Link to="/ranking-management" className="quick-link">
+                  <UiIcon name="ranking" />
+                  <span>排行榜管理</span>
+                </Link>
+              )}
+              {isAdmin && (
+                <Link to="/user-management" className="quick-link">
+                  <UiIcon name="user" />
+                  <span>用户管理</span>
+                </Link>
+              )}
+              {!currentUser && (
+                <div className="quick-link-note">登录后可提交申报并查看我的申报</div>
+              )}
+            </div>
+
+            <div className="side-section stats-panel">
+              <div className="nav-section-title">申报统计</div>
+              <div className="stats-grid">
+                {statsLoading ? (
+                  <div className="stats-loading">
+                    <div className="loading-spinner"></div>
+                    <span>加载中...</span>
+                  </div>
+                ) : statsError ? (
+                  <div className="stats-error">
+                    <span className="error-icon"><UiIcon name="error" /></span>
+                    <span>{statsError}</span>
+                    <button
+                      className="retry-button"
+                      onClick={async () => {
+                        try {
+                          setStatsLoading(true)
+                          setStatsError(null)
+                          const data = await fetchStats()
+                          setStats(data)
+                        } catch (error) {
+                          console.error('Failed to fetch stats:', error)
+                          setStatsError('获取统计数据失败')
+                        } finally {
+                          setStatsLoading(false)
+                        }
+                      }}
+                    >
+                      重试
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="stat-item">
+                      <span className="stat-value pending">{stats.pending}</span>
+                      <span className="stat-label">待审核</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-value approved">{stats.approved_period}</span>
+                      <span className="stat-label">本期通过</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-value total">{stats.total_apps}</span>
+                      <span className="stat-label">累计应用</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </aside>
@@ -806,9 +891,22 @@ function HomePage({
             <div>
               <h2 className="block-title">{blockTitle}</h2>
               <p className="block-subtitle">{blockSubtitle}</p>
+              {activeNav === 'ranking' && rankingPublishedDate && (
+                <p className="block-hint">最新发布：{rankingPublishedDate}</p>
+              )}
+              {activeNav === 'library' && (
+                <p className="block-hint">集团应用和省内应用均为展示内容，可通过应用来源筛选查看，不提供平台内跳转使用。</p>
+              )}
             </div>
-            {activeNav !== 'ranking' && (
+            {activeNav === 'library' && (
               <div className="filters">
+                <select
+                  className="filter-select"
+                  value={appSource}
+                  onChange={(e) => setAppSource(e.target.value as AppSource)}
+                >
+                  {appSourceOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
                 <select 
                   className="filter-select" 
                   value={statusFilter} 
@@ -823,7 +921,7 @@ function HomePage({
                 >
                   {categories.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
-                {activeNav === 'province' && (
+                {appSource !== 'group' && (
                   <select
                     className="filter-select"
                     value={companyFilter}
@@ -887,7 +985,7 @@ function HomePage({
             )}
           </section>
 
-          {activeNav !== 'ranking' && (
+          {activeNav === 'library' && (
             <section className="grid">
               {apps.map((app) => (
                 <article className="card" key={app.id} onClick={() => setSelectedApp(app)}>
@@ -926,24 +1024,47 @@ function HomePage({
           )}
 
           {activeNav === 'ranking' && (
-            <section className="ranking-list">
-              {rankings.map((row, index) => (
-                <div className="ranking-row" key={`${row.position}-${row.app.id}`} onClick={() => setSelectedApp(row.app)}>
-                  <span className={`rank-number ${index < 3 ? 'top3' : ''}`}>#{row.position}</span>
-                  <span className="rank-app-name">{row.app.name}</span>
-                  <span className="rank-dimension">
-                    {rankingDimension === 'overall' 
-                      ? valueDimensionLabel[row.value_dimension] 
-                      : `维度评分: ${(row as any).dimensionScore || 0}分`
-                    }
-                  </span>
-                  <span className={`rank-tag ${row.tag === '推荐' ? 'recommended' : row.tag === '历史优秀' ? 'excellent' : 'new'}`}>
-                    {row.tag}
-                  </span>
-                  <span className="rank-metric">{rankingMetricText(row)}</span>
-                </div>
-              ))}
-            </section>
+            rankingLoading ? (
+              <section className="state-panel">
+                <div className="loading-spinner"></div>
+                <span>正在加载最新发布榜单...</span>
+              </section>
+            ) : rankingError ? (
+              <section className="state-panel">
+                <span className="state-icon"><UiIcon name="error" /></span>
+                <span>{rankingError}</span>
+              </section>
+            ) : rankings.length === 0 ? (
+              <section className="state-panel">
+                <span className="state-icon"><UiIcon name="empty" /></span>
+                <strong>暂无已发布榜单</strong>
+                <span>管理员发布榜单后，这里会展示最新一次正式发布结果。</span>
+                {isAdmin && (
+                  <Link to="/ranking-management" className="state-action">
+                    前往排行榜管理
+                  </Link>
+                )}
+              </section>
+            ) : (
+              <section className="ranking-list">
+                {rankings.map((row, index) => (
+                  <div className="ranking-row" key={`${row.position}-${row.app.id}`} onClick={() => setSelectedApp(row.app)}>
+                    <span className={`rank-number ${index < 3 ? 'top3' : ''}`}>#{row.position}</span>
+                    <span className="rank-app-name">{row.app.name}</span>
+                    <span className="rank-dimension">
+                      {rankingDimension === 'overall' 
+                        ? valueDimensionLabel[row.value_dimension] 
+                        : `维度评分: ${(row as any).dimensionScore || 0}分`
+                      }
+                    </span>
+                    <span className={`rank-tag ${row.tag === '推荐' ? 'recommended' : row.tag === '历史优秀' ? 'excellent' : 'new'}`}>
+                      {row.tag}
+                    </span>
+                    <span className="rank-metric">{rankingMetricText(row)}</span>
+                  </div>
+                ))}
+              </section>
+            )
           )}
         </main>
 
@@ -1046,25 +1167,14 @@ function HomePage({
               </div>
             </div>
 
-            <div className="modal-footer">
-              {selectedApp.section === 'group' && selectedApp.access_mode === 'direct' && Boolean(selectedApp.access_url) ? (
-                <a href={selectedApp.access_url} target="_blank" rel="noreferrer" className="modal-btn primary">
-                  <UiIcon name="trial" />
-                  <span>申请试用</span>
-                </a>
-              ) : (
-                <button className="modal-btn primary" disabled>
-                  <UiIcon name="locked" />
-                  <span>{selectedApp.section === 'province' ? '省内展示应用' : '需申请接入'}</span>
-                </button>
-              )}
-              {selectedApp.section === 'province' && selectedApp.detail_doc_url && (
+            {selectedApp.detail_doc_url && (
+              <div className="modal-footer">
                 <a href={resolveMediaUrl(selectedApp.detail_doc_url)} target="_blank" rel="noreferrer" className="modal-btn secondary">
                   <UiIcon name="doc" />
                   <span>{selectedApp.detail_doc_name || '详细文档'}</span>
                 </a>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

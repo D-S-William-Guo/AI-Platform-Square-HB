@@ -24,6 +24,14 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 32px 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.page-header {
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .page-title {
@@ -47,6 +55,65 @@
   display: flex;
   flex-direction: column;
   gap: 32px;
+}
+
+.workspace-card,
+.toolbar-card,
+.notice-panel,
+.empty-container,
+.loading-container,
+.error-container {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.toolbar-card {
+  padding: 16px 18px;
+}
+
+.notice-panel {
+  padding: 14px 16px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.empty-container,
+.loading-container,
+.error-container {
+  min-height: 180px;
+  padding: 28px 22px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.empty-container strong,
+.error-container strong {
+  color: var(--text-primary);
+}
+
+.page-message {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.page-message.success {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
+.page-message.error {
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
 }
 
 /* Dimension Section - 全局样式 */

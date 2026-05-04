@@ -5,11 +5,11 @@ const RulePage = () => {
   const [activeSection, setActiveSection] = useState('overview')
 
   const sections = [
-    { id: 'overview', title: '规则总览' },
-    { id: 'dimensions', title: '维度与权重' },
-    { id: 'truth-source', title: '真相源说明' },
-    { id: 'boundary', title: '管理边界' },
-    { id: 'updates', title: '变更记录' },
+    { id: 'overview', title: '先看结论' },
+    { id: 'dimensions', title: '两个榜单怎么看' },
+    { id: 'truth-source', title: '数据从哪里来' },
+    { id: 'boundary', title: '没有榜单怎么办' },
+    { id: 'updates', title: '管理员怎么发布' },
   ]
 
   return (
@@ -47,19 +47,19 @@ const RulePage = () => {
           {activeSection === 'overview' && (
             <section className="guide-section">
               <h2>规则总览</h2>
-              <p>当前榜单制度按治理基线执行，面向首页展示与管理端配置保持一致。</p>
+              <p>首页展示的是最新一次正式发布的榜单快照，不展示未发布的实时计算结果。这样首页、历史榜单和运营汇报看到的是同一套口径。</p>
               <div className="guide-card">
-                <h3>固定榜单范围</h3>
+                <h3>当前固定两张榜</h3>
                 <ul>
                   <li><strong>excellent</strong>：总应用榜</li>
                   <li><strong>trend</strong>：增长趋势榜</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>当前制度边界</h3>
+                <h3>展示范围</h3>
                 <ul>
-                  <li>一期聚焦双榜单，不扩展其他榜单类型。</li>
-                  <li>榜单展示与管理能力通过统一管理页维护。</li>
+                  <li>当前榜单只展示省内应用表现。</li>
+                  <li>集团应用进入应用视图展示，不参与当前榜单。</li>
                   <li>匿名用户可浏览榜单；管理员负责配置与发布。</li>
                 </ul>
               </div>
@@ -68,57 +68,59 @@ const RulePage = () => {
 
           {activeSection === 'dimensions' && (
             <section className="guide-section">
-              <h2>维度与权重</h2>
+              <h2>两个榜单怎么看</h2>
               <div className="guide-card">
-                <h3>默认核心维度</h3>
+                <h3>总应用榜</h3>
                 <ul>
-                  <li>总应用榜：用户满意度、业务价值、使用活跃度、稳定性和安全性。</li>
-                  <li>增长趋势榜：使用活跃度、增长趋势、用户增长。</li>
+                  <li>用于看综合表现更好的省内应用。</li>
+                  <li>适合做优秀案例推荐、阶段性通报和重点应用观察。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>权重口径</h3>
-                <p>系统默认权重统一为 <strong>1.0</strong>，具体配置以管理端当前发布结果为准。</p>
+                <h3>增长趋势榜</h3>
+                <ul>
+                  <li>用于看近期活跃、增长或用户变化更明显的省内应用。</li>
+                  <li>适合发现新增长点和需要继续跟进的应用。</li>
+                </ul>
               </div>
             </section>
           )}
 
           {activeSection === 'truth-source' && (
             <section className="guide-section">
-              <h2>真相源说明</h2>
+              <h2>数据从哪里来</h2>
               <div className="guide-card">
-                <h3>榜单参与与控制输入</h3>
-                <p>唯一真相源：<code>AppRankingSetting</code>。</p>
+                <h3>首页读取</h3>
+                <p>首页读取最新一次正式发布的 <code>HistoricalRanking</code> 快照。</p>
               </div>
               <div className="guide-card">
-                <h3>对外榜单读取</h3>
-                <p>唯一真相源：<code>HistoricalRanking</code>。</p>
+                <h3>参与控制</h3>
+                <p>哪些应用参与哪张榜，以 <code>AppRankingSetting</code> 为准。</p>
               </div>
               <div className="guide-card">
-                <h3>兼容字段说明</h3>
-                <p>
-                  <code>App</code> / <code>Submission</code> 中的 <code>ranking_*</code> 字段仅保留兼容或展示用途，不作为榜单口径真相源。
-                </p>
+                <h3>历史追溯</h3>
+                <p>历史榜单页面默认展示最新日期，也可以切换查看过去发布的榜单快照。</p>
               </div>
             </section>
           )}
 
           {activeSection === 'boundary' && (
             <section className="guide-section">
-              <h2>管理边界</h2>
+              <h2>没有榜单怎么办</h2>
               <div className="guide-card">
-                <h3>匿名/登录用户</h3>
+                <h3>普通用户看到空态</h3>
                 <ul>
-                  <li>可在首页与榜单详情查看榜单结果。</li>
-                  <li>不可进入排行榜管理页。</li>
-                  <li>登录后可申报，但榜单规则配置仍仅管理员可操作。</li>
+                  <li>说明当前还没有正式发布过榜单。</li>
+                  <li>不是页面故障，也不是没有应用数据。</li>
+                  <li>等待管理员完成榜单发布后，首页会自动展示最新结果。</li>
                 </ul>
               </div>
               <div className="guide-card">
-                <h3>管理员</h3>
+                <h3>管理员处理方式</h3>
                 <ul>
-                  <li>可进入排行榜管理页维护维度、配置、应用参与并执行发布。</li>
-                  <li>可联动应用状态和审核流程维护榜单数据质量。</li>
+                  <li>进入排行榜管理，确认应用参与和维度分值。</li>
+                  <li>确认无误后执行发布。</li>
+                  <li>发布后首页和历史榜单会读取这次正式快照。</li>
                 </ul>
                 <Link to="/ranking-management" className="btn-primary">
                   前往排行榜管理
@@ -129,14 +131,15 @@ const RulePage = () => {
 
           {activeSection === 'updates' && (
             <section className="guide-section">
-              <h2>变更记录</h2>
+              <h2>管理员怎么发布</h2>
               <div className="guide-card">
-                <h3>2026-04-18</h3>
-                <ul>
-                  <li>同步账号分层口径：匿名可读、登录可申报、管理员可管理。</li>
-                  <li>保持双榜单与真相源说明与治理文档一致。</li>
-                  <li>更新页面角色描述，避免历史权限文案歧义。</li>
-                </ul>
+                <h3>推荐流程</h3>
+                <ol className="process-steps">
+                  <li>进入“排行榜管理”。</li>
+                  <li>维护榜单配置、应用参与和维度分值。</li>
+                  <li>检查总应用榜和增长趋势榜结果。</li>
+                  <li>执行发布，形成正式历史快照。</li>
+                </ol>
               </div>
             </section>
           )}
