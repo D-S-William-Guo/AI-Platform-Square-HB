@@ -4,6 +4,7 @@ import {
   auditEvent,
   clearAuthToken,
   fetchAuthMe,
+  fetchAppDetail,
   fetchApps,
   fetchHistoricalRankings,
   fetchStats,
@@ -113,6 +114,10 @@ function monthlyCallsText(app: AppItem) {
   return app.section === 'province' ? '展示应用' : '0k/月'
 }
 
+function appCompanyLabel(app: AppItem) {
+  return app.company || app.org
+}
+
 function appFromHistoricalRanking(row: HistoricalRanking): AppItem {
   return {
     id: row.app_id,
@@ -147,7 +152,7 @@ function appFromHistoricalRanking(row: HistoricalRanking): AppItem {
   }
 }
 
-function rankingItemFromHistorical(row: HistoricalRanking): RankingItem {
+function rankingItemFromHistorical(row: HistoricalRanking, appDetail?: AppItem): RankingItem {
   return {
     ranking_config_id: row.ranking_type,
     position: row.position,
@@ -159,8 +164,30 @@ function rankingItemFromHistorical(row: HistoricalRanking): RankingItem {
     usage_30d: row.usage_30d,
     declared_at: row.period_date,
     updated_at: row.created_at,
-    app: appFromHistoricalRanking(row),
+    app: appDetail
+      ? {
+          ...appDetail,
+          ranking_enabled: true,
+          ranking_tags: row.tag,
+          last_ranking_update: row.created_at,
+        }
+      : appFromHistoricalRanking(row),
   }
+}
+
+async function enrichHistoricalRankingApps(rows: HistoricalRanking[]) {
+  const appDetails = await Promise.all(
+    rows.map(async (row) => {
+      try {
+        const app = await fetchAppDetail(row.app_id)
+        return [row.app_id, app] as const
+      } catch (error) {
+        console.warn(`Failed to fetch app detail for historical ranking app ${row.app_id}:`, error)
+        return [row.app_id, null] as const
+      }
+    })
+  )
+  return new Map(appDetails.filter(([, app]) => app !== null) as Array<readonly [number, AppItem]>)
 }
 
 // 表单验证规则类型定义
@@ -224,6 +251,7 @@ function HomePage({
   const [keyword, setKeyword] = useState('')
   const [apps, setApps] = useState<AppItem[]>([])
   const [rankings, setRankings] = useState<RankingItem[]>([])
+  const [rankingCompanyOptions, setRankingCompanyOptions] = useState<string[]>(['全部'])
   const [rankingLoading, setRankingLoading] = useState(false)
   const [rankingError, setRankingError] = useState<string | null>(null)
   const [rankingPublishedDate, setRankingPublishedDate] = useState<string>('')
@@ -250,15 +278,15 @@ function HomePage({
   } | null>(null)
 
   const companyOptions = useMemo(() => {
+    if (activeNav === 'ranking') return rankingCompanyOptions
+
     const values =
-      activeNav === 'ranking'
-        ? rankings.map((row) => row.app.company || row.app.org).filter(Boolean)
-        : apps
-            .filter((app) => app.section === 'province')
-            .map((app) => app.company || app.org)
-            .filter(Boolean)
+      apps
+        .filter((app) => app.section === 'province')
+        .map(appCompanyLabel)
+        .filter(Boolean)
     return ['全部', ...Array.from(new Set(values))]
-  }, [activeNav, apps, rankings])
+  }, [activeNav, apps, rankingCompanyOptions])
 
   useEffect(() => {
     fetchRankingDimensions()
@@ -338,14 +366,21 @@ function HomePage({
         try {
           setRankingLoading(true)
           setRankingError(null)
-          const snapshot = await fetchHistoricalRankings(
-            rankingType,
-            undefined,
-            companyFilter !== '全部' ? companyFilter : undefined
+          const snapshot = await fetchHistoricalRankings(rankingType)
+          const appDetailMap = await enrichHistoricalRankingApps(snapshot)
+          let processedRankings = snapshot.map((row) =>
+            rankingItemFromHistorical(row, appDetailMap.get(row.app_id))
           )
-          let processedRankings = snapshot.map(rankingItemFromHistorical)
           const latestDate = snapshot[0]?.period_date || ''
           setRankingPublishedDate(latestDate)
+          setRankingCompanyOptions([
+            '全部',
+            ...Array.from(new Set(processedRankings.map((row) => appCompanyLabel(row.app)).filter(Boolean))),
+          ])
+
+          if (companyFilter !== '全部') {
+            processedRankings = processedRankings.filter((row) => appCompanyLabel(row.app) === companyFilter)
+          }
 
           if (rankingDimension !== 'overall' && latestDate) {
             const dimensionId = parseInt(rankingDimension.replace('dimension-', ''))
@@ -380,6 +415,7 @@ function HomePage({
           setRankingError('获取最新发布榜单失败')
           setRankings([])
           setRankingPublishedDate('')
+          setRankingCompanyOptions(['全部'])
         } finally {
           setRankingLoading(false)
         }

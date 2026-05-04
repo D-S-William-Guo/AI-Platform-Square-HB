@@ -13,6 +13,7 @@ const valueDimensionLabel: Record<string, string> = {
 }
 
 export default function HistoricalRankingPage() {
+  const [allRankings, setAllRankings] = useState<HistoricalRanking[]>([])
   const [rankings, setRankings] = useState<HistoricalRanking[]>([])
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,11 +26,11 @@ export default function HistoricalRankingPage() {
   const hasAvailableDates = availableDates.length > 0
 
   const companyOptions = useMemo(() => {
-    const values = rankings
+    const values = allRankings
       .map((item) => item.company || item.app_org)
       .filter(Boolean)
     return ['全部', ...Array.from(new Set(values))]
-  }, [rankings])
+  }, [allRankings])
 
   // 获取可用日期列表
   const loadAvailableDates = useCallback(async () => {
@@ -42,6 +43,7 @@ export default function HistoricalRankingPage() {
         setSelectedDate(data.dates[0])
       } else {
         setSelectedDate('')
+        setAllRankings([])
         setRankings([])
         setLoading(false)
       }
@@ -49,6 +51,7 @@ export default function HistoricalRankingPage() {
       console.error('Failed to fetch available dates:', err)
       setAvailableDates([])
       setSelectedDate('')
+      setAllRankings([])
       setRankings([])
       setError('获取历史榜单日期失败')
       setLoading(false)
@@ -60,11 +63,7 @@ export default function HistoricalRankingPage() {
     try {
       setLoading(true)
       setError(null)
-      let data = await fetchHistoricalRankings(
-        rankingType,
-        selectedDate || undefined,
-        companyFilter !== '全部' ? companyFilter : undefined
-      )
+      let data = await fetchHistoricalRankings(rankingType, selectedDate || undefined)
       
       // 如果选择了特定维度，获取该维度的评分并重新排序
       if (rankingDimension !== 'overall') {
@@ -96,7 +95,12 @@ export default function HistoricalRankingPage() {
         }
       }
       
-      setRankings(data)
+      setAllRankings(data)
+      setRankings(
+        companyFilter === '全部'
+          ? data
+          : data.filter((item) => (item.company || item.app_org) === companyFilter)
+      )
     } catch (err) {
       setError('获取历史榜单失败')
       console.error('Failed to fetch historical rankings:', err)
