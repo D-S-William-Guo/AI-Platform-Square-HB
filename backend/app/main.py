@@ -549,6 +549,10 @@ def write_ranking_audit_log(
     )
 
 
+def ranking_audit_actor(user: User | None) -> str:
+    return user.username if user else "system"
+
+
 def structured_error_detail(
     *,
     code: str,
@@ -742,7 +746,7 @@ def calculate_three_layer_score(
     return max(0, min(final_score, 1000))
 
 
-def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, str]:
+def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "system") -> tuple[int, str]:
     """
     同步排行榜数据（支持三层架构）
     - 遍历每个榜单配置
@@ -970,7 +974,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
             ranking_config_id=config.id,
             period_date=today,
             run_id=current_run_id,
-            actor="system",
+            actor=actor,
             payload_summary=(
                 f"dimension_score_updates={config_dimension_updates},"
                 f"ranking_updates={config_ranking_updates},"
@@ -986,7 +990,7 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
             ranking_type="all",
             period_date=today,
             run_id=current_run_id,
-            actor="system",
+            actor=actor,
             payload_summary=f"removed_realtime={removed_global_realtime_rows}",
         )
 
@@ -994,19 +998,19 @@ def sync_rankings_service(db: Session, run_id: str | None = None) -> tuple[int, 
     return updated_count, current_run_id
 
 
-def sync_after_chain_mutation(db: Session, trigger: str) -> tuple[int, str]:
+def sync_after_chain_mutation(db: Session, trigger: str, actor: str = "system") -> tuple[int, str]:
     """链路节点发生增删改后，统一触发榜单重算并返回运行信息。"""
     try:
         # SessionLocal 关闭了 autoflush，先显式 flush，避免同步阶段读不到本次变更。
         db.flush()
-        updated_count, run_id = sync_rankings_service(db)
+        updated_count, run_id = sync_rankings_service(db, actor=actor)
         write_ranking_audit_log(
             db,
             action=f"{trigger}_triggered_sync",
             ranking_type="all",
             period_date=datetime.utcnow().date(),
             run_id=run_id,
-            actor="system",
+            actor=actor,
             payload_summary=f"updated_count={updated_count}",
         )
         db.commit()
@@ -1702,7 +1706,7 @@ def update_app_ranking_params(
     ranking_enabled: bool | None = None,
     ranking_weight: float | None = None,
     ranking_tags: str | None = None,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1727,7 +1731,11 @@ def update_app_ranking_params(
         app.ranking_tags = ranking_tags
     app.last_ranking_update = datetime.utcnow()
     
-    updated_count, run_id = sync_after_chain_mutation(db, "app_ranking_params_updated")
+    updated_count, run_id = sync_after_chain_mutation(
+        db,
+        "app_ranking_params_updated",
+        actor=ranking_audit_actor(admin_user),
+    )
     db.refresh(app)
     return {"message": "排行参数更新成功", "app_id": app_id, "synced": updated_count, "run_id": run_id}
 
@@ -1793,19 +1801,20 @@ def update_app_dimension_score_api(
             calculation_detail=f"手动调整评分: {resolved_score}分"
         )
         db.add(score_record)
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="dimension_score_manual_saved",
         ranking_type=None,
         ranking_config_id=config_id,
         period_date=today,
-        actor=admin_user.username if admin_user else "system",
+        actor=actor,
         payload_summary=(
             f"app_id={app_id},dimension_id={dimension_id},"
             f"before={before_score},after={resolved_score}"
         ),
     )
-    updated_count, run_id = sync_after_chain_mutation(db, "dimension_score_updated")
+    updated_count, run_id = sync_after_chain_mutation(db, "dimension_score_updated", actor=actor)
     db.refresh(score_record)
     return {
         "message": "维度评分更新成功",
@@ -1936,7 +1945,7 @@ def get_ranking_dimension(
 @app.post(f"{settings.api_prefix}/ranking-dimensions", response_model=RankingDimensionOut)
 def create_ranking_dimension(
     payload: RankingDimensionCreate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1952,13 +1961,14 @@ def create_ranking_dimension(
     db.add(dimension)
     db.flush()
     
+    actor = ranking_audit_actor(admin_user)
     # 记录日志
     log = RankingLog(
         action="create",
         dimension_id=dimension.id,
         dimension_name=dimension.name,
         changes=f"创建了排行维度: {dimension.name}",
-        operator="system"
+        operator=actor
     )
     db.add(log)
     write_ranking_audit_log(
@@ -1966,10 +1976,10 @@ def create_ranking_dimension(
         action="ranking_dimension_created",
         ranking_type="all",
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=f"dimension_id={dimension.id},name={dimension.name}",
     )
-    sync_after_chain_mutation(db, "ranking_dimension_created")
+    sync_after_chain_mutation(db, "ranking_dimension_created", actor=actor)
     db.refresh(dimension)
 
     return dimension
@@ -1979,7 +1989,7 @@ def create_ranking_dimension(
 def update_ranking_dimension(
     dimension_id: int,
     payload: RankingDimensionUpdate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -1995,6 +2005,7 @@ def update_ranking_dimension(
         if existing:
             raise HTTPException(status_code=400, detail="排行维度名称已存在")
     
+    actor = ranking_audit_actor(admin_user)
     # 记录变更
     changes = []
     name_changed = False
@@ -2030,7 +2041,7 @@ def update_ranking_dimension(
             dimension_id=dimension.id,
             dimension_name=dimension.name,
             changes="; ".join(changes),
-            operator="system"
+            operator=actor
         )
         db.add(log)
         write_ranking_audit_log(
@@ -2038,10 +2049,10 @@ def update_ranking_dimension(
             action="ranking_dimension_updated",
             ranking_type="all",
             period_date=datetime.utcnow().date(),
-            actor="system",
+            actor=actor,
             payload_summary=f"dimension_id={dimension.id},changes={' | '.join(changes)}",
         )
-    sync_after_chain_mutation(db, "ranking_dimension_updated")
+    sync_after_chain_mutation(db, "ranking_dimension_updated", actor=actor)
     db.refresh(dimension)
 
     return dimension
@@ -2050,7 +2061,7 @@ def update_ranking_dimension(
 @app.delete(f"{settings.api_prefix}/ranking-dimensions/{{dimension_id}}")
 def delete_ranking_dimension(
     dimension_id: int,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -2080,6 +2091,7 @@ def delete_ranking_dimension(
         .delete(synchronize_session=False)
     )
 
+    actor = ranking_audit_actor(admin_user)
     # 记录日志
     log = RankingLog(
         action="delete",
@@ -2087,7 +2099,7 @@ def delete_ranking_dimension(
         dimension_id=None,
         dimension_name=dimension.name,
         changes=f"删除了排行维度: {dimension.name}",
-        operator="system"
+        operator=actor
     )
     db.add(log)
     write_ranking_audit_log(
@@ -2095,7 +2107,7 @@ def delete_ranking_dimension(
         action="ranking_dimension_deleted",
         ranking_type="all",
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=(
             f"dimension_id={dimension.id},name={dimension.name},"
             f"removed_scores={removed_scores},touched_configs={touched_configs}"
@@ -2104,7 +2116,7 @@ def delete_ranking_dimension(
 
     # 删除排行维度
     db.delete(dimension)
-    synced, run_id = sync_after_chain_mutation(db, "ranking_dimension_deleted")
+    synced, run_id = sync_after_chain_mutation(db, "ranking_dimension_deleted", actor=actor)
 
     return {
         "message": "排行维度已删除",
@@ -2560,14 +2572,18 @@ def sync_users_from_integration(
 @app.post(f"{settings.api_prefix}/rankings/sync")
 def sync_rankings(
     run_id: str | None = Query(default=None, description="可选发布批次ID；不传则自动生成 UUID"),
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
     同步排行榜数据，确保集团应用和省内应用信息保持一致
     """
     try:
-        updated_count, generated_run_id = sync_rankings_service(db, run_id=run_id)
+        updated_count, generated_run_id = sync_rankings_service(
+            db,
+            run_id=run_id,
+            actor=ranking_audit_actor(admin_user),
+        )
         return {"message": "排行榜数据同步成功", "updated_count": updated_count, "run_id": generated_run_id}
     except Exception as exc:
         db.rollback()
@@ -2627,13 +2643,14 @@ def validate_publish_preconditions(db: Session) -> dict[str, int]:
 @app.post(f"{settings.api_prefix}/rankings/publish")
 def publish_rankings(
     run_id: str | None = Query(default=None, description="可选发布批次ID；不传则自动生成 UUID"),
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
     """榜单发布入口：预校验 + 同步 + 发布审计。"""
     try:
         checked = validate_publish_preconditions(db)
-        updated_count, generated_run_id = sync_rankings_service(db, run_id=run_id)
+        actor = ranking_audit_actor(admin_user)
+        updated_count, generated_run_id = sync_rankings_service(db, run_id=run_id, actor=actor)
         write_ranking_audit_log(
             db,
             action="ranking_publish_completed",
@@ -2641,7 +2658,7 @@ def publish_rankings(
             ranking_config_id=None,
             period_date=datetime.utcnow().date(),
             run_id=generated_run_id,
-            actor="system",
+            actor=actor,
             payload_summary=(
                 f"active_configs={checked['active_configs']},"
                 f"enabled_settings={checked['enabled_settings']},"
@@ -2670,7 +2687,7 @@ def batch_update_ranking_params(
     ranking_weight: float = 1.0,
     ranking_enabled: bool = True,
     ranking_tags: str = "",
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -2695,7 +2712,11 @@ def batch_update_ranking_params(
                 app.last_ranking_update = datetime.utcnow()
                 updated_count += 1
         
-        synced, run_id = sync_after_chain_mutation(db, "batch_ranking_params_updated")
+        synced, run_id = sync_after_chain_mutation(
+            db,
+            "batch_ranking_params_updated",
+            actor=ranking_audit_actor(admin_user),
+        )
         return {"message": "批量更新成功", "updated_count": updated_count, "synced": synced, "run_id": run_id}
     except HTTPException:
         raise
@@ -2850,7 +2871,11 @@ def approve_submission_and_create_app(
             request_id=request.headers.get("X-Request-Id", ""),
             payload_summary=f"app_id={app.id},app_name={app.name}",
         )
-        updated_count, run_id = sync_after_chain_mutation(db, "submission_approved_and_created_app")
+        updated_count, run_id = sync_after_chain_mutation(
+            db,
+            "submission_approved_and_created_app",
+            actor=ranking_audit_actor(admin_user),
+        )
         db.refresh(app)
 
         return {
@@ -3083,7 +3108,11 @@ def admin_update_app_status(
     synced = 0
     run_id = ""
     if app.section == "province":
-        synced, run_id = sync_after_chain_mutation(db, "app_status_updated")
+        synced, run_id = sync_after_chain_mutation(
+            db,
+            "app_status_updated",
+            actor=ranking_audit_actor(admin_user),
+        )
     else:
         db.commit()
     db.refresh(app)
@@ -3453,7 +3482,7 @@ def get_ranking_config_with_dimensions(
 @app.post(f"{settings.api_prefix}/ranking-configs", response_model=RankingConfigOut)
 def create_ranking_config(
     payload: RankingConfigCreate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3467,16 +3496,17 @@ def create_ranking_config(
     config = RankingConfig(**payload.model_dump())
     db.add(config)
     db.flush()
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="ranking_config_created",
         ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=f"name={config.name},is_active={config.is_active}",
     )
-    sync_after_chain_mutation(db, "ranking_config_created")
+    sync_after_chain_mutation(db, "ranking_config_created", actor=actor)
     db.refresh(config)
     return config
 
@@ -3485,7 +3515,7 @@ def create_ranking_config(
 def update_ranking_config(
     config_id: str,
     payload: RankingConfigUpdate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3506,16 +3536,17 @@ def update_ranking_config(
     if payload.is_active is not None:
         config.is_active = payload.is_active
 
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="ranking_config_updated",
         ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary="fields=name/description/dimensions_config/calculation_method/is_active",
     )
-    sync_after_chain_mutation(db, "ranking_config_updated")
+    sync_after_chain_mutation(db, "ranking_config_updated", actor=actor)
     db.refresh(config)
     return config
 
@@ -3523,7 +3554,7 @@ def update_ranking_config(
 @app.delete(f"{settings.api_prefix}/ranking-configs/{{config_id}}")
 def delete_ranking_config(
     config_id: str,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3549,20 +3580,21 @@ def delete_ranking_config(
         .delete(synchronize_session=False)
     )
 
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="ranking_config_deleted",
         ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=(
             f"name={config.name},removed_settings={removed_settings},"
             f"removed_realtime={removed_realtime},removed_historical={removed_historical}"
         ),
     )
     db.delete(config)
-    synced, run_id = sync_after_chain_mutation(db, "ranking_config_deleted")
+    synced, run_id = sync_after_chain_mutation(db, "ranking_config_deleted", actor=actor)
     return {
         "message": "榜单配置已删除",
         "removed_settings": removed_settings,
@@ -3630,7 +3662,7 @@ def _collect_config_dimension_ids(config: RankingConfig) -> set[int]:
 def save_app_ranking_setting_atomically(
     app_id: int,
     payload: AppRankingSettingSaveRequest,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db),
 ):
     """原子保存应用榜单参与设置与维度评分，失败则整单回滚。"""
@@ -3774,20 +3806,21 @@ def save_app_ranking_setting_atomically(
             updated_dimensions += 1
 
         after_snapshot = _serialize_setting_snapshot(target_setting)
+        actor = ranking_audit_actor(admin_user)
         write_ranking_audit_log(
             db,
             action=action,
             ranking_type=config_id,
             ranking_config_id=config_id,
             period_date=datetime.utcnow().date(),
-            actor="system",
+            actor=actor,
             payload_summary=(
                 f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
                 f"after={json.dumps(after_snapshot, ensure_ascii=False)},"
                 f"updated_dimensions={updated_dimensions}"
             ),
         )
-        synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_saved_atomic")
+        synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_saved_atomic", actor=actor)
         db.refresh(target_setting)
         return {
             "setting": target_setting,
@@ -3807,7 +3840,7 @@ def save_app_ranking_setting_atomically(
 def create_app_ranking_setting(
     app_id: int,
     payload: AppRankingSettingCreate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3846,19 +3879,20 @@ def create_app_ranking_setting(
     )
     db.add(setting)
     db.flush()
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_created",
         ranking_type=payload.ranking_config_id,
         ranking_config_id=payload.ranking_config_id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=(
             f"app_id={app_id},before={{}},"
             f"after={json.dumps(_serialize_setting_snapshot(setting), ensure_ascii=False)}"
         ),
     )
-    sync_after_chain_mutation(db, "app_ranking_setting_created")
+    sync_after_chain_mutation(db, "app_ranking_setting_created", actor=actor)
     db.refresh(setting)
     return setting
 
@@ -3868,7 +3902,7 @@ def update_app_ranking_setting(
     app_id: int,
     setting_id: int,
     payload: AppRankingSettingUpdate,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3931,19 +3965,20 @@ def update_app_ranking_setting(
         setting.custom_tags = payload.custom_tags
 
     after_snapshot = _serialize_setting_snapshot(setting)
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_updated",
         ranking_type=setting.ranking_config_id,
         ranking_config_id=setting.ranking_config_id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=(
             f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
             f"after={json.dumps(after_snapshot, ensure_ascii=False)}"
         ),
     )
-    sync_after_chain_mutation(db, "app_ranking_setting_updated")
+    sync_after_chain_mutation(db, "app_ranking_setting_updated", actor=actor)
     db.refresh(setting)
     return setting
 
@@ -3952,7 +3987,7 @@ def update_app_ranking_setting(
 def delete_app_ranking_setting(
     app_id: int,
     setting_id: int,
-    _: None = Depends(require_admin_token),
+    admin_user: User | None = Depends(require_admin_token),
     db: Session = Depends(get_db)
 ):
     """
@@ -3970,20 +4005,21 @@ def delete_app_ranking_setting(
         raise HTTPException(status_code=404, detail="榜单设置不存在")
 
     before_snapshot = _serialize_setting_snapshot(setting)
+    actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_deleted",
         ranking_type=setting.ranking_config_id,
         ranking_config_id=setting.ranking_config_id,
         period_date=datetime.utcnow().date(),
-        actor="system",
+        actor=actor,
         payload_summary=(
             f"app_id={app_id},before={json.dumps(before_snapshot, ensure_ascii=False)},"
             "after={}"
         ),
     )
     db.delete(setting)
-    synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_deleted")
+    synced, run_id = sync_after_chain_mutation(db, "app_ranking_setting_deleted", actor=actor)
     return {"message": "榜单设置已删除", "synced": synced, "run_id": run_id}
 
 
