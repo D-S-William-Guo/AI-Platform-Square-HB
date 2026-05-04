@@ -21,6 +21,7 @@ type UiIconName =
   | 'doc'
   | 'empty'
   | 'sync'
+  | 'upload'
 
 export default function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
   const common = {
@@ -78,6 +79,8 @@ export default function UiIcon({ name, size = 16 }: { name: UiIconName; size?: n
       return <svg {...common}><path d="M7 3h8l4 4v14H7V3Z" /><path d="M15 3v4h4M10 12h6M10 16h6" /></svg>
     case 'sync':
       return <svg {...common}><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.5 9A7 7 0 0 1 18 7M17.5 15A7 7 0 0 1 6 17" /></svg>
+    case 'upload':
+      return <svg {...common}><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" /></svg>
     case 'empty':
       return <svg {...common}><path d="M4 19h16M6 17V7M12 17V4M18 17v-6" /></svg>
   }

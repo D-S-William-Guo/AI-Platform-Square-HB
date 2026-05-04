@@ -556,7 +556,7 @@ function HomePage({
     setUploadProgress(0)
 
     try {
-      const result = await uploadImage(file)
+      const result = await uploadImage(file, 'submission')
       if (result.success) {
         setSubmission(prev => ({ ...prev, cover_image_url: result.image_url }))
         setUploadProgress(100)

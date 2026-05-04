@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import type { RankingConfigRecord, RankingDimension, AppItem } from '../types'
 import {
   fetchRankingDimensions,
@@ -19,11 +19,13 @@ import {
   createGroupApp,
   fetchAdminApps,
   updateAdminAppStatus,
+  uploadImage,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
 import Pagination from '../components/Pagination'
 import { buildAppPath } from '../utils/basePath'
+import { resolveMediaUrl } from '../utils/media'
 import UiIcon from '../components/UiIcon'
 
 type RankingConfig = RankingConfigRecord
@@ -161,6 +163,9 @@ const RankingManagementPage = ({
   })
   const [groupAppSubmitting, setGroupAppSubmitting] = useState(false)
   const [groupAppMessage, setGroupAppMessage] = useState<string | null>(null)
+  const [groupImagePreview, setGroupImagePreview] = useState<string | null>(null)
+  const [groupImageUploading, setGroupImageUploading] = useState(false)
+  const [groupImageUploadProgress, setGroupImageUploadProgress] = useState(0)
   const [groupAppForm, setGroupAppForm] = useState({
     name: '',
     org: '',
@@ -606,7 +611,74 @@ const RankingManagementPage = ({
       effectiveness_metric: '',
       cover_image_url: ''
     })
+    setGroupImagePreview(null)
+    setGroupImageUploadProgress(0)
   }
+
+  const handleGroupImageUpload = useCallback(async (file: File) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
+      setError('集团应用封面图仅支持 JPG、PNG 格式')
+      return
+    }
+
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) {
+      setError('集团应用封面图不能超过 5MB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setGroupImagePreview(event.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    setGroupImageUploading(true)
+    setGroupImageUploadProgress(0)
+    setError(null)
+    try {
+      const result = await uploadImage(file, 'group_app')
+      if (result.success) {
+        setGroupAppForm((prev) => ({ ...prev, cover_image_url: result.image_url }))
+        setGroupImageUploadProgress(100)
+      } else {
+        setError(result.message || '集团应用封面图上传失败')
+        setGroupImagePreview(null)
+      }
+    } catch (err) {
+      setError(resolveAdminError(err, '集团应用封面图上传失败'))
+      setGroupImagePreview(null)
+    } finally {
+      setGroupImageUploading(false)
+    }
+  }, [])
+
+  const handleGroupFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleGroupImageUpload(file)
+    }
+    event.target.value = ''
+  }, [handleGroupImageUpload])
+
+  const handleGroupImageDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const file = event.dataTransfer.files?.[0]
+    if (file) {
+      handleGroupImageUpload(file)
+    }
+  }, [handleGroupImageUpload])
+
+  const handleGroupImageDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+  }, [])
+
+  const removeGroupImage = useCallback(() => {
+    setGroupImagePreview(null)
+    setGroupImageUploadProgress(0)
+    setGroupAppForm((prev) => ({ ...prev, cover_image_url: '' }))
+  }, [])
 
   const handleSaveGroupApp = async () => {
     if (categoryOptionsLoading || categoryOptionsError || appCategories.length === 0) {
@@ -1378,14 +1450,66 @@ const RankingManagementPage = ({
                     />
                   </div>
                   <div className="form-group">
-                    <label htmlFor="group-cover-url">封面图 URL</label>
-                    <input
-                      id="group-cover-url"
-                      type="text"
-                      value={groupAppForm.cover_image_url}
-                      onChange={(e) => setGroupAppForm(prev => ({ ...prev, cover_image_url: e.target.value }))}
-                    />
+                    <label>集团应用封面图</label>
+                    <div
+                      className={`group-image-upload-area ${(groupImagePreview || groupAppForm.cover_image_url) ? 'has-image' : ''}`}
+                      onDrop={handleGroupImageDrop}
+                      onDragOver={handleGroupImageDragOver}
+                    >
+                      {(groupImagePreview || groupAppForm.cover_image_url) ? (
+                        <div className="group-image-preview">
+                          <img
+                            src={groupImagePreview || resolveMediaUrl(groupAppForm.cover_image_url)}
+                            alt="集团应用封面预览"
+                          />
+                          <button
+                            type="button"
+                            className="remove-image"
+                            aria-label="移除集团应用封面图"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              removeGroupImage()
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="upload-placeholder">
+                          <div className="upload-icon"><UiIcon name="upload" /></div>
+                          <p>点击或拖拽上传封面图</p>
+                          <p className="upload-hint">集团应用图片保存到独立目录，支持 JPG、PNG，最大 5MB</p>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg"
+                        onChange={handleGroupFileSelect}
+                        className="file-input"
+                      />
+                      {groupImageUploading && (
+                        <div className="upload-progress">
+                          <div className="progress-bar" style={{ width: `${groupImageUploadProgress}%` }} />
+                        </div>
+                      )}
+                    </div>
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="group-cover-url">封面图 URL（可选兜底）</label>
+                  <input
+                    id="group-cover-url"
+                    type="text"
+                    value={groupAppForm.cover_image_url}
+                    onChange={(e) => {
+                      setGroupImagePreview(null)
+                      setGroupAppForm(prev => ({ ...prev, cover_image_url: e.target.value }))
+                    }}
+                    placeholder="上传成功后自动填充，也可粘贴已有图片地址"
+                  />
+                  <p className="form-hint">手填地址仅作为补录兜底；新上传图片会进入集团应用独立目录。</p>
                 </div>
               </form>
             </section>
