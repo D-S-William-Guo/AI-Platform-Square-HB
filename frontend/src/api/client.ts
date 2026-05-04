@@ -164,9 +164,13 @@ export async function withdrawMySubmission(submissionId: number) {
 }
 
 // Image upload API
-export async function uploadImage(file: File): Promise<ImageUploadResponse> {
+export async function uploadImage(
+  file: File,
+  context: 'submission' | 'group_app' = 'submission'
+): Promise<ImageUploadResponse> {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('context', context)
   
   const { data } = await client.post<ImageUploadResponse>(`${apiBasePath}/upload/image`, formData, {
     headers: {

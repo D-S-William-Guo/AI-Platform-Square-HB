@@ -11,7 +11,7 @@ from threading import Lock
 from time import monotonic
 from typing import Optional
 
-from fastapi import Body, Cookie, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi import Body, Cookie, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -3158,7 +3158,11 @@ def validate_document(file: UploadFile) -> tuple[bool, str]:
     return True, ""
 
 
-def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
+def save_image(
+    file: UploadFile,
+    submission_id: int | None = None,
+    context: str = "submission",
+) -> dict:
     """Save image and create thumbnail"""
     # Generate unique filename
     ext = Path(file.filename).suffix.lower()
@@ -3166,11 +3170,17 @@ def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_{unique_id}{ext}"
     
-    # Create directory structure
+    # Create directory structure. Context keeps submission and group-app uploads
+    # separated while preserving the same public response shape.
     if submission_id:
         save_dir = UPLOAD_DIR / "submissions" / str(submission_id)
+        url_prefix = f"submissions/{submission_id}"
+    elif context == "group_app":
+        save_dir = UPLOAD_DIR / "group-apps" / "temp"
+        url_prefix = "group-apps/temp"
     else:
-        save_dir = UPLOAD_DIR / "temp"
+        save_dir = UPLOAD_DIR / "submissions" / "temp"
+        url_prefix = "submissions/temp"
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # Save original image
@@ -3200,12 +3210,8 @@ def save_image(file: UploadFile, submission_id: int | None = None) -> dict:
     
     # Generate URLs
     base_url = f"{settings.api_prefix}/static/uploads"
-    if submission_id:
-        image_url = f"{base_url}/submissions/{submission_id}/{filename}"
-        thumbnail_url = f"{base_url}/submissions/{submission_id}/{thumb_filename}"
-    else:
-        image_url = f"{base_url}/temp/{filename}"
-        thumbnail_url = f"{base_url}/temp/{thumb_filename}"
+    image_url = f"{base_url}/{url_prefix}/{filename}"
+    thumbnail_url = f"{base_url}/{url_prefix}/{thumb_filename}"
     
     return {
         "image_url": image_url,
@@ -3247,10 +3253,20 @@ def save_document(file: UploadFile) -> dict:
 async def upload_image(
     request: Request,
     file: UploadFile = File(...),
+    context: str = Form(default="submission"),
     _: AuthSession = Depends(require_submit_permission),
 ):
     """Upload image file"""
     enforce_rate_limit(request, bucket="upload_image", limit=20, window_seconds=300)
+    if context not in {"submission", "group_app"}:
+        return ImageUploadResponse(
+            success=False,
+            image_url="",
+            thumbnail_url="",
+            original_name=file.filename,
+            file_size=0,
+            message="无效的上传场景",
+        )
     # Validate file
     is_valid, error_msg = validate_image(file)
     if not is_valid:
@@ -3265,7 +3281,7 @@ async def upload_image(
     
     try:
         # Save image
-        result = save_image(file)
+        result = save_image(file, context=context)
         
         return ImageUploadResponse(
             success=True,
