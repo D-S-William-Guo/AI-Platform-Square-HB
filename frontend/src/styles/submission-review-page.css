@@ -264,6 +264,11 @@
 .submission-review-page .submission-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.submission-review-page .submission-actions button {
+  white-space: nowrap;
 }
 
 .submission-review-page .approved-text {

@@ -289,7 +289,7 @@ div.page.ranking-management-page div.page-content {
 /* ==================== 应用参与 Tab ==================== */
 
 .ranking-management-page .app-settings-table {
-  width: 100%;
+  width: max(100%, 1120px);
   border-collapse: collapse;
   font-size: 14px;
   table-layout: fixed;
@@ -320,26 +320,32 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .app-settings-table th:nth-child(1),
 .ranking-management-page .app-settings-table td:nth-child(1) {
-  width: 25%;
+  width: 20%;
   min-width: 200px;
 }
 
 .ranking-management-page .app-settings-table th:nth-child(2),
 .ranking-management-page .app-settings-table td:nth-child(2) {
-  width: 20%;
+  width: 18%;
   min-width: 150px;
 }
 
 .ranking-management-page .app-settings-table th:nth-child(3),
 .ranking-management-page .app-settings-table td:nth-child(3) {
-  width: 40%;
-  min-width: 400px;
+  width: 24%;
+  min-width: 220px;
 }
 
 .ranking-management-page .app-settings-table th:nth-child(4),
 .ranking-management-page .app-settings-table td:nth-child(4) {
-  width: 15%;
-  min-width: 150px;
+  width: 22%;
+  min-width: 220px;
+}
+
+.ranking-management-page .app-settings-table th:nth-child(5),
+.ranking-management-page .app-settings-table td:nth-child(5) {
+  width: 16%;
+  min-width: 180px;
 }
 
 .ranking-management-page .app-settings-table .app-name {
@@ -414,7 +420,7 @@ div.page.ranking-management-page div.page-content {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .ranking-management-page .app-actions .edit-button {
@@ -425,6 +431,7 @@ div.page.ranking-management-page div.page-content {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -463,9 +470,10 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .app-management-table {
-  width: 100%;
+  width: max(100%, 980px);
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .ranking-management-page .app-management-table th {
@@ -487,6 +495,42 @@ div.page.ranking-management-page div.page-content {
   background: var(--bg-color);
 }
 
+.ranking-management-page .app-management-table th:nth-child(1),
+.ranking-management-page .app-management-table td:nth-child(1) {
+  width: 24%;
+  min-width: 220px;
+}
+
+.ranking-management-page .app-management-table th:nth-child(2),
+.ranking-management-page .app-management-table td:nth-child(2) {
+  width: 12%;
+  min-width: 110px;
+}
+
+.ranking-management-page .app-management-table th:nth-child(3),
+.ranking-management-page .app-management-table td:nth-child(3) {
+  width: 26%;
+  min-width: 240px;
+}
+
+.ranking-management-page .app-management-table th:nth-child(4),
+.ranking-management-page .app-management-table td:nth-child(4) {
+  width: 14%;
+  min-width: 130px;
+}
+
+.ranking-management-page .app-management-table th:nth-child(5),
+.ranking-management-page .app-management-table td:nth-child(5) {
+  width: 10%;
+  min-width: 100px;
+}
+
+.ranking-management-page .app-management-table th:nth-child(6),
+.ranking-management-page .app-management-table td:nth-child(6) {
+  width: 14%;
+  min-width: 140px;
+}
+
 .ranking-management-page .app-management-table .edit-button,
 .ranking-management-page .app-management-table .delete-button {
   padding: 8px 14px;
@@ -495,6 +539,7 @@ div.page.ranking-management-page div.page-content {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .ranking-management-page .app-management-table .edit-button {
@@ -546,7 +591,7 @@ div.page.ranking-management-page div.page-content {
 /* ==================== 评价维度 Tab ==================== */
 
 .ranking-management-page .dimension-table {
-  width: 100%;
+  width: max(100%, 1040px);
   border-collapse: collapse;
   font-size: 14px;
   table-layout: fixed;
@@ -652,6 +697,7 @@ div.page.ranking-management-page div.page-content {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -669,6 +715,7 @@ div.page.ranking-management-page div.page-content {
   color: #dc2626;
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -690,9 +737,10 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .logs-table {
-  width: 100%;
+  width: max(100%, 980px);
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .ranking-management-page .logs-table th {
@@ -716,6 +764,36 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .logs-table tr:hover {
   background: var(--bg-color);
+}
+
+.ranking-management-page .logs-table th:nth-child(1),
+.ranking-management-page .logs-table td:nth-child(1) {
+  width: 20%;
+  min-width: 180px;
+}
+
+.ranking-management-page .logs-table th:nth-child(2),
+.ranking-management-page .logs-table td:nth-child(2) {
+  width: 12%;
+  min-width: 110px;
+}
+
+.ranking-management-page .logs-table th:nth-child(3),
+.ranking-management-page .logs-table td:nth-child(3) {
+  width: 16%;
+  min-width: 150px;
+}
+
+.ranking-management-page .logs-table th:nth-child(4),
+.ranking-management-page .logs-table td:nth-child(4) {
+  width: 36%;
+  min-width: 320px;
+}
+
+.ranking-management-page .logs-table th:nth-child(5),
+.ranking-management-page .logs-table td:nth-child(5) {
+  width: 16%;
+  min-width: 140px;
 }
 
 .ranking-management-page .log-time {
@@ -1236,7 +1314,7 @@ div.page.ranking-management-page div.page-content {
   }
 
   .ranking-management-page .app-actions {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .ranking-management-page .config-card-actions {
@@ -1244,7 +1322,7 @@ div.page.ranking-management-page div.page-content {
   }
 
   .ranking-management-page .dimension-actions {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .ranking-management-page .modal-container.large {

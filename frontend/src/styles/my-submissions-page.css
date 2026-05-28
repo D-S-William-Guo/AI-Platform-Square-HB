@@ -104,6 +104,7 @@
 .my-submissions-page .submission-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .my-submissions-page .submission-actions .secondary {
@@ -112,6 +113,7 @@
   background: var(--card-bg);
   color: var(--text-secondary);
   padding: 6px 10px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -129,4 +131,3 @@
     grid-template-columns: 1fr;
   }
 }
-
