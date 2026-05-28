@@ -121,12 +121,15 @@ def _init_test_db():
     command.upgrade(_alembic_config(test_url.render_as_string(hide_password=False)), "head")
 
     from app.database import SessionLocal
+    from app.models import User
     from app.seed import seed_base_data, seed_demo_data
 
     db = SessionLocal()
     try:
         seed_base_data(db)
         seed_demo_data(db)
+        db.query(User).update({User.must_change_password: False}, synchronize_session=False)
+        db.commit()
     finally:
         db.close()
 

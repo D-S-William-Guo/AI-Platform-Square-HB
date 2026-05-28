@@ -21,7 +21,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .auth_utils import generate_session_token, hash_password, verify_password
+from .auth_utils import generate_session_token, hash_password, validate_password_strength, verify_password
 from .config import (
     get_app_category_options,
     get_allowed_hosts,
@@ -60,6 +60,7 @@ from .schemas import (
     AuthAssertionExchangeRequest,
     AuditEventIn,
     AuthMeResponse,
+    ChangePasswordRequest,
     AuthProviderInfoResponse,
     ImageUploadResponse,
     DocumentUploadResponse,
@@ -321,7 +322,20 @@ def to_public_user(user: User) -> UserPublic:
         department=user.department or "",
         is_active=bool(user.is_active),
         can_submit=bool(user.can_submit),
+        must_change_password=bool(user.must_change_password),
     )
+
+
+def reject_if_password_change_required(user: User) -> None:
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="请先修改初始密码")
+
+
+def validate_new_password_or_422(password: str) -> None:
+    try:
+        validate_password_strength(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def paginate_query(query, page: int, page_size: int):
@@ -409,6 +423,7 @@ def upsert_users(
                     is_active=item["is_active"],
                     can_submit=False,
                     password_hash=hash_password(settings.user_default_password),
+                    must_change_password=True,
                 )
             )
             created += 1
@@ -486,6 +501,7 @@ def require_submit_permission(
     auth_session: AuthSession = Depends(require_auth_session),
 ) -> AuthSession:
     # Phase 2: 登录用户统一可申报，管理员也可沿用同一链路。
+    reject_if_password_change_required(auth_session.user)
     return auth_session
 
 
@@ -520,6 +536,7 @@ def require_admin_token(
         if session:
             if session.user.role != "admin":
                 raise HTTPException(status_code=403, detail="无权限访问")
+            reject_if_password_change_required(session.user)
             return session.user
         raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
 
@@ -1159,6 +1176,51 @@ def auth_logout(
     db.commit()
     response.delete_cookie(settings.auth_cookie_name, path="/")
     return {"message": "已退出登录"}
+
+
+@app.post(f"{settings.api_prefix}/auth/change-password", response_model=AuthMeResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth_session: AuthSession = Depends(require_auth_session),
+):
+    user = auth_session.user
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="当前密码错误")
+
+    new_password = payload.new_password.strip()
+    validate_new_password_or_422(new_password)
+    if verify_password(new_password, user.password_hash):
+        raise HTTPException(status_code=422, detail="新密码不能与当前密码相同")
+
+    now = datetime.utcnow()
+    user.password_hash = hash_password(new_password)
+    user.must_change_password = False
+    user.password_changed_at = now
+    db.query(AuthSession).filter(
+        AuthSession.user_id == user.id,
+        AuthSession.id != auth_session.id,
+        AuthSession.revoked_at.is_(None),
+    ).update(
+        {AuthSession.revoked_at: now},
+        synchronize_session=False,
+    )
+    write_action_log(
+        db,
+        action="auth.password.changed",
+        actor_user=user,
+        resource_type="user",
+        resource_id=str(user.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary="self_service_password_change",
+    )
+    db.commit()
+    db.refresh(user)
+    return AuthMeResponse(
+        expires_at=auth_session.expires_at,
+        user=to_public_user(user),
+    )
 
 
 @app.get(f"{settings.api_prefix}/venv/info")
@@ -2268,6 +2330,8 @@ def create_admin_user(
     if existing:
         raise HTTPException(status_code=409, detail="用户名已存在")
 
+    password = (payload.password or settings.user_default_password).strip()
+    validate_new_password_or_422(password)
     user = User(
         username=payload.username.strip(),
         chinese_name=payload.chinese_name.strip(),
@@ -2278,7 +2342,8 @@ def create_admin_user(
         department=payload.department.strip(),
         is_active=payload.is_active,
         can_submit=payload.can_submit,
-        password_hash=hash_password((payload.password or settings.user_default_password).strip()),
+        password_hash=hash_password(password),
+        must_change_password=True,
     )
     db.add(user)
     db.flush()
@@ -2356,7 +2421,11 @@ def update_admin_user(
     user.can_submit = bool(payload.can_submit)
 
     if payload.password and payload.password.strip():
-        user.password_hash = hash_password(payload.password.strip())
+        password = payload.password.strip()
+        validate_new_password_or_422(password)
+        user.password_hash = hash_password(password)
+        user.must_change_password = True
+        user.password_changed_at = None
 
     if not next_active:
         db.query(AuthSession).filter(

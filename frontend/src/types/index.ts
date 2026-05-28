@@ -96,6 +96,7 @@ export type AuthUser = {
   department: string
   is_active: boolean
   can_submit: boolean
+  must_change_password: boolean
 }
 
 export type AdminUserCreatePayload = {

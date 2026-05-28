@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi.testclient import TestClient
 
+from app.auth_utils import hash_password
 from app.main import app
 from app.config import settings
 from app.database import SessionLocal
@@ -191,6 +192,75 @@ def test_auth_login_rate_limit_isolated_by_username_under_same_ip():
     # same client IP but different username should not be blocked by zhangsan attempts
     other_user_resp = client.post("/api/auth/login", json={"username": "lisi", "password": "wrong-password"})
     assert other_user_resp.status_code == 401
+
+
+def test_user_must_change_password_before_protected_actions_and_can_self_change_password():
+    username = f"must_change_{uuid.uuid4().hex[:8]}"
+    initial_password = "Initial_123!"
+    next_password = "Stronger_123!"
+    db = SessionLocal()
+    try:
+        db.add(
+            User(
+                username=username,
+                chinese_name="强制改密用户",
+                role="user",
+                phone="",
+                email="",
+                company="河北省公司",
+                department="测试部门",
+                is_active=True,
+                can_submit=True,
+                password_hash=hash_password(initial_password),
+                must_change_password=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    token_one = login_and_get_token(username, initial_password)
+    token_two = login_and_get_token(username, initial_password)
+
+    blocked_resp = client.get(
+        "/api/submissions/mine",
+        headers={"Authorization": f"Bearer {token_two}"},
+    )
+    assert blocked_resp.status_code == 403
+    assert blocked_resp.json()["detail"] == "请先修改初始密码"
+
+    weak_resp = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {token_two}"},
+        json={"current_password": initial_password, "new_password": "weakpass12"},
+    )
+    assert weak_resp.status_code == 422
+
+    change_resp = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {token_two}"},
+        json={"current_password": initial_password, "new_password": next_password},
+    )
+    assert change_resp.status_code == 200
+    assert change_resp.json()["user"]["must_change_password"] is False
+
+    stale_session_resp = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token_one}"},
+    )
+    assert stale_session_resp.status_code == 401
+
+    allowed_resp = client.get(
+        "/api/submissions/mine",
+        headers={"Authorization": f"Bearer {token_two}"},
+    )
+    assert allowed_resp.status_code == 200
+
+    old_login_resp = client.post("/api/auth/login", json={"username": username, "password": initial_password})
+    assert old_login_resp.status_code == 401
+
+    new_login_resp = client.post("/api/auth/login", json={"username": username, "password": next_password})
+    assert new_login_resp.status_code == 200
 
 
 def test_audit_event_allows_anonymous_and_persists_action_log():
@@ -557,6 +627,7 @@ def test_admin_can_create_user_and_manage_submit_permission():
     assert created["role"] == "user"
     assert created["company"] == "石家庄市公司"
     assert created["can_submit"] is False
+    assert created["must_change_password"] is True
 
     login_resp = client.post("/api/auth/login", json={"username": username, "password": "TestPass_123!"})
     assert login_resp.status_code == 200
@@ -618,12 +689,35 @@ def test_admin_can_update_existing_user_profile_and_reset_password():
     assert updated["department"] == "创新推进部"
     assert updated["role"] == "admin"
     assert updated["can_submit"] is True
+    assert updated["must_change_password"] is True
 
     old_login = client.post("/api/auth/login", json={"username": username, "password": "Initial_123!"})
     assert old_login.status_code == 401
 
     new_login = client.post("/api/auth/login", json={"username": username, "password": "Updated_123!"})
     assert new_login.status_code == 200
+
+
+def test_admin_create_user_rejects_weak_password():
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    username = f"user_{uuid.uuid4().hex[:8]}"
+
+    create_resp = client.post(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "chinese_name": "弱口令用户",
+            "company": "唐山市公司",
+            "department": "测试部门",
+            "password": "weakpass12",
+            "phone": "13800004444",
+            "email": "weak.user@example.com",
+            "can_submit": False,
+        },
+    )
+    assert create_resp.status_code == 422
+    assert "密码至少10位" in create_resp.json()["detail"]
 
 
 def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
@@ -644,6 +738,14 @@ def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
     )
     assert create_resp.status_code == 200
     created = create_resp.json()
+    login_resp = client.post("/api/auth/login", json={"username": username, "password": "Snapshot_123!"})
+    assert login_resp.status_code == 200
+    change_resp = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {login_resp.json()['access_token']}"},
+        json={"current_password": "Snapshot_123!", "new_password": "Snapshot_456!"},
+    )
+    assert change_resp.status_code == 200
 
     submission_resp = client.post(
         '/api/submissions',
@@ -666,8 +768,8 @@ def test_admin_update_user_does_not_rewrite_historical_submission_snapshot():
             "cover_image_url": "",
             "detail_doc_url": "",
             "detail_doc_name": "",
-        },
-        headers=auth_headers_for_user(username, "Snapshot_123!"),
+            },
+        headers=auth_headers_for_user(username, "Snapshot_456!"),
     )
     assert submission_resp.status_code == 200
     submission_id = submission_resp.json()["id"]

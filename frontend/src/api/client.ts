@@ -89,6 +89,14 @@ export async function logout() {
   await client.post(`${apiBasePath}/auth/logout`)
 }
 
+export async function changePassword(payload: {
+  current_password: string
+  new_password: string
+}) {
+  const { data } = await client.post<AuthMeResponse>(`${apiBasePath}/auth/change-password`, payload)
+  return data
+}
+
 export async function auditEvent(payload: {
   event_name: string
   intent?: string

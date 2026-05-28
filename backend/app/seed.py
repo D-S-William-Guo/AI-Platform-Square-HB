@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from .auth_utils import hash_password
+from .auth_utils import hash_password, validate_password_strength
 from .config import settings
 from .models import (
     App,
@@ -752,6 +752,9 @@ def sync_rankings(db: Session, ranking_config_id: str | None = None) -> int:
 
 
 def seed_default_users(db: Session) -> None:
+    for item in DEFAULT_USERS:
+        validate_password_strength(item["password"])
+
     usernames = [item["username"] for item in DEFAULT_USERS]
     existing = {
         user.username: user
@@ -774,6 +777,7 @@ def seed_default_users(db: Session) -> None:
                     company=item["company"],
                     department=item["department"],
                     password_hash=hash_password(item["password"]),
+                    must_change_password=True,
                 )
             )
             changed = True
@@ -806,6 +810,9 @@ def seed_default_users(db: Session) -> None:
 
 
 def reset_default_users(db: Session) -> None:
+    for item in DEFAULT_USERS:
+        validate_password_strength(item["password"])
+
     usernames = [item["username"] for item in DEFAULT_USERS]
     existing = {
         user.username: user
@@ -827,6 +834,7 @@ def reset_default_users(db: Session) -> None:
                     company=item["company"],
                     department=item["department"],
                     password_hash=hash_password(item["password"]),
+                    must_change_password=True,
                 )
             )
             continue
@@ -838,6 +846,8 @@ def reset_default_users(db: Session) -> None:
         user.is_active = True
         user.can_submit = item["can_submit"]
         user.password_hash = hash_password(item["password"])
+        user.must_change_password = True
+        user.password_changed_at = None
 
     db.commit()
 

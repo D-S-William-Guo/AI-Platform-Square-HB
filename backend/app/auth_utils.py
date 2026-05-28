@@ -7,6 +7,26 @@ import secrets
 PBKDF2_ALGO = "sha256"
 PBKDF2_ITERATIONS = 480_000
 PBKDF2_SALT_BYTES = 16
+PASSWORD_MIN_LENGTH = 10
+PASSWORD_REQUIRED_CHARACTER_CLASSES = 3
+PASSWORD_POLICY_TEXT = "密码至少10位，且需包含大写字母、小写字母、数字、符号中的至少三类"
+
+
+def password_character_class_count(password: str) -> int:
+    classes = [
+        any(char.islower() for char in password),
+        any(char.isupper() for char in password),
+        any(char.isdigit() for char in password),
+        any(not char.isalnum() for char in password),
+    ]
+    return sum(1 for matched in classes if matched)
+
+
+def validate_password_strength(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(PASSWORD_POLICY_TEXT)
+    if password_character_class_count(password) < PASSWORD_REQUIRED_CHARACTER_CLASSES:
+        raise ValueError(PASSWORD_POLICY_TEXT)
 
 
 def hash_password(password: str) -> str:

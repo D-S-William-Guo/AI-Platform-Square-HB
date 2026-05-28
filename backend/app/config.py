@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .auth_utils import validate_password_strength
+
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MYSQL_URL_PREFIX = "mysql+pymysql://"
@@ -78,6 +80,14 @@ def validate_settings(settings_obj: Settings) -> None:
     if settings_obj.auth_provider_mode not in {"local", "oa", "external_sso"}:
         raise ValueError("AUTH_PROVIDER_MODE must be one of: local, oa, external_sso")
     _ = get_app_category_options(settings_obj)
+    for name, value in (
+        ("USER_DEFAULT_PASSWORD", settings_obj.user_default_password),
+        ("ADMIN_DEFAULT_PASSWORD", settings_obj.admin_default_password),
+    ):
+        try:
+            validate_password_strength(value)
+        except ValueError as exc:
+            raise ValueError(f"{name}: {exc}") from exc
     if is_production_environment(settings_obj):
         if settings_obj.user_default_password == "ChangeMe_User_123!":
             raise ValueError("USER_DEFAULT_PASSWORD must be changed in production")

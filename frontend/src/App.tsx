@@ -26,6 +26,7 @@ import MySubmissionsPage from './pages/MySubmissionsPage'
 import HistoricalRankingPage from './pages/HistoricalRankingPage'
 import RankingDetailPage from './pages/RankingDetailPage'
 import LoginPage from './pages/LoginPage'
+import ChangePasswordPage from './pages/ChangePasswordPage'
 import UserManagementPage from './pages/UserManagementPage'
 import type { AppItem, AuthUser, RankingItem, Stats, SubmissionPayload, ValueDimension, FormErrors, RankingDimension, HistoricalRanking } from './types'
 import { resolveMediaUrl } from './utils/media'
@@ -749,6 +750,12 @@ function HomePage({
             <>
               <button className="secondary" onClick={onLogout}>
                 <span>退出登录</span>
+              </button>
+              <button
+                className="secondary"
+                onClick={() => navigate('/change-password', { state: { returnTo: '/' } })}
+              >
+                <span>修改密码</span>
               </button>
               <div className="avatar" title={`${currentUser.chinese_name} (${currentUser.role === 'admin' ? '管理员' : '普通用户'})`}>
                 {(currentUser.chinese_name || currentUser.username).slice(0, 1)}
@@ -1591,6 +1598,10 @@ function App() {
     setCurrentUser(user)
   }, [])
 
+  const handlePasswordChanged = useCallback((user: AuthUser) => {
+    setCurrentUser(user)
+  }, [])
+
   if (authLoading) {
     return (
       <div className="page login-page">
@@ -1599,12 +1610,45 @@ function App() {
     )
   }
 
+  if (currentUser?.must_change_password && location.pathname !== '/change-password') {
+    const passwordChangeIntent = ['/ranking-management', '/submission-review', '/user-management'].includes(location.pathname)
+      ? 'admin'
+      : undefined
+    return (
+      <Navigate
+        to="/change-password"
+        replace
+        state={{ returnTo: location.pathname, from: location.pathname, intent: passwordChangeIntent }}
+      />
+    )
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
       <Route
+        path="/change-password"
+        element={
+          currentUser ? (
+            <ChangePasswordPage currentUser={currentUser} onPasswordChanged={handlePasswordChanged} />
+          ) : (
+            <AuditRedirect
+              to="/login"
+              state={{ returnTo: '/change-password', from: location.pathname }}
+              eventName="route.guard.redirect_login.submit"
+              intent="submit"
+              returnTo="/change-password"
+              context="route.change_password.guard"
+            />
+          )
+        }
+      />
+      <Route
         path="/"
         element={
+          currentUser?.must_change_password ? (
+            <Navigate to="/change-password" replace state={{ returnTo: '/', from: location.pathname }} />
+          ) : (
           <HomePage
             currentUser={currentUser}
             onLogout={currentUser ? handleLogout : null}
@@ -1612,6 +1656,7 @@ function App() {
             categoryOptionsLoading={categoryOptionsLoading}
             categoryOptionsError={categoryOptionsError}
           />
+          )
         }
       />
       <Route path="/platform-intro" element={<PlatformIntroPage />} />
@@ -1621,7 +1666,11 @@ function App() {
         path="/my-submissions"
         element={
           currentUser ? (
+            currentUser.must_change_password ? (
+              <Navigate to="/change-password" replace state={{ returnTo: '/my-submissions', from: location.pathname }} />
+            ) : (
             <MySubmissionsPage />
+            )
           ) : (
             <AuditRedirect
               to="/login"
@@ -1638,6 +1687,9 @@ function App() {
         path="/ranking-management"
         element={
           currentUser ? (
+            currentUser.must_change_password ? (
+              <Navigate to="/change-password" replace state={{ returnTo: '/ranking-management', from: location.pathname, intent: 'admin' }} />
+            ) :
             currentUser.role === 'admin' ? (
               <RankingManagementPage
                 appCategories={appCategories}
@@ -1664,6 +1716,9 @@ function App() {
         path="/submission-review"
         element={
           currentUser ? (
+            currentUser.must_change_password ? (
+              <Navigate to="/change-password" replace state={{ returnTo: '/submission-review', from: location.pathname, intent: 'admin' }} />
+            ) :
             currentUser.role === 'admin' ? (
               <SubmissionReviewPage />
             ) : (
@@ -1685,6 +1740,9 @@ function App() {
         path="/user-management"
         element={
           currentUser ? (
+            currentUser.must_change_password ? (
+              <Navigate to="/change-password" replace state={{ returnTo: '/user-management', from: location.pathname, intent: 'admin' }} />
+            ) :
             currentUser.role === 'admin' ? (
               <UserManagementPage />
             ) : (

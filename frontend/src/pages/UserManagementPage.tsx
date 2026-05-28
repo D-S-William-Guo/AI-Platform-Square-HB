@@ -10,6 +10,8 @@ import {
 import type { AdminUserCreatePayload, AuthUser, UserRole } from '../types'
 import Pagination from '../components/Pagination'
 
+const passwordPolicyText = '密码至少10位，需包含大写字母、小写字母、数字、符号中的至少三类。'
+
 const defaultForm: AdminUserCreatePayload = {
   username: '',
   chinese_name: '',
@@ -489,10 +491,12 @@ const UserManagementPage = () => {
                 />
                 <input
                   className="form-input"
+                  type="password"
                   placeholder="初始密码（可选，不填则用默认密码）"
                   value={formData.password}
                   onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                 />
+                <p className="form-hint">{passwordPolicyText}</p>
                 <select
                   className="form-select"
                   value={formData.role}
@@ -592,6 +596,7 @@ const UserManagementPage = () => {
                   value={editFormData.password}
                   onChange={(e) => setEditFormData((prev) => ({ ...prev, password: e.target.value }))}
                 />
+                <p className="form-hint">{passwordPolicyText}</p>
               </div>
               <div className="form-group">
                 <label className="form-label">角色</label>

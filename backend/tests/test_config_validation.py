@@ -28,7 +28,7 @@ def test_validate_settings_rejects_default_user_password_in_production():
         database_url=MYSQL_URL,
         environment="production",
         user_default_password="ChangeMe_User_123!",
-        admin_default_password="safe-admin-password",
+        admin_default_password="SafeAdmin_123!",
     )
     with pytest.raises(ValueError, match="USER_DEFAULT_PASSWORD must be changed in production"):
         validate_settings(settings)
@@ -38,10 +38,22 @@ def test_validate_settings_rejects_default_admin_password_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        user_default_password="safe-user-password",
+        user_default_password="SafeUser_123!",
         admin_default_password="ChangeMe_Admin_123!",
     )
     with pytest.raises(ValueError, match="ADMIN_DEFAULT_PASSWORD must be changed in production"):
+        validate_settings(settings)
+
+
+def test_validate_settings_rejects_weak_default_password():
+    settings = Settings(
+        database_url=MYSQL_URL,
+        environment="development",
+        user_default_password="weakpass12",
+        admin_default_password="SafeAdmin_123!",
+    )
+
+    with pytest.raises(ValueError, match="USER_DEFAULT_PASSWORD"):
         validate_settings(settings)
 
 
@@ -123,8 +135,9 @@ def test_get_allowed_origins_defaults_to_no_cors_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        user_default_password="safe-user-password",
-        admin_default_password="safe-admin-password",
+        user_default_password="SafeUser_123!",
+        admin_default_password="SafeAdmin_123!",
+        allowed_origins="",
     )
 
     assert get_allowed_origins(settings) == []
@@ -144,8 +157,8 @@ def test_api_docs_default_to_disabled_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        user_default_password="safe-user-password",
-        admin_default_password="safe-admin-password",
+        user_default_password="SafeUser_123!",
+        admin_default_password="SafeAdmin_123!",
     )
 
     assert is_api_docs_enabled(settings) is False
@@ -164,8 +177,8 @@ def test_auth_cookie_secure_defaults_to_true_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        user_default_password="safe-user-password",
-        admin_default_password="safe-admin-password",
+        user_default_password="SafeUser_123!",
+        admin_default_password="SafeAdmin_123!",
     )
 
     assert is_auth_cookie_secure(settings) is True
@@ -175,8 +188,8 @@ def test_auth_cookie_secure_can_be_disabled_explicitly_in_production():
     settings = Settings(
         database_url=MYSQL_URL,
         environment="production",
-        user_default_password="safe-user-password",
-        admin_default_password="safe-admin-password",
+        user_default_password="SafeUser_123!",
+        admin_default_password="SafeAdmin_123!",
         auth_cookie_secure=False,
     )
 

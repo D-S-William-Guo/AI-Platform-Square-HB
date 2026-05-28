@@ -88,6 +88,13 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         navigate('/', { replace: true, state: { noAdminPermission: true } })
         return
       }
+      if (data.user.must_change_password) {
+        navigate('/change-password', {
+          replace: true,
+          state: { returnTo: loginState.returnTo || '/', intent: loginState.intent },
+        })
+        return
+      }
       if (loginState.intent === 'submit') {
         navigate(loginState.returnTo || '/', { replace: true, state: { openSubmission: true } })
         return

@@ -41,6 +41,11 @@ PYTHONPATH=. ../.venv/bin/python -m app.bootstrap reset-default-users
 - 修改了 `ADMIN_DEFAULT_PASSWORD`
 - 旧库中 `zhangsan` / `lisi` 无法用新密码登录
 
+要求：
+
+- 默认密码必须满足本地强口令规则：至少 10 位，且大写字母、小写字母、数字、符号四类中至少三类
+- 重置后的默认密码按临时密码处理，用户下次登录后必须先改为个人强口令
+
 ### 4. 系统预置同步
 
 ```bash

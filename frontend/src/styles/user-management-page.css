@@ -131,6 +131,13 @@
   box-shadow: 0 0 0 4px rgba(79, 124, 255, 0.12);
 }
 
+.user-management-page .form-hint {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .user-management-page .primary,
 .user-management-page .secondary,
 .user-management-page .ghost {

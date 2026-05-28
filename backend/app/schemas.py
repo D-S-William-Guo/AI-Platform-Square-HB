@@ -90,6 +90,7 @@ class UserPublic(BaseModel):
     department: str
     is_active: bool
     can_submit: bool
+    must_change_password: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -109,6 +110,11 @@ class AuthLoginResponse(BaseModel):
 class AuthMeResponse(BaseModel):
     expires_at: datetime
     user: UserPublic
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=10, max_length=128)
 
 
 class AuthProviderInfoResponse(BaseModel):
@@ -162,7 +168,7 @@ class AdminUserCreatePayload(BaseModel):
     chinese_name: str = Field(..., min_length=1, max_length=80)
     company: str = Field(..., min_length=1, max_length=120)
     department: str = Field(..., min_length=1, max_length=120)
-    password: str | None = Field(default=None, min_length=8, max_length=128)
+    password: str | None = Field(default=None, min_length=10, max_length=128)
     phone: str = Field(default="", max_length=30)
     email: str = Field(default="", max_length=120)
     role: str = Field(default="user", pattern="^(user|admin)$")
@@ -174,7 +180,7 @@ class AdminUserUpdatePayload(BaseModel):
     chinese_name: str = Field(..., min_length=1, max_length=80)
     company: str = Field(..., min_length=1, max_length=120)
     department: str = Field(..., min_length=1, max_length=120)
-    password: str | None = Field(default=None, min_length=8, max_length=128)
+    password: str | None = Field(default=None, min_length=10, max_length=128)
     phone: str = Field(default="", max_length=30)
     email: str = Field(default="", max_length=120)
     role: str = Field(default="user", pattern="^(user|admin)$")

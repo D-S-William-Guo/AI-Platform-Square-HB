@@ -24,6 +24,7 @@ def test_seed_default_users_keeps_existing_password_hash():
         assert user.company == "河北省公司"
         assert user.department == "平台管理部"
         assert user.can_submit is True
+        assert user.must_change_password is False
 
         user.password_hash = original_hash
         db.commit()
@@ -49,8 +50,10 @@ def test_reset_default_users_overwrites_existing_password_hash():
         assert user.company == "河北省公司"
         assert user.department == "平台管理部"
         assert user.can_submit is True
+        assert user.must_change_password is True
 
         user.password_hash = original_hash
+        user.must_change_password = False
         db.commit()
     finally:
         db.close()
