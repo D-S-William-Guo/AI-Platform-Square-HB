@@ -8,7 +8,7 @@ from app.auth_utils import hash_password
 from app.main import app
 from app.config import settings
 from app.database import SessionLocal
-from app.models import App, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission, User
+from app.models import App, AppChangeRequest, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission, User
 
 
 client = TestClient(app)
@@ -497,6 +497,167 @@ def test_reject_submission_records_admin_and_reason():
         assert submission.rejected_by_user_id == admin_id
         assert submission.rejected_at is not None
         assert submission.rejected_reason == "资料不完整"
+    finally:
+        db.close()
+
+
+def test_rejected_submission_can_be_resubmitted_by_owner():
+    user_token = login_and_get_token("zhangsan", settings.user_default_password)
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    app_name = f"重提测试应用-{uuid.uuid4().hex[:8]}"
+    payload = {
+        "app_name": app_name,
+        "unit_name": "测试单位",
+        "contact": "张三",
+        "contact_phone": "13800005555",
+        "contact_email": "resubmit@example.com",
+        "category": "前端市场类",
+        "scenario": "用于验证已拒绝申报可以在本人修改后重新提交进入审核池。",
+        "embedded_system": "重提系统",
+        "problem_statement": "原申报信息需要补充后再次提交。",
+        "effectiveness_type": "efficiency_gain",
+        "effectiveness_metric": "效率提升 15%",
+        "data_level": "L2",
+        "expected_benefit": "补齐材料后重新进入管理员审核流程。",
+        "monthly_calls": 0,
+        "difficulty": "Medium",
+        "cover_image_url": "",
+        "detail_doc_url": "",
+        "detail_doc_name": "",
+    }
+    create_resp = client.post("/api/submissions", headers={"Authorization": f"Bearer {user_token}"}, json=payload)
+    assert create_resp.status_code == 200
+    submission_id = create_resp.json()["id"]
+
+    reject_resp = client.post(
+        f"/api/submissions/{submission_id}/reject",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"reason": "材料缺少成效说明"},
+    )
+    assert reject_resp.status_code == 200
+
+    resubmit_payload = {**payload, "app_name": f"{app_name}-更新", "effectiveness_metric": "效率提升 20%"}
+    resubmit_resp = client.post(
+        f"/api/submissions/{submission_id}/mine/resubmit",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json=resubmit_payload,
+    )
+    assert resubmit_resp.status_code == 200
+    assert resubmit_resp.json()["status"] == "pending"
+    assert resubmit_resp.json()["rejected_reason"] == ""
+    assert resubmit_resp.json()["app_name"] == resubmit_payload["app_name"]
+
+
+def test_app_change_request_updates_current_app_without_rewriting_historical_ranking():
+    user_token = login_and_get_token("zhangsan", settings.user_default_password)
+    admin_token = login_and_get_token("lisi", settings.admin_default_password)
+    original_name = f"变更链路测试应用-{uuid.uuid4().hex[:8]}"
+    payload = {
+        "app_name": original_name,
+        "unit_name": "测试单位",
+        "contact": "张三",
+        "contact_phone": "13800006666",
+        "contact_email": "change@example.com",
+        "category": "前端市场类",
+        "scenario": "用于验证已上架应用通过变更申请更新正式应用信息。",
+        "embedded_system": "原系统",
+        "problem_statement": "原始应用信息需要更新。",
+        "effectiveness_type": "efficiency_gain",
+        "effectiveness_metric": "效率提升 10%",
+        "data_level": "L2",
+        "expected_benefit": "验证应用变更审批与榜单链路保持稳定。",
+        "monthly_calls": 1,
+        "difficulty": "Medium",
+        "cover_image_url": "",
+        "detail_doc_url": "",
+        "detail_doc_name": "",
+    }
+    create_resp = client.post("/api/submissions", headers={"Authorization": f"Bearer {user_token}"}, json=payload)
+    assert create_resp.status_code == 200
+    submission_id = create_resp.json()["id"]
+    approve_resp = client.post(
+        f"/api/submissions/{submission_id}/approve-and-create-app",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approve_resp.status_code == 200
+    app_id = approve_resp.json()["app_id"]
+
+    db = SessionLocal()
+    try:
+        db.add(
+            HistoricalRanking(
+                ranking_config_id="excellent",
+                ranking_type="excellent",
+                period_date=datetime.utcnow().date(),
+                run_id=f"test-{uuid.uuid4().hex[:8]}",
+                position=1,
+                app_id=app_id,
+                app_name=original_name,
+                app_org="河北省公司",
+                tag="总应用榜",
+                score=90,
+                metric_type="composite",
+                value_dimension="efficiency_gain",
+                usage_30d=10,
+            )
+        )
+        setting_count = db.query(AppRankingSetting).filter(AppRankingSetting.app_id == app_id).count()
+        assert setting_count >= 1
+        db.commit()
+    finally:
+        db.close()
+
+    new_name = f"{original_name}-新版"
+    change_payload = {
+        **payload,
+        "app_name": new_name,
+        "scenario": "用于验证已上架应用通过变更申请更新正式应用信息，且历史榜单名称不回写。",
+        "embedded_system": "新系统",
+        "effectiveness_metric": "效率提升 30%",
+        "monthly_calls": 2,
+    }
+    change_resp = client.post(
+        f"/api/submissions/{submission_id}/mine/change-request",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json=change_payload,
+    )
+    assert change_resp.status_code == 200
+    change_request_id = change_resp.json()["id"]
+
+    duplicate_resp = client.post(
+        f"/api/submissions/{submission_id}/mine/change-request",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json=change_payload,
+    )
+    assert duplicate_resp.status_code == 409
+
+    approve_change_resp = client.post(
+        f"/api/admin/app-change-requests/{change_request_id}/approve",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approve_change_resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        app_row = db.query(App).filter(App.id == app_id).first()
+        source_submission = db.query(Submission).filter(Submission.id == submission_id).first()
+        change_request = db.query(AppChangeRequest).filter(AppChangeRequest.id == change_request_id).first()
+        historical = (
+            db.query(HistoricalRanking)
+            .filter(HistoricalRanking.app_id == app_id, HistoricalRanking.app_name == original_name)
+            .first()
+        )
+        assert app_row is not None
+        assert source_submission is not None
+        assert change_request is not None
+        assert historical is not None
+        assert app_row.name == new_name
+        assert app_row.target_system == "新系统"
+        assert source_submission.app_name == new_name
+        assert source_submission.embedded_system == "新系统"
+        assert change_request.status == "approved"
+        assert db.query(AppRankingSetting).filter(AppRankingSetting.app_id == app_id).count() == setting_count
+        assert historical.app_name == original_name
     finally:
         db.close()
 

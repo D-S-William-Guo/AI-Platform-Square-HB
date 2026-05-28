@@ -168,6 +168,10 @@ function rankingItemFromHistorical(row: HistoricalRanking, appDetail?: AppItem):
     app: appDetail
       ? {
           ...appDetail,
+          name: row.app_name,
+          org: row.app_org,
+          company: row.company || row.app_org,
+          department: row.department || appDetail.department,
           ranking_enabled: true,
           ranking_tags: row.tag,
           last_ranking_update: row.created_at,

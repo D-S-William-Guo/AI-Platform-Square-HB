@@ -1,12 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
+  approveAppChangeRequest,
   fetchSubmissions,
+  fetchAppChangeRequests,
   approveSubmissionAndCreateApp,
+  rejectAppChangeRequest,
   rejectSubmission,
   isMissingAdminTokenError,
   getAdminTokenSetupHint
 } from '../api/client'
-import type { Submission } from '../types'
+import type { AppChangeRequest, Submission } from '../types'
 import { resolveMediaUrl } from '../utils/media'
 import { buildAppPath } from '../utils/basePath'
 import UiIcon from '../components/UiIcon'
@@ -50,9 +53,11 @@ function getEmptyReviewMessage(filter: 'all' | 'pending' | 'approved' | 'rejecte
 
 export default function SubmissionReviewPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [changeRequests, setChangeRequests] = useState<AppChangeRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
+  const [selectedChangeRequest, setSelectedChangeRequest] = useState<AppChangeRequest | null>(null)
   const [approvalForm, setApprovalForm] = useState({
     status: 'available' as 'available' | 'approval' | 'beta' | 'offline',
     monthly_calls: 0,
@@ -63,9 +68,10 @@ export default function SubmissionReviewPage() {
     access_url: ''
   })
   const [processing, setProcessing] = useState(false)
+  const [reviewMode, setReviewMode] = useState<'submissions' | 'changes'>('submissions')
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'withdrawn'>('all')
   const [showRejectModal, setShowRejectModal] = useState(false)
-  const [rejectTargetId, setRejectTargetId] = useState<number | null>(null)
+  const [rejectTarget, setRejectTarget] = useState<{ type: 'submission' | 'change'; id: number } | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectError, setRejectError] = useState<string | null>(null)
 
@@ -73,8 +79,12 @@ export default function SubmissionReviewPage() {
     try {
       setLoading(true)
       setError(null)
-      const data = await fetchSubmissions()
+      const [data, changes] = await Promise.all([
+        fetchSubmissions(),
+        fetchAppChangeRequests(),
+      ])
       setSubmissions(data)
+      setChangeRequests(changes)
     } catch (err) {
       setError(resolveAdminError(err, '获取申报列表失败'))
       console.error('Failed to fetch submissions:', err)
@@ -132,8 +142,27 @@ export default function SubmissionReviewPage() {
     }
   }
 
-  const openRejectModal = (id: number) => {
-    setRejectTargetId(id)
+  const handleApproveChangeRequest = async (id: number) => {
+    if (!confirm('确定要通过此应用变更申请吗？通过后会更新正式应用信息，并保持历史榜单快照不回写。')) {
+      return
+    }
+
+    try {
+      setProcessing(true)
+      const result = await approveAppChangeRequest(id)
+      alert(`应用变更已通过并完成链路同步（run_id: ${result.run_id}）。`)
+      setSelectedChangeRequest(null)
+      loadSubmissions()
+    } catch (err) {
+      alert(resolveAdminError(err, '应用变更审核失败，请重试'))
+      console.error('Failed to approve app change request:', err)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const openRejectModal = (id: number, type: 'submission' | 'change' = 'submission') => {
+    setRejectTarget({ id, type })
     setRejectReason('')
     setRejectError(null)
     setShowRejectModal(true)
@@ -141,13 +170,13 @@ export default function SubmissionReviewPage() {
 
   const closeRejectModal = () => {
     setShowRejectModal(false)
-    setRejectTargetId(null)
+    setRejectTarget(null)
     setRejectReason('')
     setRejectError(null)
   }
 
   const submitReject = async () => {
-    if (!rejectTargetId) return
+    if (!rejectTarget) return
     const normalizedReason = rejectReason.trim()
     if (normalizedReason.length < 2) {
       setRejectError('拒绝原因至少 2 个字符')
@@ -155,10 +184,16 @@ export default function SubmissionReviewPage() {
     }
     try {
       setProcessing(true)
-      await rejectSubmission(rejectTargetId, normalizedReason)
-      alert('已拒绝该申报。')
+      if (rejectTarget.type === 'change') {
+        await rejectAppChangeRequest(rejectTarget.id, normalizedReason)
+        alert('已驳回该应用变更申请。')
+        setSelectedChangeRequest(null)
+      } else {
+        await rejectSubmission(rejectTarget.id, normalizedReason)
+        alert('已拒绝该申报。')
+        setSelectedSubmission(null)
+      }
       closeRejectModal()
-      setSelectedSubmission(null)
       loadSubmissions()
     } catch (err) {
       alert(resolveAdminError(err, '拒绝失败，请重试'))
@@ -178,6 +213,7 @@ export default function SubmissionReviewPage() {
     pending: submissions.filter(s => s.status === 'pending').length,
     approved: submissions.filter(s => s.status === 'approved').length,
     rejected: submissions.filter(s => s.status === 'rejected').length,
+    pendingChanges: changeRequests.filter(item => item.status === 'pending').length,
     withdrawn: submissions.filter(s => s.status === 'withdrawn').length
   }
 
@@ -199,7 +235,7 @@ export default function SubmissionReviewPage() {
       <div className="page-container submission-review-page">
         <div className="page-header">
           <h1 className="page-title">省内应用申报审核</h1>
-          <p className="page-subtitle">审核省内应用申报，通过审核的应用将进入排行榜评估体系</p>
+          <p className="page-subtitle">审核省内应用申报与应用变更，通过审核后同步应用展示与榜单链路</p>
         </div>
 
         {/* 统计卡片 */}
@@ -220,10 +256,30 @@ export default function SubmissionReviewPage() {
             <div className="stat-card-value">{stats.rejected}</div>
             <div className="stat-card-label">已拒绝</div>
           </div>
+          <div className="stat-card pending">
+            <div className="stat-card-value">{stats.pendingChanges}</div>
+            <div className="stat-card-label">待审变更</div>
+          </div>
+        </div>
+
+        <div className="review-mode-tabs">
+          <button
+            className={`filter-btn ${reviewMode === 'submissions' ? 'active' : ''}`}
+            onClick={() => setReviewMode('submissions')}
+          >
+            普通申报
+          </button>
+          <button
+            className={`filter-btn ${reviewMode === 'changes' ? 'active' : ''}`}
+            onClick={() => setReviewMode('changes')}
+          >
+            应用变更 ({stats.pendingChanges})
+          </button>
         </div>
 
         {/* 筛选器 */}
-        <div className="filter-bar">
+        {reviewMode === 'submissions' ? (
+          <div className="filter-bar">
           <div className="filter-group">
             <button 
               className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
@@ -259,7 +315,17 @@ export default function SubmissionReviewPage() {
           <button className="refresh-btn" onClick={loadSubmissions} disabled={loading}>
             {loading ? '刷新中...' : '刷新列表'}
           </button>
-        </div>
+          </div>
+        ) : (
+          <div className="filter-bar">
+            <div className="filter-group">
+              <span className="change-review-hint">应用变更通过后会更新当前应用信息；历史排行榜快照不回写。</span>
+            </div>
+            <button className="refresh-btn" onClick={loadSubmissions} disabled={loading}>
+              {loading ? '刷新中...' : '刷新列表'}
+            </button>
+          </div>
+        )}
 
         {/* 申报列表 */}
         {loading ? (
@@ -273,6 +339,94 @@ export default function SubmissionReviewPage() {
             <span>{error}</span>
             <button className="retry-btn" onClick={loadSubmissions}>重试</button>
           </div>
+        ) : reviewMode === 'changes' ? (
+          changeRequests.length === 0 ? (
+            <div className="empty-container">
+              <span className="empty-icon"><UiIcon name="my" /></span>
+              <strong>暂无应用变更申请</strong>
+              <span>申报人对已通过应用提交修改申请后，会在这里进入审核流转。</span>
+            </div>
+          ) : (
+            <div className="submission-list">
+              {changeRequests.map((item) => (
+                <div
+                  key={item.id}
+                  className={`submission-card ${item.status}`}
+                  onClick={() => setSelectedChangeRequest(item)}
+                >
+                  <div className="submission-header">
+                    <div className="submission-title">
+                      <h3>{item.app_name}</h3>
+                      <span
+                        className="status-badge"
+                        style={{ backgroundColor: statusMap[item.status]?.color }}
+                      >
+                        {statusMap[item.status]?.label || item.status}
+                      </span>
+                    </div>
+                    <div className="submission-meta">
+                      <span>所属公司：{item.company || item.unit_name}</span>
+                      <span>所属部门：{item.department || '未设置'}</span>
+                      <span>关联应用ID：{item.app_id}</span>
+                      <span>提交时间：{new Date(item.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="submission-content">
+                    <div className="info-row">
+                      <span className="info-label">应用分类：</span>
+                      <span className="info-value">{item.category}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">嵌入系统：</span>
+                      <span className="info-value">{item.embedded_system}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">成效类型：</span>
+                      <span className="info-value">{valueDimensionLabel[item.effectiveness_type]}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">数据级别：</span>
+                      <span className="info-value">{item.data_level}</span>
+                    </div>
+                    {item.status === 'rejected' && item.review_reason ? (
+                      <div className="info-row full-width">
+                        <span className="info-label">驳回原因：</span>
+                        <span className="info-value rejected-reason">{item.review_reason}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="submission-preview">
+                    <p><strong>应用场景：</strong>{item.scenario.substring(0, 100)}...</p>
+                  </div>
+                  {item.status === 'pending' ? (
+                    <div className="submission-actions">
+                      <button
+                        className="btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleApproveChangeRequest(item.id)
+                        }}
+                        disabled={processing}
+                      >
+                        {processing ? '处理中...' : '通过变更'}
+                      </button>
+                      <button
+                        className="btn-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openRejectModal(item.id, 'change')
+                        }}
+                        disabled={processing}
+                      >
+                        驳回
+                      </button>
+                      <button className="btn-secondary">查看详情</button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )
         ) : filteredSubmissions.length === 0 ? (
           <div className="empty-container">
             <span className="empty-icon"><UiIcon name="my" /></span>
@@ -587,11 +741,131 @@ export default function SubmissionReviewPage() {
         </div>
       )}
 
+      {selectedChangeRequest && (
+        <div className="modal-overlay" onClick={() => setSelectedChangeRequest(null)}>
+          <div className="modal-container detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">应用变更详情</h3>
+              <button className="modal-close" onClick={() => setSelectedChangeRequest(null)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="detail-section">
+                <h4>基础信息</h4>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <span className="detail-label">应用名称</span>
+                    <span className="detail-value">{selectedChangeRequest.app_name}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">所属公司</span>
+                    <span className="detail-value">{selectedChangeRequest.company || selectedChangeRequest.unit_name}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">所属部门</span>
+                    <span className="detail-value">{selectedChangeRequest.department || '未设置'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">关联应用 ID</span>
+                    <span className="detail-value">{selectedChangeRequest.app_id}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">联系人</span>
+                    <span className="detail-value">{selectedChangeRequest.contact}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">联系电话</span>
+                    <span className="detail-value">{selectedChangeRequest.contact_phone || '-'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">联系邮箱</span>
+                    <span className="detail-value">{selectedChangeRequest.contact_email || '-'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">应用分类</span>
+                    <span className="detail-value">{selectedChangeRequest.category}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h4>变更内容</h4>
+                <div className="detail-item full-width">
+                  <span className="detail-label">应用场景</span>
+                  <p className="detail-value">{selectedChangeRequest.scenario}</p>
+                </div>
+                <div className="detail-item full-width">
+                  <span className="detail-label">嵌入系统</span>
+                  <span className="detail-value">{selectedChangeRequest.embedded_system}</span>
+                </div>
+                <div className="detail-item full-width">
+                  <span className="detail-label">问题描述</span>
+                  <p className="detail-value">{selectedChangeRequest.problem_statement}</p>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h4>成效评估</h4>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <span className="detail-label">成效类型</span>
+                    <span className="detail-value">{valueDimensionLabel[selectedChangeRequest.effectiveness_type]}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">数据级别</span>
+                    <span className="detail-value">{selectedChangeRequest.data_level}</span>
+                  </div>
+                  <div className="detail-item full-width">
+                    <span className="detail-label">成效指标</span>
+                    <span className="detail-value">{selectedChangeRequest.effectiveness_metric}</span>
+                  </div>
+                  <div className="detail-item full-width">
+                    <span className="detail-label">预期收益</span>
+                    <p className="detail-value">{selectedChangeRequest.expected_benefit}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h4>榜单影响</h4>
+                <p className="detail-value">
+                  通过后会更新当前应用信息，并保持同一 app_id 的榜单参与、因子评分和参评设置；历史排行榜快照不回写。
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              {selectedChangeRequest.status === 'pending' && (
+                <>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => openRejectModal(selectedChangeRequest.id, 'change')}
+                    disabled={processing}
+                  >
+                    驳回
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleApproveChangeRequest(selectedChangeRequest.id)}
+                    disabled={processing}
+                  >
+                    {processing ? '处理中...' : '通过变更'}
+                  </button>
+                </>
+              )}
+              <button className="btn-secondary" onClick={() => setSelectedChangeRequest(null)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRejectModal && (
         <div className="modal-overlay" onClick={closeRejectModal}>
           <div className="modal-container reject-reason-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">填写拒绝原因</h3>
+              <h3 className="modal-title">填写{rejectTarget?.type === 'change' ? '驳回' : '拒绝'}原因</h3>
               <button className="modal-close" onClick={closeRejectModal}>×</button>
             </div>
             <div className="modal-body">

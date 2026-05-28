@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchMySubmissions, updateMySubmission, withdrawMySubmission } from '../api/client'
-import type { Submission, SubmissionPayload, ValueDimension } from '../types'
+import {
+  createMyAppChangeRequest,
+  fetchMyAppChangeRequests,
+  fetchMySubmissions,
+  resubmitMySubmission,
+  updateMySubmission,
+  withdrawMySubmission,
+} from '../api/client'
+import type { AppChangeRequest, Submission, SubmissionPayload, ValueDimension } from '../types'
 
 const defaultForm: SubmissionPayload = {
   app_name: '',
@@ -43,16 +50,22 @@ export default function MySubmissionsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [changeRequests, setChangeRequests] = useState<AppChangeRequest[]>([])
   const [activeFilter, setActiveFilter] = useState<'all' | Submission['status']>('all')
   const [editing, setEditing] = useState<Submission | null>(null)
+  const [editMode, setEditMode] = useState<'edit' | 'resubmit' | 'change'>('edit')
   const [form, setForm] = useState<SubmissionPayload>(defaultForm)
 
   const loadMySubmissions = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await fetchMySubmissions()
+      const [data, changes] = await Promise.all([
+        fetchMySubmissions(),
+        fetchMyAppChangeRequests(),
+      ])
       setSubmissions(data)
+      setChangeRequests(changes)
     } catch (err) {
       console.error('Failed to fetch my submissions:', err)
       setError('获取我的申报失败，请稍后重试')
@@ -70,11 +83,17 @@ export default function MySubmissionsPage() {
     return submissions.filter((item) => item.status === activeFilter)
   }, [submissions, activeFilter])
 
-  function openEdit(target: Submission) {
-    if (target.status !== 'pending') {
-      return
-    }
+  const pendingChangeBySubmissionId = useMemo(() => {
+    const map = new Map<number, AppChangeRequest>()
+    changeRequests
+      .filter((item) => item.status === 'pending')
+      .forEach((item) => map.set(item.source_submission_id, item))
+    return map
+  }, [changeRequests])
+
+  function openEdit(target: Submission, mode: 'edit' | 'resubmit' | 'change') {
     setEditing(target)
+    setEditMode(mode)
     setForm({
       app_name: target.app_name,
       unit_name: target.unit_name,
@@ -101,7 +120,13 @@ export default function MySubmissionsPage() {
     if (!editing) return
     try {
       setSaving(true)
-      await updateMySubmission(editing.id, form)
+      if (editMode === 'resubmit') {
+        await resubmitMySubmission(editing.id, form)
+      } else if (editMode === 'change') {
+        await createMyAppChangeRequest(editing.id, form)
+      } else {
+        await updateMySubmission(editing.id, form)
+      }
       setEditing(null)
       await loadMySubmissions()
     } catch (err) {
@@ -200,21 +225,46 @@ export default function MySubmissionsPage() {
                 {item.status === 'rejected' && item.rejected_reason ? (
                   <div className="rejected-reason">拒绝原因：{item.rejected_reason}</div>
                 ) : null}
+                {item.status === 'approved' && pendingChangeBySubmissionId.has(item.id) ? (
+                  <div className="change-request-note">已提交应用变更申请，等待管理员审核。</div>
+                ) : null}
                 <div className="submission-actions">
-                  <button
-                    className="secondary"
-                    onClick={() => openEdit(item)}
-                    disabled={item.status !== 'pending' || saving}
-                  >
-                    修改
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => onWithdraw(item)}
-                    disabled={item.status !== 'pending' || saving}
-                  >
-                    撤回
-                  </button>
+                  {item.status === 'pending' ? (
+                    <>
+                      <button
+                        className="secondary"
+                        onClick={() => openEdit(item, 'edit')}
+                        disabled={saving}
+                      >
+                        修改
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={() => onWithdraw(item)}
+                        disabled={saving}
+                      >
+                        撤回
+                      </button>
+                    </>
+                  ) : null}
+                  {item.status === 'rejected' ? (
+                    <button
+                      className="secondary"
+                      onClick={() => openEdit(item, 'resubmit')}
+                      disabled={saving}
+                    >
+                      修改后重提
+                    </button>
+                  ) : null}
+                  {item.status === 'approved' ? (
+                    <button
+                      className="secondary"
+                      onClick={() => openEdit(item, 'change')}
+                      disabled={saving || pendingChangeBySubmissionId.has(item.id)}
+                    >
+                      申请修改
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -226,7 +276,9 @@ export default function MySubmissionsPage() {
         <div className="modal-overlay" onClick={() => setEditing(null)}>
           <div className="modal-container my-submission-edit" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">修改申报</h3>
+              <h3 className="modal-title">
+                {editMode === 'resubmit' ? '修改后重提' : editMode === 'change' ? '申请修改应用' : '修改申报'}
+              </h3>
               <button className="modal-close" onClick={() => setEditing(null)}>×</button>
             </div>
             <div className="modal-body">
@@ -344,7 +396,9 @@ export default function MySubmissionsPage() {
             </div>
             <div className="modal-footer">
               <button className="secondary" onClick={() => setEditing(null)}>取消</button>
-              <button className="primary" onClick={onSave} disabled={saving}>{saving ? '保存中...' : '保存'}</button>
+              <button className="primary" onClick={onSave} disabled={saving}>
+                {saving ? '提交中...' : editMode === 'change' ? '提交变更申请' : editMode === 'resubmit' ? '重新提交' : '保存'}
+              </button>
             </div>
           </div>
         </div>

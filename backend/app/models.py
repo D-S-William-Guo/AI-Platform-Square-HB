@@ -202,6 +202,51 @@ class SubmissionImage(Base):
     submission = relationship("Submission")
 
 
+class AppChangeRequest(Base):
+    """已上架省内应用的申报人变更申请"""
+    __tablename__ = "app_change_requests"
+    __table_args__ = (
+        Index("idx_app_change_requests_app_status", "app_id", "status"),
+        Index("idx_app_change_requests_submitter_status", "submitter_user_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False, index=True)
+    source_submission_id: Mapped[int] = mapped_column(ForeignKey("submissions.id"), nullable=False, index=True)
+    submitter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    reviewer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    app_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    unit_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    company: Mapped[str] = mapped_column(String(120), default="")
+    department: Mapped[str] = mapped_column(String(120), default="")
+    contact: Mapped[str] = mapped_column(String(80), nullable=False)
+    contact_phone: Mapped[str] = mapped_column(String(20), default="")
+    contact_email: Mapped[str] = mapped_column(String(120), default="")
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    scenario: Mapped[str] = mapped_column(String(500), nullable=False)
+    embedded_system: Mapped[str] = mapped_column(String(120), nullable=False)
+    problem_statement: Mapped[str] = mapped_column(String(255), nullable=False)
+    effectiveness_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    effectiveness_metric: Mapped[str] = mapped_column(String(120), nullable=False)
+    data_level: Mapped[str] = mapped_column(String(10), nullable=False)
+    expected_benefit: Mapped[str] = mapped_column(String(300), nullable=False)
+    monthly_calls: Mapped[float] = mapped_column(Float, default=0.0)
+    difficulty: Mapped[str] = mapped_column(String(20), default="Medium")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    review_reason: Mapped[str] = mapped_column(String(255), default="")
+    cover_image_url: Mapped[str] = mapped_column(String(500), default="")
+    detail_doc_url: Mapped[str] = mapped_column(String(500), default="")
+    detail_doc_name: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    app = relationship("App")
+    source_submission = relationship("Submission")
+    submitter = relationship("User", foreign_keys=[submitter_user_id])
+    reviewer = relationship("User", foreign_keys=[reviewer_user_id])
+
+
 class RankingDimension(Base):
     __tablename__ = "ranking_dimensions"
 

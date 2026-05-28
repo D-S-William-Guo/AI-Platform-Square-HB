@@ -209,6 +209,21 @@ export type SubmissionPayload = {
   detail_doc_name: string
 }
 
+export type AppChangeRequest = SubmissionPayload & {
+  id: number
+  app_id: number
+  source_submission_id: number
+  submitter_user_id: number
+  reviewer_user_id: number | null
+  company: string
+  department: string
+  status: 'pending' | 'approved' | 'rejected'
+  review_reason: string
+  created_at: string
+  updated_at: string | null
+  reviewed_at: string | null
+}
+
 export type ImageUploadResponse = {
   success: boolean
   image_url: string

@@ -298,6 +298,41 @@ class SubmissionSelfUpdate(SubmissionCreate):
     manage_token: str = Field(min_length=16, max_length=128)
 
 
+class AppChangeRequestOut(BaseModel):
+    id: int
+    app_id: int
+    source_submission_id: int
+    submitter_user_id: int
+    reviewer_user_id: int | None = None
+    app_name: str
+    unit_name: str
+    company: str
+    department: str
+    contact: str
+    contact_phone: str
+    contact_email: str
+    category: str
+    scenario: str
+    embedded_system: str
+    problem_statement: str
+    effectiveness_type: str
+    effectiveness_metric: str
+    data_level: str
+    expected_benefit: str
+    monthly_calls: float
+    difficulty: str
+    status: str
+    review_reason: str
+    cover_image_url: str
+    detail_doc_url: str
+    detail_doc_name: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    reviewed_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ImageUploadResponse(BaseModel):
     success: bool
     image_url: str

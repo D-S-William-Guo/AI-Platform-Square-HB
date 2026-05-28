@@ -37,6 +37,7 @@ from .identity import get_identity_provider
 from .models import (
     ActionLog,
     App,
+    AppChangeRequest,
     AppDimensionScore,
     AppRankingSetting,
     AuthSession,
@@ -55,6 +56,7 @@ from .schemas import (
     AdminUserCreatePayload,
     AdminUserUpdatePayload,
     AppDetail,
+    AppChangeRequestOut,
     AuthLoginRequest,
     AuthLoginResponse,
     AuthAssertionExchangeRequest,
@@ -236,6 +238,108 @@ def validate_submission_payload(payload: SubmissionCreate) -> None:
         raise HTTPException(status_code=422, detail="Invalid category")
     if payload.difficulty not in APP_DIFFICULTY_VALUES:
         raise HTTPException(status_code=422, detail="Invalid difficulty")
+
+
+def validate_review_reason(reason: str | None) -> str:
+    normalized_reason = (reason or "").strip()
+    if len(normalized_reason) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=structured_error_detail(
+                code="validation_error",
+                message="拒绝原因至少 2 个字符",
+                field_errors=[{"field": "reason", "message": "拒绝原因不能为空"}],
+            ),
+        )
+    if len(normalized_reason) > 255:
+        raise HTTPException(
+            status_code=422,
+            detail=structured_error_detail(
+                code="validation_error",
+                message="拒绝原因长度超限",
+                field_errors=[{"field": "reason", "message": "拒绝原因最多 255 个字符"}],
+            ),
+        )
+    return normalized_reason
+
+
+def build_submission_update_fields(
+    payload: SubmissionCreate,
+    *,
+    company: str,
+    department: str,
+) -> dict:
+    validate_submission_payload(payload)
+    update_fields = payload.model_dump()
+    update_fields["company"] = company
+    update_fields["department"] = department
+    update_fields["unit_name"] = company
+    update_fields["ranking_enabled"] = False
+    update_fields["ranking_weight"] = 1.0
+    update_fields["ranking_tags"] = ""
+    update_fields["ranking_dimensions"] = ""
+    return update_fields
+
+
+def ensure_no_duplicate_active_submission(
+    db: Session,
+    *,
+    app_name: str,
+    unit_name: str,
+    exclude_submission_id: int | None = None,
+) -> None:
+    query = db.query(Submission).filter(
+        func.lower(func.trim(Submission.app_name)) == normalize_dedupe_text(app_name),
+        func.lower(func.trim(Submission.unit_name)) == normalize_dedupe_text(unit_name),
+        Submission.status.in_(("pending", "approved")),
+    )
+    if exclude_submission_id is not None:
+        query = query.filter(Submission.id != exclude_submission_id)
+    if query.first():
+        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
+
+
+def ensure_no_duplicate_province_app(
+    db: Session,
+    *,
+    app_name: str,
+    unit_name: str,
+    exclude_app_id: int | None = None,
+) -> None:
+    query = db.query(App).filter(
+        App.section == "province",
+        func.lower(func.trim(App.name)) == normalize_dedupe_text(app_name),
+        func.lower(func.trim(App.org)) == normalize_dedupe_text(unit_name),
+    )
+    if exclude_app_id is not None:
+        query = query.filter(App.id != exclude_app_id)
+    if query.first():
+        raise HTTPException(status_code=409, detail="已存在同名同单位省内应用，不能重复创建")
+
+
+def apply_submission_fields(target: Submission | AppChangeRequest, fields: dict) -> None:
+    for key, value in fields.items():
+        if hasattr(target, key):
+            setattr(target, key, value)
+
+
+def apply_change_request_to_app(app: App, change_request: AppChangeRequest) -> None:
+    app.name = change_request.app_name
+    app.org = change_request.unit_name
+    app.company = change_request.company or change_request.unit_name
+    app.department = change_request.department or ""
+    app.category = change_request.category
+    app.description = change_request.scenario
+    app.monthly_calls = change_request.monthly_calls or 0.0
+    app.difficulty = change_request.difficulty or "Medium"
+    app.contact_name = change_request.contact
+    app.detail_doc_url = change_request.detail_doc_url or ""
+    app.detail_doc_name = change_request.detail_doc_name or ""
+    app.target_system = change_request.embedded_system
+    app.problem_statement = change_request.problem_statement
+    app.effectiveness_type = change_request.effectiveness_type
+    app.effectiveness_metric = change_request.effectiveness_metric
+    app.cover_image_url = change_request.cover_image_url or ""
 
 
 def validate_group_app_payload(payload: GroupAppCreate) -> None:
@@ -1505,29 +1609,17 @@ def create_submission(
     resolved_department = (submitter.department or "").strip()
     if not resolved_company:
         raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法提交申报")
-    normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(resolved_company)
-    existing = (
-        db.query(Submission)
-        .filter(
-            func.lower(func.trim(Submission.app_name)) == normalized_name,
-            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
-            Submission.status.in_(("pending", "approved")),
-        )
-        .first()
+    ensure_no_duplicate_active_submission(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
     )
-    if existing:
-        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
 
-    submission_data = payload.model_dump()
-    # 收敛：申报阶段不再写入排行榜参数，保留历史字段仅做兼容读取。
-    submission_data["ranking_enabled"] = False
-    submission_data["ranking_weight"] = 1.0
-    submission_data["ranking_tags"] = ""
-    submission_data["ranking_dimensions"] = ""
-    submission_data["company"] = resolved_company
-    submission_data["department"] = resolved_department
-    submission_data["unit_name"] = resolved_company
+    submission_data = build_submission_update_fields(
+        payload,
+        company=resolved_company,
+        department=resolved_department,
+    )
     submission = Submission(
         **submission_data,
         manage_token=uuid.uuid4().hex,
@@ -1618,29 +1710,19 @@ def update_my_submission(
     if not resolved_company:
         raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法更新申报")
 
-    normalized_name = normalize_dedupe_text(payload.app_name)
-    normalized_unit = normalize_dedupe_text(resolved_company)
-    duplicate = (
-        db.query(Submission)
-        .filter(
-            Submission.id != submission_id,
-            func.lower(func.trim(Submission.app_name)) == normalized_name,
-            func.lower(func.trim(Submission.unit_name)) == normalized_unit,
-            Submission.status.in_(("pending", "approved")),
-        )
-        .first()
+    ensure_no_duplicate_active_submission(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
+        exclude_submission_id=submission_id,
     )
-    if duplicate:
-        raise HTTPException(status_code=409, detail="该应用已存在待审核或已通过的申报记录，请勿重复提交")
 
-    validate_submission_payload(payload)
-    update_fields = payload.model_dump()
-    update_fields["company"] = resolved_company
-    update_fields["department"] = resolved_department
-    update_fields["unit_name"] = resolved_company
-    update_fields["ranking_dimensions"] = ""
-    for key, value in update_fields.items():
-        setattr(submission, key, value)
+    update_fields = build_submission_update_fields(
+        payload,
+        company=resolved_company,
+        department=resolved_department,
+    )
+    apply_submission_fields(submission, update_fields)
 
     write_action_log(
         db,
@@ -1684,6 +1766,170 @@ def withdraw_my_submission(
     )
     db.commit()
     return {"message": "申报已撤回", "submission_id": submission_id}
+
+
+@app.post(f"{settings.api_prefix}/submissions/{{submission_id}}/mine/resubmit", response_model=SubmissionOut)
+def resubmit_my_rejected_submission(
+    submission_id: int,
+    payload: SubmissionCreate,
+    request: Request,
+    auth_session: AuthSession = Depends(require_submit_permission),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户修改本人已拒绝申报并重新提交审核。"""
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.submitter_user_id != auth_session.user.id:
+        raise HTTPException(status_code=403, detail="无权限重新提交他人申报")
+    if submission.status != "rejected":
+        raise HTTPException(status_code=400, detail="仅已拒绝申报允许修改后重提")
+
+    resolved_company = (auth_session.user.company or submission.company or payload.unit_name).strip()
+    resolved_department = (auth_session.user.department or submission.department or "").strip()
+    if not resolved_company:
+        raise HTTPException(status_code=422, detail="当前账号未配置所属公司，无法重新提交申报")
+
+    ensure_no_duplicate_active_submission(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
+        exclude_submission_id=submission_id,
+    )
+    ensure_no_duplicate_province_app(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
+    )
+
+    update_fields = build_submission_update_fields(
+        payload,
+        company=resolved_company,
+        department=resolved_department,
+    )
+    apply_submission_fields(submission, update_fields)
+    submission.status = "pending"
+    submission.rejected_at = None
+    submission.rejected_by_user_id = None
+    submission.rejected_reason = ""
+    submission.approved_at = None
+    submission.approved_by_user_id = None
+
+    write_action_log(
+        db,
+        action="submission.resubmit_mine",
+        actor_user=auth_session.user,
+        resource_type="submission",
+        resource_id=str(submission.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"app_name={submission.app_name},unit_name={submission.unit_name}",
+    )
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+@app.get(f"{settings.api_prefix}/app-change-requests/mine", response_model=list[AppChangeRequestOut])
+def list_my_app_change_requests(
+    auth_session: AuthSession = Depends(require_submit_permission),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户查看自己的应用变更申请。"""
+    return (
+        db.query(AppChangeRequest)
+        .filter(AppChangeRequest.submitter_user_id == auth_session.user.id)
+        .order_by(AppChangeRequest.created_at.desc())
+        .all()
+    )
+
+
+@app.post(
+    f"{settings.api_prefix}/submissions/{{submission_id}}/mine/change-request",
+    response_model=AppChangeRequestOut,
+)
+def create_my_app_change_request(
+    submission_id: int,
+    payload: SubmissionCreate,
+    request: Request,
+    auth_session: AuthSession = Depends(require_submit_permission),
+    db: Session = Depends(get_db),
+):
+    """当前登录用户对本人已通过申报创建应用变更申请。"""
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="申报不存在")
+    if submission.submitter_user_id != auth_session.user.id:
+        raise HTTPException(status_code=403, detail="无权限修改他人申报创建的应用")
+    if submission.status != "approved":
+        raise HTTPException(status_code=400, detail="仅已通过申报允许发起应用变更申请")
+
+    app_row = (
+        db.query(App)
+        .filter(
+            App.section == "province",
+            App.created_from_submission_id == submission.id,
+        )
+        .first()
+    )
+    if not app_row:
+        raise HTTPException(status_code=404, detail="未找到该申报对应的省内应用")
+
+    pending_change = (
+        db.query(AppChangeRequest)
+        .filter(
+            AppChangeRequest.app_id == app_row.id,
+            AppChangeRequest.status == "pending",
+        )
+        .first()
+    )
+    if pending_change:
+        raise HTTPException(status_code=409, detail="该应用已有待审核变更申请，请等待处理后再提交")
+
+    resolved_company = (submission.company or submission.unit_name or app_row.company or app_row.org).strip()
+    resolved_department = (submission.department or app_row.department or "").strip()
+    if not resolved_company:
+        raise HTTPException(status_code=422, detail="应用缺少所属公司，无法创建变更申请")
+
+    ensure_no_duplicate_active_submission(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
+        exclude_submission_id=submission.id,
+    )
+    ensure_no_duplicate_province_app(
+        db,
+        app_name=payload.app_name,
+        unit_name=resolved_company,
+        exclude_app_id=app_row.id,
+    )
+
+    change_fields = build_submission_update_fields(
+        payload,
+        company=resolved_company,
+        department=resolved_department,
+    )
+    for compatibility_key in ("ranking_enabled", "ranking_weight", "ranking_tags", "ranking_dimensions"):
+        change_fields.pop(compatibility_key, None)
+    change_request = AppChangeRequest(
+        app_id=app_row.id,
+        source_submission_id=submission.id,
+        submitter_user_id=auth_session.user.id,
+        **change_fields,
+    )
+    db.add(change_request)
+    db.flush()
+    write_action_log(
+        db,
+        action="app_change_request.create",
+        actor_user=auth_session.user,
+        resource_type="app_change_request",
+        resource_id=str(change_request.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"app_id={app_row.id},app_name={change_request.app_name}",
+    )
+    db.commit()
+    db.refresh(change_request)
+    return change_request
 
 
 @app.get(f"{settings.api_prefix}/meta/enums")
@@ -2971,25 +3217,7 @@ def reject_submission(
     """
     拒绝申报
     """
-    normalized_reason = (reason or "").strip()
-    if len(normalized_reason) < 2:
-        raise HTTPException(
-            status_code=422,
-            detail=structured_error_detail(
-                code="validation_error",
-                message="拒绝原因至少 2 个字符",
-                field_errors=[{"field": "reason", "message": "拒绝原因不能为空"}],
-            ),
-        )
-    if len(normalized_reason) > 255:
-        raise HTTPException(
-            status_code=422,
-            detail=structured_error_detail(
-                code="validation_error",
-                message="拒绝原因长度超限",
-                field_errors=[{"field": "reason", "message": "拒绝原因最多 255 个字符"}],
-            ),
-        )
+    normalized_reason = validate_review_reason(reason)
 
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
@@ -3017,6 +3245,149 @@ def reject_submission(
         "message": "申报已拒绝",
         "submission_id": submission_id,
         "reason": submission.rejected_reason,
+    }
+
+
+@app.get(f"{settings.api_prefix}/admin/app-change-requests", response_model=list[AppChangeRequestOut])
+def list_app_change_requests(
+    status: str | None = Query(default=None, description="按状态筛选：pending, approved, rejected"),
+    _: None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    """管理员查看应用变更申请。"""
+    query = db.query(AppChangeRequest)
+    if status:
+        query = query.filter(AppChangeRequest.status == status)
+    return query.order_by(AppChangeRequest.created_at.desc()).all()
+
+
+@app.post(f"{settings.api_prefix}/admin/app-change-requests/{{change_request_id}}/approve")
+def approve_app_change_request(
+    change_request_id: int,
+    request: Request,
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    """管理员通过应用变更申请，并更新正式应用与来源申报快照。"""
+    change_request = db.query(AppChangeRequest).filter(AppChangeRequest.id == change_request_id).first()
+    if not change_request:
+        raise HTTPException(status_code=404, detail="应用变更申请不存在")
+    if change_request.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核变更申请可通过")
+
+    app_row = db.query(App).filter(App.id == change_request.app_id).first()
+    if not app_row:
+        raise HTTPException(status_code=404, detail="变更申请关联的应用不存在")
+    source_submission = (
+        db.query(Submission)
+        .filter(Submission.id == change_request.source_submission_id)
+        .first()
+    )
+    if not source_submission:
+        raise HTTPException(status_code=404, detail="变更申请关联的来源申报不存在")
+
+    ensure_no_duplicate_active_submission(
+        db,
+        app_name=change_request.app_name,
+        unit_name=change_request.unit_name,
+        exclude_submission_id=source_submission.id,
+    )
+    ensure_no_duplicate_province_app(
+        db,
+        app_name=change_request.app_name,
+        unit_name=change_request.unit_name,
+        exclude_app_id=app_row.id,
+    )
+
+    submission_fields = {
+        key: getattr(change_request, key)
+        for key in (
+            "app_name",
+            "unit_name",
+            "company",
+            "department",
+            "contact",
+            "contact_phone",
+            "contact_email",
+            "category",
+            "scenario",
+            "embedded_system",
+            "problem_statement",
+            "effectiveness_type",
+            "effectiveness_metric",
+            "data_level",
+            "expected_benefit",
+            "monthly_calls",
+            "difficulty",
+            "cover_image_url",
+            "detail_doc_url",
+            "detail_doc_name",
+        )
+    }
+    apply_submission_fields(source_submission, submission_fields)
+    apply_change_request_to_app(app_row, change_request)
+    change_request.status = "approved"
+    change_request.review_reason = ""
+    change_request.reviewed_at = datetime.utcnow()
+    change_request.reviewer_user_id = admin_user.id if admin_user else None
+
+    write_action_log(
+        db,
+        action="app_change_request.approve",
+        actor_user=admin_user,
+        resource_type="app_change_request",
+        resource_id=str(change_request.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"app_id={app_row.id},app_name={app_row.name}",
+    )
+    updated_count, run_id = sync_after_chain_mutation(
+        db,
+        "app_change_request_approved",
+        actor=ranking_audit_actor(admin_user),
+    )
+    return {
+        "message": "应用变更已通过",
+        "change_request_id": change_request.id,
+        "app_id": app_row.id,
+        "synced": updated_count,
+        "run_id": run_id,
+    }
+
+
+@app.post(f"{settings.api_prefix}/admin/app-change-requests/{{change_request_id}}/reject")
+def reject_app_change_request(
+    change_request_id: int,
+    request: Request,
+    reason: str | None = Body(default=None, embed=True),
+    admin_user: User | None = Depends(require_admin_token),
+    db: Session = Depends(get_db),
+):
+    """管理员驳回应用变更申请。"""
+    normalized_reason = validate_review_reason(reason)
+    change_request = db.query(AppChangeRequest).filter(AppChangeRequest.id == change_request_id).first()
+    if not change_request:
+        raise HTTPException(status_code=404, detail="应用变更申请不存在")
+    if change_request.status != "pending":
+        raise HTTPException(status_code=400, detail="仅待审核变更申请可驳回")
+
+    change_request.status = "rejected"
+    change_request.review_reason = normalized_reason
+    change_request.reviewed_at = datetime.utcnow()
+    change_request.reviewer_user_id = admin_user.id if admin_user else None
+    write_action_log(
+        db,
+        action="app_change_request.reject",
+        actor_user=admin_user,
+        resource_type="app_change_request",
+        resource_id=str(change_request.id),
+        request_id=request.headers.get("X-Request-Id", ""),
+        payload_summary=f"reason={change_request.review_reason}",
+    )
+    db.commit()
+    return {
+        "message": "应用变更已驳回",
+        "change_request_id": change_request.id,
+        "reason": change_request.review_reason,
     }
 
 

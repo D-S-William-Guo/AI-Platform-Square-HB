@@ -5,6 +5,7 @@
 - 结构变更统一走 Alembic
 - 默认保留旧数据，不把清库重建做成常规流程
 - 默认账号、系统榜单、系统维度都通过显式 bootstrap 命令处理
+- 应用变更申请等业务表新增后，只执行 `alembic upgrade head`，不回写历史榜单快照
 
 ## 正式命令
 
@@ -71,6 +72,7 @@ PYTHONPATH=. ../.venv/bin/python -m app.bootstrap sync-system-presets
 - 自定义维度
 - 业务应用
 - 榜单历史快照
+- 应用变更申请历史
 
 ## 推荐顺序
 

@@ -19,6 +19,7 @@
   - 登录后可用：我要申报、我的申报
   - 管理员登录后可用：管理能力入口
 - 关键交互审计：前端关键意图事件统一写入后端 `ActionLog`（含 `X-Request-Id`）
+- 已通过省内应用的再次修改走应用变更申请，由管理员审核后更新正式应用；被拒绝申报可修改后重提
 - 双榜单固定为：
   - `excellent`：总应用榜
   - `trend`：增长趋势榜
@@ -29,6 +30,7 @@
 - 不做外部系统用户同步，外部挂接默认按游客只读进入
 - 榜单参与与控制输入真相源：`AppRankingSetting`
 - 对外榜单读取真相源：`HistoricalRanking`
+- 历史榜单快照保留发布当时名称，不随应用后续改名回写
 
 更完整的治理结论见 [docs/GOVERNANCE.md](/home/ctyun/BigData/GitHub/AI-Platform-Square-HB/docs/GOVERNANCE.md)。
 

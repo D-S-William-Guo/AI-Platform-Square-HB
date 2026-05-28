@@ -4,6 +4,7 @@ import type {
   AdminUserCreatePayload,
   AdminUserUpdatePayload,
   AppItem,
+  AppChangeRequest,
   AuthProviderInfo,
   AuthLoginResponse,
   AuthMeResponse,
@@ -166,8 +167,23 @@ export async function updateMySubmission(submissionId: number, payload: Submissi
   return data
 }
 
+export async function resubmitMySubmission(submissionId: number, payload: SubmissionPayload) {
+  const { data } = await client.post<Submission>(`${apiBasePath}/submissions/${submissionId}/mine/resubmit`, payload)
+  return data
+}
+
 export async function withdrawMySubmission(submissionId: number) {
   const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/mine/withdraw`)
+  return data
+}
+
+export async function fetchMyAppChangeRequests() {
+  const { data } = await client.get<AppChangeRequest[]>(`${apiBasePath}/app-change-requests/mine`)
+  return data
+}
+
+export async function createMyAppChangeRequest(submissionId: number, payload: SubmissionPayload) {
+  const { data } = await client.post<AppChangeRequest>(`${apiBasePath}/submissions/${submissionId}/mine/change-request`, payload)
   return data
 }
 
@@ -317,6 +333,21 @@ export async function approveSubmissionAndCreateApp(
 
 export async function rejectSubmission(submissionId: number, reason: string) {
   const { data } = await client.post(`${apiBasePath}/submissions/${submissionId}/reject`, { reason })
+  return data
+}
+
+export async function fetchAppChangeRequests(params?: { status?: 'pending' | 'approved' | 'rejected' }) {
+  const { data } = await client.get<AppChangeRequest[]>(`${apiBasePath}/admin/app-change-requests`, { params })
+  return data
+}
+
+export async function approveAppChangeRequest(changeRequestId: number) {
+  const { data } = await client.post(`${apiBasePath}/admin/app-change-requests/${changeRequestId}/approve`)
+  return data
+}
+
+export async function rejectAppChangeRequest(changeRequestId: number, reason: string) {
+  const { data } = await client.post(`${apiBasePath}/admin/app-change-requests/${changeRequestId}/reject`, { reason })
   return data
 }
 
