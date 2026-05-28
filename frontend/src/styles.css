@@ -327,6 +327,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .table th {
@@ -345,6 +346,9 @@ body {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .table tr:hover {

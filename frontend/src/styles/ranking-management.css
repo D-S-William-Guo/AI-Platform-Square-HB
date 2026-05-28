@@ -312,6 +312,9 @@ div.page.ranking-management-page div.page-content {
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   vertical-align: middle;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ranking-management-page .app-settings-table tr:hover {
@@ -363,6 +366,9 @@ div.page.ranking-management-page div.page-content {
 }
 
 .ranking-management-page .app-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   white-space: nowrap;
 }
 
@@ -489,6 +495,9 @@ div.page.ranking-management-page div.page-content {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ranking-management-page .app-management-table tr:hover {
@@ -614,6 +623,9 @@ div.page.ranking-management-page div.page-content {
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   vertical-align: middle;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ranking-management-page .dimension-table tr:hover {
@@ -759,7 +771,10 @@ div.page.ranking-management-page div.page-content {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
-  vertical-align: middle;
+  vertical-align: top;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ranking-management-page .logs-table tr:hover {
@@ -768,7 +783,7 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .logs-table th:nth-child(1),
 .ranking-management-page .logs-table td:nth-child(1) {
-  width: 20%;
+  width: 18%;
   min-width: 180px;
 }
 
@@ -780,26 +795,36 @@ div.page.ranking-management-page div.page-content {
 
 .ranking-management-page .logs-table th:nth-child(3),
 .ranking-management-page .logs-table td:nth-child(3) {
-  width: 16%;
-  min-width: 150px;
+  width: 14%;
+  min-width: 130px;
 }
 
 .ranking-management-page .logs-table th:nth-child(4),
 .ranking-management-page .logs-table td:nth-child(4) {
-  width: 36%;
-  min-width: 320px;
+  width: 44%;
+  min-width: 360px;
 }
 
 .ranking-management-page .logs-table th:nth-child(5),
 .ranking-management-page .logs-table td:nth-child(5) {
-  width: 16%;
-  min-width: 140px;
+  width: 12%;
+  min-width: 120px;
 }
 
 .ranking-management-page .log-time {
   font-family: monospace;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.ranking-management-page .log-changes {
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.ranking-management-page .log-operator,
+.ranking-management-page .log-action {
+  white-space: nowrap;
 }
 
 .ranking-management-page .action-badge {

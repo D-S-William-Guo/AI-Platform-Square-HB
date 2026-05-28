@@ -252,6 +252,9 @@
   border-bottom: 1px solid rgba(226, 232, 240, 0.92);
   text-align: left;
   vertical-align: top;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .user-table th {
@@ -301,6 +304,8 @@
 .user-table td:nth-child(8) {
   width: 16%;
   min-width: 190px;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .table-actions {
