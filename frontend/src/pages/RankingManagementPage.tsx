@@ -1172,7 +1172,6 @@ const RankingManagementPage = ({
                           <tr key={app.id}>
                             <td>
                               <div className="app-name">{app.name}</div>
-                              <div className="app-org">{app.company || app.org}</div>
                             </td>
                             <td>{app.section === 'province' ? '省内应用' : '集团应用'}</td>
                             <td>
