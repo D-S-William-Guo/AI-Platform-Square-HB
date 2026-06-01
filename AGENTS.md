@@ -44,8 +44,92 @@
 - 如果只是补充脚本说明、排障笔记或阶段记录，不要把它写成当前治理口径。
 - 文档中的命令和规则必须尽量单点维护；如果详细内容已经沉到 `docs/`，根 `README.md` 只保留短说明和跳转。
 
+## 代码架构（2026-06-01 重构后）
+
+### 后端分层
+
+```
+backend/app/
+  main.py              (~240行，仅 app 创建 + lifespan + 中间件 + include_router)
+  config.py            配置（pydantic-settings，读 backend/.env）
+  database.py          DB 连接
+  models.py            ORM 模型（15 个表）
+  schemas.py           Pydantic 请求/响应模型
+  auth_utils.py        密码哈希/验证/令牌
+  dependencies.py      共享依赖（认证/鉴权/分页/审计/限流）
+  identity.py          身份提供者抽象
+  routers/            13 个域路由器（每个用 APIRouter + include_router）
+    meta.py auth.py apps.py rankings.py submissions.py
+    ranking_configs.py ranking_settings.py admin_users.py
+    admin_review.py upload.py audit.py integration.py frontend.py
+  services/            2 个服务层（业务逻辑脱离 HTTP）
+    ranking_service.py submission_service.py
+```
+
+### 前端分层
+
+```
+frontend/src/
+  App.tsx              (~280行，路由配置 + 认证加载)
+  api/client.ts        API 客户端
+  types/index.ts       类型定义
+  utils/               media/basePath
+  components/          通用组件（8 个）
+    Modal.tsx PageHeader.tsx LoadingState.tsx EmptyState.tsx
+    ErrorState.tsx StatCard.tsx Pagination.tsx UiIcon.tsx
+  hooks/              自定义 Hook（3 个）
+    useAuth.ts usePagination.ts useForm.ts
+  pages/
+    HomePage.tsx       441 行（重构前 1511）
+    RankingManagementPage.tsx  457 行（重构前 1985）
+    components/        HomePage 子组件（6 个）+ Ranking 子组件（9 个）
+```
+
+### 关键数据表
+
+| 表 | 用途 |
+|---|---|
+| `ranking_configs` | 榜单配置（excellent / trend） |
+| `ranking_config_dimensions` | 配置-维度关联（2026-06-01 由 JSON TEXT 迁移） |
+| `app_ranking_settings` | 应用参与榜单设置 |
+| `rankings` | 实时排名 |
+| `historical_rankings` | 历史排名快照（真相源） |
+| `submissions` | 申报记录 |
+| `app_change_requests` | 已通过应用的变更申请 |
+
+### 测试
+
+```
+backend/tests/
+  test_api.py          2267 行，80 个 API 集成测试（按域分段注释）
+  test_auth_utils.py   28 个单元测试
+  test_submission_service.py  25 个单元测试
+  test_ranking_service.py     30 个单元测试
+  test_dependencies.py        16 个单元测试
+  helpers.py           共享测试工厂函数
+  conftest.py          session 级 DB fixture + rate limit 重置
+```
+
+- 总计 213 tests（重构前 103）
+- 运行：`cd backend && PYTHONPATH=. ../.venv/bin/pytest tests/`
+
+### 已清理的技术债
+
+- `ranking_type` 列已删除（三个表，原与 `ranking_config_id` 双写冗余）
+- `dimensions_config` JSON TEXT → `ranking_config_dimensions` 关联表（有 FK 约束）
+- `or_()` 双字段回退查询已全部简化为直接 `== ranking_config_id`
+- 修复 bug：`_collect_config_dimension_ids` → `collect_config_dimension_ids`
+
+### 刻意未做的项目
+
+- Redis 限流：内部工具 ROI 为负，已文档化
+- `test_api.py` 物理拆分：测试间有 DB 状态顺序依赖，强行拆会导致 flaky tests
+- `useForm` / `useAuth` Hook 接入：验证 API 不兼容，需独立重构
+- `dimensions_config` JSON 列物理删除：保留在 DB 中作为降级兜底，ORM 已不映射
+
 ## 最近关键文档变更
 
+- 2026-06-01 完成架构重构：后端 13 routers + 2 services，前端 15 子组件，清理 ranking_type 双字段和 dimensions_config JSON 列，新增 112 单元测试（总计 213）
 - 2026-05-29 重构用户操作手册为角色任务版，补充申报、应用、榜单、权重和历史快照关系图
 - 2026-05-29 补充已通过应用修改链路：申报人提交应用变更申请，管理员审核后更新当前应用；历史榜单快照保留发布当时名称，不随改名回写
 - 2026-05-25 补充已登录用户主动修改密码入口：首页右上角用户区展示“修改密码”，匿名游客不可见
