@@ -46,7 +46,9 @@
 - 新增应用变更申请等结构时，仍只通过 Alembic 迁移落库，不用清库重建。
 - `init-base` 只负责基础初始化，不覆盖已有默认密码
 - `reset-default-users` 用于显式重置 `zhangsan` / `lisi`
-- `sync-system-presets` 用于显式同步系统维度与系统榜单默认值
+- `sync-system-presets` 用于显式同步系统维度与系统榜单默认值（含维度关联）
+- `ranking_config_dimensions` 是榜单配置-维度关联表（2026-06-01 由 dimensions_config JSON TEXT 迁移），有 FK 约束到 ranking_configs 和 ranking_dimensions
+- `ranking_type` 列已从 rankings / historical_rankings / ranking_audit_logs 三表删除（原与 ranking_config_id 双写冗余，现已统一为 ranking_config_id）
 
 ## 5. 身份模式
 

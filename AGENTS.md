@@ -5,15 +5,18 @@
 ## 仓库速览
 
 - 项目：企业内部 AI 应用广场
-- 后端：FastAPI + SQLAlchemy ORM + Alembic
+- 后端：FastAPI + SQLAlchemy ORM + Alembic（13 routers + 2 services + dependencies 分层）
 - 数据库：MySQL 5.7
-- 前端：React + TypeScript + Vite
+- 前端：React + TypeScript + Vite（8 通用组件 + 15 子组件 + 3 hooks 分层）
 - 运行方式：开发机构建前端静态产物，远程主机只负责运行发布物
 - 唯一应用配置源：`backend/.env`
 - 根目录 `.env`：仅用于 Docker Compose MySQL 覆盖，不是应用配置
 - 默认身份模式：`local`
 - 榜单参与与控制输入真相源：`AppRankingSetting`
 - 对外榜单读取真相源：`HistoricalRanking`
+- 榜单配置-维度关联：`ranking_config_dimensions`
+- 测试：213 tests（103 API 集成 + 110 单元），`cd backend && PYTHONPATH=. ../.venv/bin/pytest tests/`
+- 文档入口：`AGENTS.md` → `docs/README.md` → 专题文档；`docs/archive/` 仅供追溯
 
 ## 文档真相源分层
 
