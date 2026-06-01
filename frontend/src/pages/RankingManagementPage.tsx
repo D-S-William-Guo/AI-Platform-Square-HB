@@ -28,7 +28,7 @@ import DimensionModal from './components/ranking/DimensionModal'
 
 type RankingConfig = {
   id: string; name: string; description: string
-  calculation_method: string; is_active: boolean; dimensions_config: string
+  calculation_method: string; is_active: boolean; dimensions?: Array<{dim_id: number; weight: number}>
 }
 
 const RankingManagementPage = ({

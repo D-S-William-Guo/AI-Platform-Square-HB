@@ -124,8 +124,6 @@ class Ranking(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # 外键关联榜单配置
     ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
-    # 保留 ranking_type 用于快速识别和兼容旧代码
-    ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
     tag: Mapped[str] = mapped_column(String(20), default="推荐")
@@ -278,7 +276,6 @@ class RankingAuditLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     action: Mapped[str] = mapped_column(String(80), nullable=False)
-    ranking_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ranking_config_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     period_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -332,14 +329,12 @@ class HistoricalRanking(Base):
             "run_id",
             name="uq_historical_rankings_period_run_app",
         ),
-        Index("idx_historical_rankings_type_period_run", "ranking_type", "period_date", "run_id"),
+        Index("idx_historical_rankings_config_period_run", "ranking_config_id", "period_date", "run_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # 外键关联榜单配置
     ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id"), nullable=False)
-    # 保留 ranking_type 用于快速识别
-    ranking_type: Mapped[str] = mapped_column(String(20), nullable=False)  # excellent | trend
     period_date: Mapped[date] = mapped_column(Date, nullable=False)  # 榜单周期日期
     run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -366,8 +361,6 @@ class RankingConfig(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True)  # excellent, trend
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
-    # 维度配置 JSON格式: [{"dim_id": 1, "weight": 2.5}, ...]
-    dimensions_config: Mapped[str] = mapped_column(Text, default="[]")
     calculation_method: Mapped[str] = mapped_column(String(50), default="composite")  # composite | growth_rate
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -377,6 +370,25 @@ class RankingConfig(Base):
     app_settings = relationship("AppRankingSetting", back_populates="ranking_config")
     rankings = relationship("Ranking", back_populates="ranking_config")
     historical_rankings = relationship("HistoricalRanking", back_populates="ranking_config")
+    dimensions = relationship("RankingConfigDimension", back_populates="ranking_config", cascade="all, delete-orphan")
+
+
+class RankingConfigDimension(Base):
+    """榜单配置-维度关联表（替换 dimensions_config JSON TEXT 列）"""
+    __tablename__ = "ranking_config_dimensions"
+    __table_args__ = (
+        UniqueConstraint("ranking_config_id", "dimension_id", name="uq_ranking_config_dimensions"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ranking_config_id: Mapped[str] = mapped_column(ForeignKey("ranking_configs.id", ondelete="CASCADE"), nullable=False, index=True)
+    dimension_id: Mapped[int] = mapped_column(ForeignKey("ranking_dimensions.id", ondelete="CASCADE"), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    ranking_config = relationship("RankingConfig", back_populates="dimensions")
+    dimension = relationship("RankingDimension")
 
 
 class AppRankingSetting(Base):

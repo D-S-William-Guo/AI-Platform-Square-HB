@@ -149,7 +149,7 @@ export function appFromHistoricalRanking(row: HistoricalRanking): AppItem {
 
 export function rankingItemFromHistorical(row: HistoricalRanking, appDetail?: AppItem): RankingItem {
   return {
-    ranking_config_id: row.ranking_type,
+    ranking_config_id: row.ranking_config_id || row.ranking_type,
     position: row.position,
     tag: row.tag,
     score: row.score,

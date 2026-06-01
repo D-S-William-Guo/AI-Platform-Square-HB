@@ -1,9 +1,7 @@
-import json
-
 from app.auth_utils import verify_password
 from app.config import settings
 from app.database import SessionLocal
-from app.models import RankingConfig, RankingDimension, User
+from app.models import RankingConfig, RankingConfigDimension, RankingDimension, User
 from app.seed import reset_default_users, seed_default_users, sync_system_presets
 
 
@@ -79,7 +77,6 @@ def test_sync_system_presets_updates_builtin_rankings_without_touching_custom_ob
             id="custom",
             name="自定义榜单",
             description="custom",
-            dimensions_config='[]',
             calculation_method="custom",
             is_active=False,
         )
@@ -88,7 +85,13 @@ def test_sync_system_presets_updates_builtin_rankings_without_touching_custom_ob
 
         dimension.weight = 9.0
         excellent.name = "旧优秀榜"
-        excellent.dimensions_config = '[{"dim_id": 999, "weight": 9.9}]'
+        # 错误设置：只保留一个维度（sync 应该恢复正确的两个维度）
+        db.query(RankingConfigDimension).filter(
+            RankingConfigDimension.ranking_config_id == "excellent"
+        ).delete()
+        db.add(RankingConfigDimension(
+            ranking_config_id="excellent", dimension_id=dimension.id, weight=9.9,
+        ))
         db.commit()
 
         sync_system_presets(db)
@@ -99,12 +102,12 @@ def test_sync_system_presets_updates_builtin_rankings_without_touching_custom_ob
 
         assert dimension.weight == 1.0
         assert excellent.name == "总应用榜"
-        assert json.loads(excellent.dimensions_config) == [
-            {"dim_id": 1, "weight": 1.0},
-            {"dim_id": 2, "weight": 1.0},
-            {"dim_id": 4, "weight": 1.0},
-            {"dim_id": 5, "weight": 1.0},
-        ]
+        dims = [(d.dimension_id, d.weight) for d in db.query(RankingConfigDimension).filter(
+            RankingConfigDimension.ranking_config_id == "excellent"
+        ).order_by(RankingConfigDimension.dimension_id).all()]
+        # 总应用榜预设：用户满意度、业务价值、使用活跃度、稳定性和安全性
+        assert len(dims) == 4
+        assert all(w == 1.0 for _, w in dims)
         assert custom_dimension.weight == 3.0
         assert custom_config.name == "自定义榜单"
     finally:

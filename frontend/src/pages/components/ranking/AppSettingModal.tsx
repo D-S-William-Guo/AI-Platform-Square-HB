@@ -9,7 +9,7 @@ import { resolveAdminError, type AppRankingSettingItem, type DimensionConfig } f
 interface RankingConfig {
   id: string
   name: string
-  dimensions_config: string
+  dimensions?: Array<{dim_id: number; weight: number}>
 }
 
 interface AppSettingModalProps {
@@ -97,18 +97,12 @@ export default function AppSettingModal({
     if (!form.ranking_config_id) return activeDimensions
     const selectedConfig = allRankingConfigs.find(c => c.id === form.ranking_config_id)
     if (!selectedConfig) return activeDimensions
-    try {
-      const parsed = JSON.parse(selectedConfig.dimensions_config || '[]')
-      const ids = new Set<number>(
-        Array.isArray(parsed)
-          ? parsed.map((item: DimensionConfig) => Number(item.dim_id)).filter((id: number) => !Number.isNaN(id))
-          : []
-      )
-      if (ids.size === 0) return activeDimensions
-      return activeDimensions.filter(d => ids.has(d.id))
-    } catch {
-      return activeDimensions
-    }
+    const dims = selectedConfig.dimensions || []
+    const ids = new Set<number>(
+      dims.map((item: DimensionConfig) => Number(item.dim_id)).filter((id: number) => !Number.isNaN(id))
+    )
+    if (ids.size === 0) return activeDimensions
+    return activeDimensions.filter(d => ids.has(d.id))
   })()
 
   const handleSave = async () => {

@@ -1,7 +1,9 @@
 from datetime import date, datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 T = TypeVar("T")
@@ -393,7 +395,6 @@ class RankingLogOut(BaseModel):
 class RankingAuditLogOut(BaseModel):
     id: int
     action: str
-    ranking_type: str | None
     ranking_config_id: str | None
     period_date: date | None
     run_id: str | None
@@ -428,7 +429,8 @@ class DimensionScoreUpdate(BaseModel):
 class HistoricalRankingOut(BaseModel):
     """历史榜单输出"""
     id: int
-    ranking_type: str
+    ranking_type: str = Field(default="", description="已废弃，请使用 ranking_config_id")
+    ranking_config_id: str = ""
     period_date: date
     run_id: str | None = None
     position: int
@@ -483,14 +485,13 @@ class RankingConfigBase(BaseModel):
     id: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
     description: str = Field(default="")
-    dimensions_config: str = Field(default="[]")  # JSON格式
     calculation_method: str = Field(default="composite")
     is_active: bool = Field(default=True)
 
 
 class RankingConfigCreate(RankingConfigBase):
     """创建榜单配置"""
-    pass
+    dimensions_config: str = Field(default="[]", description="JSON 格式维度配置")
 
 
 class RankingConfigUpdate(BaseModel):
@@ -502,12 +503,29 @@ class RankingConfigUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class DimensionConfigItem(BaseModel):
+    """维度配置项"""
+    dim_id: int
+    weight: float = 1.0
+
+
 class RankingConfigOut(RankingConfigBase):
     """榜单配置输出"""
+    dimensions: list[DimensionConfigItem] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("dimensions", mode="before")
+    @classmethod
+    def _map_orm_dimensions(cls, v: Any) -> list[dict]:
+        """Map RankingConfigDimension ORM objects to DimensionConfigItem dicts."""
+        if not v:
+            return []
+        if isinstance(v, list) and v and hasattr(v[0], "dimension_id"):
+            return [{"dim_id": d.dimension_id, "weight": d.weight} for d in v]
+        return v
 
 
 class AppRankingSettingBase(BaseModel):
@@ -569,10 +587,6 @@ class AppRankingSettingSaveResponse(BaseModel):
     run_id: str
 
 
-class DimensionConfigItem(BaseModel):
-    """维度配置项"""
-    dim_id: int
-    weight: float
 
 
 class RankingConfigWithDimensions(BaseModel):

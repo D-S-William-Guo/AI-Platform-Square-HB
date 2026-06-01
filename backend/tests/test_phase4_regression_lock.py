@@ -99,7 +99,7 @@ def test_resolve_latest_run_id_returns_latest_non_null_run_id():
     query = RecordingQuery(first_result=("run-newest",))
     db = RecordingDB([query])
 
-    resolved = main.resolve_latest_run_id(db, ranking_type="excellent", period_date=date(2025, 1, 1))
+    resolved = main.resolve_latest_run_id(db, ranking_config_id="excellent", period_date=date(2025, 1, 1))
 
     assert resolved == "run-newest"
     assert any("historical_rankings.run_id IS NOT NULL" in cond for f in query.filters for cond in f)
