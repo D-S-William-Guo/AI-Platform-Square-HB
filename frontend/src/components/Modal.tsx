@@ -5,6 +5,7 @@ interface ModalProps {
   subtitle?: string
   children: React.ReactNode
   width?: string
+  className?: string
 }
 
 export default function Modal({
@@ -13,12 +14,13 @@ export default function Modal({
   title,
   subtitle,
   children,
+  className,
 }: ModalProps) {
   if (!open) return null
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-container${className ? ` ${className}` : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title-section">
             <h3 className="modal-title">{title}</h3>
