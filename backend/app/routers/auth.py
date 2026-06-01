@@ -30,7 +30,10 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix=settings.api_prefix)
-identity_provider = get_identity_provider(settings)
+
+
+def _identity():
+    return get_identity_provider(settings)
 
 
 @router.post("/auth/login", response_model=AuthLoginResponse)
@@ -40,7 +43,7 @@ def auth_login(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    identity_provider.ensure_password_login_allowed()
+    _identity().ensure_password_login_allowed()
     username = payload.username.strip()
     enforce_rate_limit(
         request,
@@ -120,7 +123,7 @@ def auth_login(
 
 @router.get("/auth/provider", response_model=AuthProviderInfoResponse)
 def get_auth_provider_info():
-    descriptor = identity_provider.describe()
+    descriptor = _identity().describe()
     return AuthProviderInfoResponse(
         mode=descriptor.mode,
         display_name=descriptor.display_name,
@@ -135,7 +138,7 @@ def get_auth_provider_info():
 def exchange_auth_assertion(payload: AuthAssertionExchangeRequest):
     if settings.auth_provider_mode == "local":
         raise HTTPException(status_code=409, detail="当前环境未启用外部统一登录")
-    identity_provider.exchange_assertion(payload.assertion)
+    _identity().exchange_assertion(payload.assertion)
     raise HTTPException(status_code=501, detail="统一登录断言交换尚未实现")
 
 

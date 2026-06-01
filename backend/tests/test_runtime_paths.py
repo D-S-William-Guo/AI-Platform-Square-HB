@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import app.main as main_module
+import app.routers.frontend as frontend_mod
 from fastapi.responses import FileResponse
 import pytest
 
@@ -28,7 +29,7 @@ def test_frontend_build_paths_are_resolved_from_dist(monkeypatch, tmp_path):
     index_file.write_text("<html>ok</html>", encoding="utf-8")
     asset_file.write_text("console.log('ok')", encoding="utf-8")
 
-    monkeypatch.setattr(main_module, "FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setattr(frontend_mod, "_frontend_dist_dir", lambda: dist_dir)
 
     assert get_frontend_index_file() == index_file
     assert resolve_frontend_asset("assets/app.js") == asset_file
@@ -45,12 +46,12 @@ def test_frontend_routes_fallback_to_index(monkeypatch, tmp_path):
     index_file.write_text("<html>spa</html>", encoding="utf-8")
     asset_file.write_text("console.log('bundle')", encoding="utf-8")
 
-    monkeypatch.setattr(main_module, "FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setattr(frontend_mod, "_frontend_dist_dir", lambda: dist_dir)
 
-    root_response = serve_frontend_index()
-    route_response = serve_frontend_app("ranking-management")
-    asset_response = serve_frontend_app("assets/bundle.js")
-    prefixed_asset_response = serve_frontend_app("nested/assets/bundle.js")
+    root_response = frontend_mod.serve_frontend_index()
+    route_response = frontend_mod.serve_frontend_app("ranking-management")
+    asset_response = frontend_mod.serve_frontend_app("assets/bundle.js")
+    prefixed_asset_response = frontend_mod.serve_frontend_app("nested/assets/bundle.js")
 
     assert isinstance(root_response, FileResponse)
     assert Path(root_response.path) == index_file
