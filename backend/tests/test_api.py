@@ -8,7 +8,7 @@ from app.auth_utils import hash_password
 from app.main import app
 from app.config import settings
 from app.database import SessionLocal
-from app.models import App, AppChangeRequest, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingDimension, Submission, User
+from app.models import App, AppChangeRequest, AppDimensionScore, AppRankingSetting, HistoricalRanking, Ranking, RankingConfig, RankingConfigDimension, RankingDimension, Submission, User
 
 
 client = TestClient(app)
@@ -1946,7 +1946,7 @@ def test_delete_ranking_dimension_prunes_config_and_scores():
 
     config_after_resp = client.get(f'/api/ranking-configs/{config_id}')
     assert config_after_resp.status_code == 200
-    dimensions = json.loads(config_after_resp.json()['dimensions_config'])
+    dimensions = config_after_resp.json().get('dimensions', [])
     assert all(item.get('dim_id') != dimension_id for item in dimensions)
 
 
@@ -2029,13 +2029,18 @@ def test_save_app_ranking_setting_atomic_success():
         assert dimension is not None
         dimension_id = dimension.id
         config_id = f"atomic-{unique}"
-        db.add(RankingConfig(
+        config = RankingConfig(
             id=config_id,
             name=f"原子榜单-{unique}",
             description="原子保存测试",
-            dimensions_config=json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
             calculation_method="composite",
             is_active=True,
+        )
+        db.add(config)
+        db.flush()
+        from app.models import RankingConfigDimension
+        db.add(RankingConfigDimension(
+            ranking_config_id=config_id, dimension_id=dimension_id, weight=1.0,
         ))
         db.commit()
     finally:
@@ -2090,13 +2095,17 @@ def test_save_app_ranking_setting_atomic_rollback_on_invalid_dimension():
         dimension = db.query(RankingDimension).filter(RankingDimension.is_active.is_(True)).first()
         assert dimension is not None
         config_id = f"atomic-rb-{unique}"
-        db.add(RankingConfig(
+        config = RankingConfig(
             id=config_id,
             name=f"原子回滚榜单-{unique}",
             description="原子回滚测试",
-            dimensions_config=json.dumps([{"dim_id": dimension.id, "weight": 1.0}], ensure_ascii=False),
             calculation_method="composite",
             is_active=True,
+        )
+        db.add(config)
+        db.flush()
+        db.add(RankingConfigDimension(
+            ranking_config_id=config_id, dimension_id=dimension.id, weight=1.0,
         ))
         db.commit()
         invalid_dimension_id = dimension.id + 99999
@@ -2162,13 +2171,17 @@ def test_save_app_ranking_setting_atomic_is_idempotent_for_same_payload():
         assert dimension is not None
         dimension_id = dimension.id
         config_id = f"atomic-idem-{unique}"
-        db.add(RankingConfig(
+        config = RankingConfig(
             id=config_id,
             name=f"原子幂等榜单-{unique}",
             description="原子幂等测试",
-            dimensions_config=json.dumps([{"dim_id": dimension_id, "weight": 1.0}], ensure_ascii=False),
             calculation_method="composite",
             is_active=True,
+        )
+        db.add(config)
+        db.flush()
+        db.add(RankingConfigDimension(
+            ranking_config_id=config_id, dimension_id=dimension_id, weight=1.0,
         ))
         db.commit()
     finally:

@@ -14,6 +14,7 @@ from ..config import *
 from ..database import ensure_database_schema_ready, get_db
 from ..identity import get_identity_provider
 from ..models import *
+from ..models import RankingConfigDimension
 from ..schemas import *
 from ..dependencies import *
 from ..services.ranking_service import *
@@ -21,6 +22,30 @@ from ..services.submission_service import *
 from ..venv_utils import venv_reader
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix=settings.api_prefix)
+
+
+def _sync_config_dimensions_from_json(db: Session, config_id: str, dimensions_config: str) -> None:
+    """将 JSON 格式的维度配置同步到关联表。"""
+    import json as _json
+    try:
+        dims = _json.loads(dimensions_config) if dimensions_config else []
+    except _json.JSONDecodeError:
+        dims = []
+    if not isinstance(dims, list):
+        dims = []
+    # 清除旧关联
+    db.query(RankingConfigDimension).filter(
+        RankingConfigDimension.ranking_config_id == config_id
+    ).delete(synchronize_session=False)
+    # 写入新关联
+    for item in dims:
+        if isinstance(item, dict) and "dim_id" in item:
+            db.add(RankingConfigDimension(
+                ranking_config_id=config_id,
+                dimension_id=item["dim_id"],
+                weight=item.get("weight", 1.0),
+            ))
+
 
 @router.get(f"/ranking-dimensions", response_model=list[RankingDimensionOut])
 def get_ranking_dimensions(
@@ -441,19 +466,10 @@ def delete_ranking_dimension(
     if not dimension:
         raise HTTPException(status_code=404, detail="排行维度不存在")
     
-    import json
-
-    # 从榜单配置中剔除被删除维度
-    touched_configs = 0
-    for config in db.query(RankingConfig).all():
-        try:
-            dim_items = json.loads(config.dimensions_config) if config.dimensions_config else []
-        except json.JSONDecodeError:
-            dim_items = []
-        filtered_items = [item for item in dim_items if item.get("dim_id") != dimension_id]
-        if len(filtered_items) != len(dim_items):
-            config.dimensions_config = json.dumps(filtered_items, ensure_ascii=False)
-            touched_configs += 1
+    # 从榜单配置关联表中剔除被删除维度
+    touched_configs = db.query(RankingConfigDimension).filter(
+        RankingConfigDimension.dimension_id == dimension_id
+    ).delete(synchronize_session=False)
 
     removed_scores = (
         db.query(AppDimensionScore)
@@ -581,14 +597,14 @@ def get_ranking_config_with_dimensions(
     if not config:
         raise HTTPException(status_code=404, detail="榜单配置不存在")
     
-    import json
-    dimensions_config = json.loads(config.dimensions_config) if config.dimensions_config else []
-    
     return {
         "id": config.id,
         "name": config.name,
         "description": config.description,
-        "dimensions": [DimensionConfigItem(**d) for d in dimensions_config],
+        "dimensions": [
+            DimensionConfigItem(dim_id=d.dimension_id, weight=d.weight)
+            for d in config.dimensions
+        ],
         "calculation_method": config.calculation_method,
         "is_active": config.is_active,
         "created_at": config.created_at,
@@ -610,9 +626,12 @@ def create_ranking_config(
     if existing:
         raise HTTPException(status_code=400, detail="榜单配置ID已存在")
     
-    config = RankingConfig(**payload.model_dump())
+    config_data = {k: v for k, v in payload.model_dump().items() if k != "dimensions_config"}
+    config = RankingConfig(**config_data)
     db.add(config)
     db.flush()
+    # 写入关联表
+    _sync_config_dimensions_from_json(db, config.id, payload.dimensions_config)
     actor = ranking_audit_actor(admin_user)
     write_ranking_audit_log(
         db,
@@ -646,7 +665,7 @@ def update_ranking_config(
     if payload.description is not None:
         config.description = payload.description
     if payload.dimensions_config is not None:
-        config.dimensions_config = payload.dimensions_config
+        _sync_config_dimensions_from_json(db, config_id, payload.dimensions_config)
     if payload.calculation_method is not None:
         config.calculation_method = payload.calculation_method
     if payload.is_active is not None:
@@ -659,7 +678,7 @@ def update_ranking_config(
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
         actor=actor,
-        payload_summary="fields=name/description/dimensions_config/calculation_method/is_active",
+        payload_summary="fields=name/description/dimensions/calculation_method/is_active",
     )
     sync_after_chain_mutation(db, "ranking_config_updated", actor=actor)
     db.refresh(config)

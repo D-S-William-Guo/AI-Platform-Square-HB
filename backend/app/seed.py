@@ -437,13 +437,10 @@ def build_default_ranking_configs(dimension_name_to_id: dict[str, int]) -> list[
                 "id": preset["id"],
                 "name": preset["name"],
                 "description": preset["description"],
-                "dimensions_config": json.dumps(
-                    [
-                        {"dim_id": dimension_name_to_id[name], "weight": 1.0}
-                        for name in preset["dimension_names"]
-                    ],
-                    ensure_ascii=False,
-                ),
+                "dimensions": [
+                    {"dim_id": dimension_name_to_id[name], "weight": 1.0}
+                    for name in preset["dimension_names"]
+                ],
                 "calculation_method": preset["calculation_method"],
                 "is_active": preset["is_active"],
             }
@@ -569,8 +566,11 @@ def calculate_app_score(
     3. 应用权重系数
     4. 返回最终分数
     """
-    # 解析维度配置
-    dim_config = json.loads(ranking_config.dimensions_config) if ranking_config.dimensions_config else []
+    # 从关联表读取维度配置
+    if hasattr(ranking_config, 'dimensions') and ranking_config.dimensions:
+        dim_config = [{"dim_id": d.dimension_id, "weight": d.weight} for d in ranking_config.dimensions]
+    else:
+        dim_config = []
     dim_weight_map = {d["dim_id"]: d["weight"] for d in dim_config}
 
     # 如果没有维度配置，使用默认计算
@@ -875,12 +875,32 @@ def seed_ranking_configs(db: Session) -> None:
     try:
         if db.query(RankingConfig).count() == 0:
             for config in build_default_ranking_configs(_system_dimension_name_to_id(db)):
-                db.add(RankingConfig(**config))
+                config_kwargs = {k: v for k, v in config.items() if k != "dimensions"}
+                db_config = RankingConfig(**config_kwargs)
+                db.add(db_config)
+                db.flush()
+                _sync_dimensions_list(db, db_config.id, config.get("dimensions", []))
             db.commit()
             print(f"Seeded {len(DEFAULT_RANKING_CONFIG_PRESETS)} ranking configs")
     except Exception as exc:
         print(f"Error seeding ranking configs: {exc}")
         db.rollback()
+
+
+def _sync_dimensions_list(db: Session, config_id: str, dimensions: list) -> None:
+    """将维度列表同步到关联表（seed 用）。"""
+    from app.models import RankingConfigDimension
+    # 清除旧关联
+    db.query(RankingConfigDimension).filter(
+        RankingConfigDimension.ranking_config_id == config_id
+    ).delete(synchronize_session=False)
+    for item in dimensions:
+        if isinstance(item, dict) and "dim_id" in item:
+            db.add(RankingConfigDimension(
+                ranking_config_id=config_id,
+                dimension_id=item["dim_id"],
+                weight=item.get("weight", 1.0),
+            ))
 
 
 def sync_system_presets(db: Session) -> None:
@@ -919,18 +939,36 @@ def sync_system_presets(db: Session) -> None:
     config_created = 0
     config_updated = 0
 
+    from app.models import RankingConfigDimension
     for payload in build_default_ranking_configs(_system_dimension_name_to_id(db)):
         config = existing_configs.get(payload["id"])
+        config_kwargs = {k: v for k, v in payload.items() if k != "dimensions"}
         if config is None:
-            db.add(RankingConfig(**payload))
+            config = RankingConfig(**config_kwargs)
+            db.add(config)
+            db.flush()
+            # 同步关联表
+            _sync_dimensions_list(db, config.id, payload.get("dimensions", []))
             config_created += 1
             continue
 
         changed = False
-        for field_name in ("name", "description", "dimensions_config", "calculation_method", "is_active"):
+        for field_name in ("name", "description", "calculation_method", "is_active"):
             if getattr(config, field_name) != payload[field_name]:
                 setattr(config, field_name, payload[field_name])
                 changed = True
+        # 检查维度是否有变更
+        current_dims = sorted(
+            [(d.dimension_id, d.weight) for d in db.query(RankingConfigDimension).filter(
+                RankingConfigDimension.ranking_config_id == config.id
+            ).all()]
+        )
+        payload_dims = sorted(
+            [(d["dim_id"], d.get("weight", 1.0)) for d in payload.get("dimensions", [])]
+        )
+        if current_dims != payload_dims:
+            _sync_dimensions_list(db, config.id, payload.get("dimensions", []))
+            changed = True
         if changed:
             config_updated += 1
 

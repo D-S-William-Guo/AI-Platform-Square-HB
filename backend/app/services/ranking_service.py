@@ -247,11 +247,11 @@ def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "
         config_ranking_updates = 0
         config_historical_updates = 0
 
-        # 解析榜单配置的维度权重
-        try:
-            config_dimensions = _json.loads(config.dimensions_config) if config.dimensions_config else []
-        except _json.JSONDecodeError:
-            config_dimensions = []
+        # 从关联表读取榜单配置的维度权重
+        config_dimensions = [
+            {"dim_id": d.dimension_id, "weight": d.weight}
+            for d in config.dimensions
+        ] if config.dimensions else []
 
         # 获取参与该榜单的应用设置
         app_settings = (
@@ -546,16 +546,5 @@ def serialize_setting_snapshot(setting: AppRankingSetting | None) -> dict[str, o
 
 
 def collect_config_dimension_ids(config: RankingConfig) -> set[int]:
-    config_dim_ids: set[int] = set()
-    if not config.dimensions_config:
-        return config_dim_ids
-    try:
-        dimensions_config = _json.loads(config.dimensions_config)
-    except _json.JSONDecodeError:
-        return config_dim_ids
-    if not isinstance(dimensions_config, list):
-        return config_dim_ids
-    for item in dimensions_config:
-        if isinstance(item, dict) and isinstance(item.get("dim_id"), int):
-            config_dim_ids.add(item["dim_id"])
-    return config_dim_ids
+    """从关联表收集榜单的维度ID集合。"""
+    return {d.dimension_id for d in config.dimensions} if config.dimensions else set()

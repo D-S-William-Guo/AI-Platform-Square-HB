@@ -6,7 +6,7 @@ import UiIcon from '../../../components/UiIcon'
 
 interface RankingConfigRecord {
   id: string; name: string; description: string
-  calculation_method: string; is_active: boolean; dimensions_config: string
+  calculation_method: string; is_active: boolean; dimensions?: Array<{dim_id: number; weight: number}>
 }
 
 interface RankingConfigsTabProps {
@@ -65,11 +65,7 @@ export default function RankingConfigsTab({
           ) : (
             <div className="config-cards">
               {rankingConfigs.map(config => {
-                let dimCount = 0
-                try {
-                  const dims = JSON.parse(config.dimensions_config)
-                  dimCount = Array.isArray(dims) ? dims.length : 0
-                } catch { dimCount = 0 }
+                const dimCount = config.dimensions?.length || 0
 
                 return (
                   <div key={config.id} className={`config-card ${config.is_active ? 'active' : 'inactive'}`}>

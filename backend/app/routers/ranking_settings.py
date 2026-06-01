@@ -63,19 +63,8 @@ def _serialize_setting(setting: AppRankingSetting | None) -> dict[str, object]:
 
 
 def _collect_config_dimension_ids(config: RankingConfig) -> set[int]:
-    config_dim_ids: set[int] = set()
-    if not config.dimensions_config:
-        return config_dim_ids
-    try:
-        dimensions_config = json.loads(config.dimensions_config)
-    except json.JSONDecodeError:
-        return config_dim_ids
-    if not isinstance(dimensions_config, list):
-        return config_dim_ids
-    for item in dimensions_config:
-        if isinstance(item, dict) and isinstance(item.get("dim_id"), int):
-            config_dim_ids.add(item["dim_id"])
-    return config_dim_ids
+    """从关联表收集榜单的维度ID集合。"""
+    return collect_config_dimension_ids(config)
 
 
 @router.post(

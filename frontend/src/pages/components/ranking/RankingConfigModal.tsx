@@ -10,7 +10,7 @@ interface RankingConfigRecord {
   description: string
   calculation_method: string
   is_active: boolean
-  dimensions_config: string
+  dimensions?: { dim_id: number; weight: number }[]
 }
 
 interface RankingConfigModalProps {
@@ -42,12 +42,7 @@ export default function RankingConfigModal({
   useEffect(() => {
     if (!open) return
     if (editingConfig) {
-      let selectedDims: { dim_id: number; weight: number }[] = []
-      try {
-        selectedDims = JSON.parse(editingConfig.dimensions_config) || []
-      } catch {
-        selectedDims = []
-      }
+      const selectedDims = (editingConfig.dimensions || []).map(d => ({ dim_id: d.dim_id, weight: d.weight }))
       setFormData({
         id: editingConfig.id,
         name: editingConfig.name,

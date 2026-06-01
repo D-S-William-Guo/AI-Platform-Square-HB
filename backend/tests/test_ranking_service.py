@@ -265,28 +265,20 @@ class TestSerializeSettingSnapshot:
 # ---------------------------------------------------------------------------
 
 class TestCollectConfigDimensionIds:
-    def test_valid_json_returns_set(self):
-        config = SimpleNamespace(dimensions_config='[{"dim_id":1,"weight":1.0},{"dim_id":2,"weight":0.5}]')
+    def test_with_dimensions_returns_set(self):
+        dim1 = SimpleNamespace(dimension_id=1, weight=1.0)
+        dim2 = SimpleNamespace(dimension_id=2, weight=0.5)
+        config = SimpleNamespace(dimensions=[dim1, dim2])
         result = collect_config_dimension_ids(config)
         assert result == {1, 2}
 
-    def test_empty_string_returns_empty_set(self):
-        config = SimpleNamespace(dimensions_config="")
+    def test_empty_dimensions_returns_empty_set(self):
+        config = SimpleNamespace(dimensions=[])
         result = collect_config_dimension_ids(config)
         assert result == set()
 
-    def test_empty_json_array_returns_empty_set(self):
-        config = SimpleNamespace(dimensions_config="[]")
-        result = collect_config_dimension_ids(config)
-        assert result == set()
-
-    def test_malformed_json_returns_empty_set(self):
-        config = SimpleNamespace(dimensions_config="{invalid")
-        result = collect_config_dimension_ids(config)
-        assert result == set()
-
-    def test_non_list_json_returns_empty_set(self):
-        config = SimpleNamespace(dimensions_config='{"dim_id": 1}')
+    def test_none_dimensions_returns_empty_set(self):
+        config = SimpleNamespace(dimensions=None)
         result = collect_config_dimension_ids(config)
         assert result == set()
 

@@ -263,11 +263,17 @@ export type RankingDimension = {
   updated_at: string
 }
 
+export type DimensionConfigItem = {
+  dim_id: number
+  weight: number
+}
+
 export type RankingConfigRecord = {
   id: string
   name: string
   description: string
-  dimensions_config: string
+  dimensions_config: string  // 已废弃，保留兼容
+  dimensions: DimensionConfigItem[]
   calculation_method: string
   is_active: boolean
   created_at: string
