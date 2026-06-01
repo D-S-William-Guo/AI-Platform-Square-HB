@@ -393,7 +393,6 @@ class RankingLogOut(BaseModel):
 class RankingAuditLogOut(BaseModel):
     id: int
     action: str
-    ranking_type: str | None
     ranking_config_id: str | None
     period_date: date | None
     run_id: str | None
@@ -428,7 +427,8 @@ class DimensionScoreUpdate(BaseModel):
 class HistoricalRankingOut(BaseModel):
     """历史榜单输出"""
     id: int
-    ranking_type: str
+    ranking_type: str = Field(default="", description="已废弃，请使用 ranking_config_id")
+    ranking_config_id: str = ""
     period_date: date
     run_id: str | None = None
     position: int

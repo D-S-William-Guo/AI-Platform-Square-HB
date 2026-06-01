@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_  # or_ still used for keyword search
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from ..auth_utils import generate_session_token, hash_password, verify_password
@@ -189,7 +189,6 @@ def update_app_dimension_score_api(
     write_ranking_audit_log(
         db,
         action="dimension_score_manual_saved",
-        ranking_type=None,
         ranking_config_id=config_id,
         period_date=today,
         actor=actor,
@@ -224,21 +223,13 @@ def list_historical_rankings(
     try:
         scope_id = resolve_ranking_scope_id(ranking_type=ranking_type)
         query = db.query(HistoricalRanking).filter(
-            or_(
-                HistoricalRanking.ranking_config_id == scope_id,
-                HistoricalRanking.ranking_type == scope_id,
-            )
+            HistoricalRanking.ranking_config_id == scope_id
         )
         target_date = period_date
         if target_date is None:
             latest_date_row = (
                 db.query(HistoricalRanking.period_date)
-                .filter(
-                    or_(
-                        HistoricalRanking.ranking_config_id == scope_id,
-                        HistoricalRanking.ranking_type == scope_id,
-                    )
-                )
+                .filter(HistoricalRanking.ranking_config_id == scope_id)
                 .order_by(HistoricalRanking.period_date.desc())
                 .first()
             )
@@ -262,8 +253,8 @@ def list_historical_rankings(
             result.append(
                 HistoricalRankingOut(
                     id=row.id,
-                    ranking_type=row.ranking_type,
-                    period_date=row.period_date,
+                    ranking_type=row.ranking_config_id,
+                    ranking_config_id=row.ranking_config_id,
                     run_id=row.run_id,
                     position=row.position,
                     app_id=row.app_id,
@@ -297,10 +288,7 @@ def list_available_ranking_dates(
         dates = (
             db.query(HistoricalRanking.period_date)
             .filter(
-                or_(
-                    HistoricalRanking.ranking_config_id == scope_id,
-                    HistoricalRanking.ranking_type == scope_id,
-                )
+                HistoricalRanking.ranking_config_id == scope_id
             )
             .distinct()
             .order_by(HistoricalRanking.period_date.desc())
@@ -358,7 +346,6 @@ def create_ranking_dimension(
     write_ranking_audit_log(
         db,
         action="ranking_dimension_created",
-        ranking_type="all",
         period_date=datetime.utcnow().date(),
         actor=actor,
         payload_summary=f"dimension_id={dimension.id},name={dimension.name}",
@@ -431,7 +418,6 @@ def update_ranking_dimension(
         write_ranking_audit_log(
             db,
             action="ranking_dimension_updated",
-            ranking_type="all",
             period_date=datetime.utcnow().date(),
             actor=actor,
             payload_summary=f"dimension_id={dimension.id},changes={' | '.join(changes)}",
@@ -489,7 +475,6 @@ def delete_ranking_dimension(
     write_ranking_audit_log(
         db,
         action="ranking_dimension_deleted",
-        ranking_type="all",
         period_date=datetime.utcnow().date(),
         actor=actor,
         payload_summary=(
@@ -632,7 +617,6 @@ def create_ranking_config(
     write_ranking_audit_log(
         db,
         action="ranking_config_created",
-        ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
         actor=actor,
@@ -672,7 +656,6 @@ def update_ranking_config(
     write_ranking_audit_log(
         db,
         action="ranking_config_updated",
-        ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
         actor=actor,
@@ -716,7 +699,6 @@ def delete_ranking_config(
     write_ranking_audit_log(
         db,
         action="ranking_config_deleted",
-        ranking_type=config.id,
         ranking_config_id=config.id,
         period_date=datetime.utcnow().date(),
         actor=actor,

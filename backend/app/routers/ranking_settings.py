@@ -233,7 +233,6 @@ def save_app_ranking_setting_atomically(
         write_ranking_audit_log(
             db,
             action=action,
-            ranking_type=config_id,
             ranking_config_id=config_id,
             period_date=datetime.utcnow().date(),
             actor=actor,
@@ -306,7 +305,6 @@ def create_app_ranking_setting(
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_created",
-        ranking_type=payload.ranking_config_id,
         ranking_config_id=payload.ranking_config_id,
         period_date=datetime.utcnow().date(),
         actor=actor,
@@ -392,7 +390,6 @@ def update_app_ranking_setting(
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_updated",
-        ranking_type=setting.ranking_config_id,
         ranking_config_id=setting.ranking_config_id,
         period_date=datetime.utcnow().date(),
         actor=actor,
@@ -432,7 +429,6 @@ def delete_app_ranking_setting(
     write_ranking_audit_log(
         db,
         action="app_ranking_setting_deleted",
-        ranking_type=setting.ranking_config_id,
         ranking_config_id=setting.ranking_config_id,
         period_date=datetime.utcnow().date(),
         actor=actor,
