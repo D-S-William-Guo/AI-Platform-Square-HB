@@ -5,6 +5,7 @@ from datetime import date
 from types import SimpleNamespace
 
 main = importlib.import_module("app.main")
+rankings_router = importlib.import_module("app.routers.rankings")
 
 
 class RecordingQuery:
@@ -108,7 +109,7 @@ def test_list_historical_rankings_uses_latest_run_id_in_date_mode(monkeypatch):
     query = RecordingQuery(all_result=[])
     db = RecordingDB([query])
 
-    monkeypatch.setattr(main, "resolve_latest_run_id", lambda *_args, **_kwargs: "run-latest")
+    monkeypatch.setattr(rankings_router, "resolve_latest_run_id", lambda *_args, **_kwargs: "run-latest")
 
     main.list_historical_rankings(
         ranking_type="excellent",
@@ -124,7 +125,7 @@ def test_list_historical_rankings_falls_back_to_null_run_id_when_no_latest(monke
     query = RecordingQuery(all_result=[])
     db = RecordingDB([query])
 
-    monkeypatch.setattr(main, "resolve_latest_run_id", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(rankings_router, "resolve_latest_run_id", lambda *_args, **_kwargs: None)
 
     main.list_historical_rankings(
         ranking_type="excellent",
@@ -143,7 +144,7 @@ def test_list_historical_rankings_prefers_explicit_run_id_over_latest(monkeypatc
     def _unexpected_call(*_args, **_kwargs):
         raise AssertionError("resolve_latest_run_id should not be called when run_id is explicitly provided")
 
-    monkeypatch.setattr(main, "resolve_latest_run_id", _unexpected_call)
+    monkeypatch.setattr(rankings_router, "resolve_latest_run_id", _unexpected_call)
 
     main.list_historical_rankings(
         ranking_type="excellent",
