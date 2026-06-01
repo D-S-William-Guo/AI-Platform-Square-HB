@@ -63,7 +63,7 @@ def _save_image(file, submission_id=None, context="submission"):
         if img.mode in ("RGBA","P"): img = img.convert("RGB")
         img.thumbnail((300,200), PILImage.Resampling.LANCZOS)
         img.save(tp, "JPEG", quality=85)
-    bu = f"static/uploads"
+    bu = f"{settings.api_prefix}/static/uploads"
     return {"image_url":f"{bu}/{up}/{fn}","thumbnail_url":f"{bu}/{up}/thumb_{fn}","original_name":file.filename,"file_size":len(content),"width":img.width if hasattr(img,'width') else 0,"height":img.height if hasattr(img,'height') else 0}
 
 def _save_document(file):
@@ -77,7 +77,7 @@ def _save_document(file):
     if len(content) > MAX_DOC_FILE_SIZE:
         raise HTTPException(status_code=413, detail="文档大小不能超过 20MB")
     with open(fp, "wb") as f: f.write(content)
-    return {"file_url":f"static/uploads/docs/{fn}","original_name":file.filename,"file_size":len(content),"mime_type":file.content_type or ""}
+    return {"file_url":f"{settings.api_prefix}/static/uploads/docs/{fn}","original_name":file.filename,"file_size":len(content),"mime_type":file.content_type or ""}
 
 @router.post("/upload/image", response_model=ImageUploadResponse)
 async def upload_image(request: Request, file: UploadFile = File(...), context: str = Form(default="submission"), _=Depends(require_submit_permission)):
