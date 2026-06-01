@@ -719,12 +719,10 @@ def sync_rankings(db: Session, ranking_config_id: str | None = None) -> int:
                 existing.position = position
                 existing.score = score
                 existing.tag = tag
-                existing.ranking_type = config.id  # 同步更新
             else:
                 db.add(
                     Ranking(
                         ranking_config_id=config.id,
-                        ranking_type=config.id,
                         position=position,
                         app_id=app.id,
                         tag=tag,

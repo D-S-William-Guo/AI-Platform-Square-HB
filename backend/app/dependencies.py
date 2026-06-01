@@ -46,8 +46,8 @@ rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
 # 路由标识解析
 # ---------------------------------------------------------------------------
 
-def resolve_ranking_scope_id(ranking_type: str | None = None, ranking_config_id: str | None = None) -> str:
-    """收敛榜单标识：统一使用 ranking_config_id，ranking_type 仅作兼容入参。"""
+def resolve_ranking_scope_id(ranking_config_id: str | None = None, ranking_type: str | None = None) -> str:
+    """统一使用 ranking_config_id；ranking_type 保留为兼容 API 入参（已废弃）。"""
     return (ranking_config_id or ranking_type or "").strip() or "excellent"
 
 
@@ -277,7 +277,6 @@ def write_ranking_audit_log(
     db: Session,
     *,
     action: str,
-    ranking_type: str | None = None,
     ranking_config_id: str | None = None,
     period_date: date | None = None,
     run_id: str | None = None,
@@ -287,7 +286,6 @@ def write_ranking_audit_log(
     db.add(
         RankingAuditLog(
             action=action,
-            ranking_type=ranking_type,
             ranking_config_id=ranking_config_id,
             period_date=period_date,
             run_id=run_id,

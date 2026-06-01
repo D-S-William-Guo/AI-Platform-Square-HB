@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from ..auth_utils import generate_session_token, hash_password, verify_password
@@ -25,16 +25,13 @@ router = APIRouter(prefix=settings.api_prefix)
 
 # Module-level helpers
 
-def resolve_latest_run_id(db: Session, ranking_type: str, period_date: date) -> str | None:
+def resolve_latest_run_id(db: Session, ranking_config_id: str, period_date: date) -> str | None:
     """返回某榜单在指定日期最新发布的 run_id（旧数据可能为空）。"""
-    scope_id = resolve_ranking_scope_id(ranking_type=ranking_type)
+    scope_id = resolve_ranking_scope_id(ranking_config_id=ranking_config_id)
     latest_with_run = (
         db.query(HistoricalRanking.run_id)
         .filter(
-            or_(
-                HistoricalRanking.ranking_config_id == scope_id,
-                HistoricalRanking.ranking_type == scope_id,
-            )
+            HistoricalRanking.ranking_config_id == scope_id
         )
         .filter(HistoricalRanking.period_date == period_date)
         .filter(HistoricalRanking.run_id.is_not(None))
@@ -93,12 +90,7 @@ def list_rankings(
             historical_query = (
                 db.query(HistoricalRanking)
                 .filter(HistoricalRanking.period_date == period_date)
-                .filter(
-                    or_(
-                        HistoricalRanking.ranking_config_id == scope_id,
-                        HistoricalRanking.ranking_type == scope_id,
-                    )
-                )
+                .filter(HistoricalRanking.ranking_config_id == scope_id)
             )
             if selected_run_id is not None:
                 historical_query = historical_query.filter(HistoricalRanking.run_id == selected_run_id)
@@ -131,10 +123,7 @@ def list_rankings(
         realtime_query = (
             db.query(Ranking)
             .filter(
-                or_(
-                    Ranking.ranking_config_id == scope_id,
-                    Ranking.ranking_type == scope_id,
-                )
+                Ranking.ranking_config_id == scope_id
             )
         )
 
@@ -214,21 +203,13 @@ def list_historical_rankings(
     try:
         scope_id = resolve_ranking_scope_id(ranking_type=ranking_type)
         query = db.query(HistoricalRanking).filter(
-            or_(
-                HistoricalRanking.ranking_config_id == scope_id,
-                HistoricalRanking.ranking_type == scope_id,
-            )
+            HistoricalRanking.ranking_config_id == scope_id
         )
         target_date = period_date
         if target_date is None:
             latest_date_row = (
                 db.query(HistoricalRanking.period_date)
-                .filter(
-                    or_(
-                        HistoricalRanking.ranking_config_id == scope_id,
-                        HistoricalRanking.ranking_type == scope_id,
-                    )
-                )
+                .filter(HistoricalRanking.ranking_config_id == scope_id)
                 .order_by(HistoricalRanking.period_date.desc())
                 .first()
             )
@@ -252,7 +233,8 @@ def list_historical_rankings(
             result.append(
                 HistoricalRankingOut(
                     id=row.id,
-                    ranking_type=row.ranking_type,
+                    ranking_type=row.ranking_config_id,
+                    ranking_config_id=row.ranking_config_id,
                     period_date=row.period_date,
                     run_id=row.run_id,
                     position=row.position,
@@ -287,10 +269,7 @@ def list_available_ranking_dates(
         dates = (
             db.query(HistoricalRanking.period_date)
             .filter(
-                or_(
-                    HistoricalRanking.ranking_config_id == scope_id,
-                    HistoricalRanking.ranking_type == scope_id,
-                )
+                HistoricalRanking.ranking_config_id == scope_id
             )
             .distinct()
             .order_by(HistoricalRanking.period_date.desc())
@@ -386,7 +365,6 @@ def publish_rankings(
         write_ranking_audit_log(
             db,
             action="ranking_publish_completed",
-            ranking_type="all",
             ranking_config_id=None,
             period_date=datetime.utcnow().date(),
             run_id=generated_run_id,

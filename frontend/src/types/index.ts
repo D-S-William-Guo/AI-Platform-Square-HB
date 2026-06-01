@@ -292,7 +292,8 @@ export type AppDimensionScore = {
 // 历史榜单
 export type HistoricalRanking = {
   id: number
-  ranking_type: 'excellent' | 'trend'
+  ranking_type: string  // 已废弃，使用 ranking_config_id
+  ranking_config_id: string
   period_date: string
   position: number
   app_id: number

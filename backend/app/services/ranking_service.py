@@ -371,7 +371,6 @@ def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "
                 db.add(
                     Ranking(
                         ranking_config_id=config.id,
-                        ranking_type=config.id,  # 保持兼容性
                         position=index,
                         app_id=app.id,
                         tag=tag,
@@ -404,7 +403,6 @@ def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "
                 db.add(
                     HistoricalRanking(
                         ranking_config_id=config.id,
-                        ranking_type=config.id,  # 保持兼容性
                         period_date=today,
                         run_id=current_run_id,
                         position=index,
@@ -425,7 +423,6 @@ def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "
         write_ranking_audit_log(
             db,
             action="rankings_sync_config_published",
-            ranking_type=config.id,
             ranking_config_id=config.id,
             period_date=today,
             run_id=current_run_id,
@@ -442,7 +439,6 @@ def sync_rankings_service(db: Session, run_id: str | None = None, actor: str = "
         write_ranking_audit_log(
             db,
             action="rankings_sync_global_realtime_cleanup",
-            ranking_type="all",
             period_date=today,
             run_id=current_run_id,
             actor=actor,
@@ -466,7 +462,6 @@ def sync_after_chain_mutation(db: Session, trigger: str, actor: str = "system") 
         write_ranking_audit_log(
             db,
             action=f"{trigger}_triggered_sync",
-            ranking_type="all",
             period_date=datetime.utcnow().date(),
             run_id=run_id,
             actor=actor,
@@ -514,7 +509,7 @@ def validate_publish_preconditions(db: Session) -> dict[str, int]:
 
     invalid_configs = []
     for config in active_configs:
-        configured_dims = _collect_config_dimension_ids(config)
+        configured_dims = collect_config_dimension_ids(config)
         if not configured_dims:
             invalid_configs.append(config.id)
     if invalid_configs:

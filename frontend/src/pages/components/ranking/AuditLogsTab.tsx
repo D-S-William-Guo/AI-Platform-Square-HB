@@ -6,7 +6,6 @@ interface AuditLogsTabProps {
     id: number
     action: string
     ranking_config_id?: string
-    ranking_type?: string
     payload_summary?: string
     actor?: string
     created_at: string
@@ -53,7 +52,7 @@ export default function AuditLogsTab({ logs }: AuditLogsTabProps) {
                         : '更新'}
                     </span>
                   </td>
-                  <td className="log-dimension">{log.ranking_config_id || log.ranking_type || '-'}</td>
+                  <td className="log-dimension">{log.ranking_config_id || '-'}</td>
                   <td className="log-changes">{log.payload_summary || '-'}</td>
                   <td className="log-operator">{log.actor || '-'}</td>
                 </tr>

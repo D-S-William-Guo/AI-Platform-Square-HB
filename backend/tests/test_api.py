@@ -32,6 +32,10 @@ def create_submission_as_user(payload: dict, username: str = "zhangsan"):
     return client.post('/api/submissions', json=payload, headers=auth_headers_for_user(username))
 
 
+# =============================================================================
+# Meta / Health
+# =============================================================================
+
 def test_health():
     resp = client.get('/api/health')
     assert resp.status_code == 200
@@ -67,6 +71,10 @@ def test_submission_rejects_legacy_category_value():
     assert resp.status_code == 422
     assert resp.json()["detail"] == "Invalid category"
 
+
+# =============================================================================
+# Auth — Login, Logout, Session, Password, Rate Limiting
+# =============================================================================
 
 def test_auth_login_me_logout_flow():
     client.cookies.clear()
@@ -263,6 +271,10 @@ def test_user_must_change_password_before_protected_actions_and_can_self_change_
     assert new_login_resp.status_code == 200
 
 
+# =============================================================================
+# Audit / Admin Token / Upload / Venv
+# =============================================================================
+
 def test_audit_event_allows_anonymous_and_persists_action_log():
     client.cookies.clear()
     resp = client.post(
@@ -348,6 +360,10 @@ def test_venv_endpoints_hidden_in_production(monkeypatch):
     finally:
         monkeypatch.setattr(settings, "environment", "development")
 
+
+# =============================================================================
+# Submissions — CRUD, Approval, Rejection, Resubmission, Change Requests
+# =============================================================================
 
 def test_submission_records_submitter_user_from_session():
     client.cookies.clear()
@@ -587,7 +603,6 @@ def test_app_change_request_updates_current_app_without_rewriting_historical_ran
         db.add(
             HistoricalRanking(
                 ranking_config_id="excellent",
-                ranking_type="excellent",
                 period_date=datetime.utcnow().date(),
                 run_id=f"test-{uuid.uuid4().hex[:8]}",
                 position=1,
@@ -661,6 +676,10 @@ def test_app_change_request_updates_current_app_without_rewriting_historical_ran
     finally:
         db.close()
 
+
+# =============================================================================
+# Admin Users — List, CRUD, Import, Permissions, Sync
+# =============================================================================
 
 def test_admin_list_users_contains_seeded_accounts():
     resp = client.get('/api/admin/users', headers=auth_headers_for_user("lisi"))
@@ -1094,6 +1113,10 @@ def test_external_user_sync_requires_and_validates_sync_token():
         settings.user_sync_token = original_token
 
 
+# =============================================================================
+# Apps — List, Filter, Pagination
+# =============================================================================
+
 def test_list_apps():
     seed_payload = {
         'category': '前端市场类',
@@ -1210,6 +1233,10 @@ def test_public_apps_support_company_filter_for_province_apps():
     assert matched['org'] == '河北省公司'
 
 
+# =============================================================================
+# Rankings — Historical, Dimension Scores, Configs, Settings, Publish
+# =============================================================================
+
 def test_rankings_have_metric_fields():
     resp = client.get('/api/rankings?ranking_type=excellent')
     assert resp.status_code == 200
@@ -1251,7 +1278,6 @@ def test_historical_rankings_return_company_department_and_support_company_filte
         run_id = f"company-historical-{uuid.uuid4().hex[:8]}"
         history = HistoricalRanking(
             ranking_config_id='excellent',
-            ranking_type='excellent',
             period_date=today,
             run_id=run_id,
             position=1,
